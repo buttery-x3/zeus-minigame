@@ -31,6 +31,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/ui/Hud.ts`: DOM HUD creation and updates.
 - `src/lib/math.ts`: numeric helpers.
 - `src/lib/dom.ts`: DOM query helper.
+- `scripts/verify-render.mjs`: headless browser smoke test for rendering, HUD, and core interactions.
 
 ## Boundaries
 
@@ -46,3 +47,7 @@ Good next extractions:
 - `src/game/state` if runtime state grows beyond the current simple object.
 - `src/game/spells/spellDefinitions.ts` if spell configs gain upgrade trees.
 - `src/game/collision` before obstacle-heavy maps or pathfinding.
+
+## Verification
+
+Use `npm run verify` for the standard project check. It runs the production build and then the browser render verifier. The render verifier should be kept in step with the default playable loop.

@@ -11,6 +11,14 @@ npm run dev
 
 Open the local Vite URL, usually `http://127.0.0.1:5173/`.
 
+## Verify
+
+```bash
+npm run verify
+```
+
+This runs the production build and a headless browser smoke test for rendering, HUD, movement, and the `Q`/`W` spell flow.
+
 ## Prototype Controls
 
 - Hold or click the left mouse button to move.

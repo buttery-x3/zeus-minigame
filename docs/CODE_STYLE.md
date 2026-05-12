@@ -21,6 +21,7 @@
 - Mesh factory/helper code belongs in `src/render`.
 - Long-lived materials can be shared; per-effect geometries/materials should be short-lived and removed from the scene when their TTL ends.
 - When adding persistent geometry or render targets, add disposal paths.
+- Keep `preserveDrawingBuffer` enabled unless replacing the canvas sampling strategy in `scripts/verify-render.mjs`.
 
 ## Gameplay Code
 
@@ -28,6 +29,7 @@
 - Use `SpellId` instead of stringly-typed spell names.
 - Keep movement and spell targeting deterministic and easy to read before optimizing.
 - Do not add WASD movement unless the user explicitly asks.
+- Update `scripts/verify-render.mjs` when core playable flows change.
 
 ## CSS
 
