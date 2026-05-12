@@ -13,7 +13,16 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 - `src/config.ts`: global tuning constants and spell definitions.
 - `src/types.ts`: shared TypeScript types for gameplay and effects.
-- `src/game/ZeusGame.ts`: app orchestration and current gameplay systems.
+- `src/game/ZeusGame.ts`: composition root, shared runtime state, and update order.
+- `src/game/camera/CameraRig.ts`: orthographic camera follow and resize behavior.
+- `src/game/enemies/EnemySystem.ts`: enemy spawning, movement, contact damage, kill handling, and wave spawn timing.
+- `src/game/hud/HudPresenter.ts`: maps gameplay state into the DOM HUD.
+- `src/game/input/GameInput.ts`: pointer/keyboard input and ground-plane raycasting.
+- `src/game/player/PlayerController.ts`: player mesh, movement target, move marker, and player visual state.
+- `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, and ground setup.
+- `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
+- `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
+- `src/game/terrain/TerrainSystem.ts`: visible terrain window rendering.
 - `src/world/GridWorld.ts`: grid-to-world mapping and deterministic terrain cell generation.
 - `src/render/GameEffects.ts`: short-lived lightning and shockwave effects.
 - `src/render/materials.ts`: shared Three.js material creation.
@@ -34,6 +43,6 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 Good next extractions:
 
-- `src/game/enemies.ts` for enemy spawning, updating, and damage reactions.
-- `src/game/spells.ts` for spell casting rules and configs.
-- `src/game/input.ts` if input grows beyond pointer/key basics.
+- `src/game/state` if runtime state grows beyond the current simple object.
+- `src/game/spells/spellDefinitions.ts` if spell configs gain upgrade trees.
+- `src/game/collision` before obstacle-heavy maps or pathfinding.

@@ -38,3 +38,14 @@ export type EffectState = {
   maxTtl: number;
   update?: (lifeRatio: number) => void;
 };
+
+export type GameRuntimeState = {
+  health: number;
+  mana: number;
+  kills: number;
+  wave: number;
+  spawnTimer: number;
+  spawnInterval: number;
+  nextWaveAt: number;
+  gameOver: boolean;
+};
