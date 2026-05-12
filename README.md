@@ -1,6 +1,6 @@
 # Zeus Minigame
 
-A quick Phaser + TypeScript + Vite proof of concept for a top-down storm-mage arena game.
+A quick Three.js + TypeScript + Vite proof of concept for an isometric 3D storm-mage arena game.
 
 ## Run
 
@@ -21,7 +21,8 @@ Open the local Vite URL, usually `http://127.0.0.1:5173/`.
 
 ## Current Shape
 
-- Camera-follow player in a larger grid-based world.
+- Orthographic isometric camera following the player in a larger grid-based world.
+- Three.js mesh player, enemies, terrain cells, obstacle blocks, and lightning effects.
 - Procedural terrain cells with a reserved blocker terrain type for future obstacle/pathing work.
 - Simple melee chaser enemies that spawn around the player.
-- Health, mana, cooldowns, wave counter, kill counter, and grid cell readout.
+- HTML/CSS health, mana, cooldowns, wave counter, kill counter, and grid cell readout.

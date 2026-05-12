@@ -9,9 +9,10 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
-    "phaser": "^3.90.0"
+    "three": "^0.184.0"
   },
   "devDependencies": {
+    "@types/three": "^0.184.1",
     "typescript": "^5.9.3",
     "vite": "^7.2.4"
   }
