@@ -19,6 +19,10 @@ npm run verify
 
 This runs the production build and a headless browser smoke test for rendering, HUD, movement, and the `Q`/`W` spell flow.
 
+## Deploy
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the PM2 setup used behind Caddy on `buttery.wtf`.
+
 ## Prototype Controls
 
 - Hold or click the left mouse button to move.
