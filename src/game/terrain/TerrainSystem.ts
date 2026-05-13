@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { TILE_SIZE, WORLD_CELLS, WORLD_HALF } from "../../config";
+import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createChargedGlyph } from "../../render/meshes";
 import type { GridWorld } from "../../world/GridWorld";
@@ -24,6 +25,8 @@ export class TerrainSystem {
     }
 
     this.terrainWindowKey = key;
+    disposeObject3D(this.terrainGroup, { preserveMaterials: Object.values(this.materials) });
+    disposeObject3D(this.blockerGroup, { preserveMaterials: Object.values(this.materials) });
     this.terrainGroup.clear();
     this.blockerGroup.clear();
 
@@ -64,13 +67,17 @@ export class TerrainSystem {
       }
     }
 
-    const grid = new THREE.GridHelper((radius * 2 + 1) * TILE_SIZE, radius * 2 + 1, 0x38515a, 0x263238);
+    const grid = new THREE.GridHelper((radius * 2 + 1) * TILE_SIZE, radius * 2 + 1, 0x263238, 0x263238);
     grid.position.set(
       center.x * TILE_SIZE - WORLD_HALF + TILE_SIZE / 2,
       0.025,
       center.z * TILE_SIZE - WORLD_HALF + TILE_SIZE / 2,
     );
-    grid.material = new THREE.LineBasicMaterial({ color: 0x263238, transparent: true, opacity: 0.62 });
+    const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
+    for (const material of gridMaterials) {
+      material.transparent = true;
+      material.opacity = 0.62;
+    }
     this.terrainGroup.add(grid);
   }
 }

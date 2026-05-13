@@ -8,6 +8,7 @@ import {
 } from "../../config";
 import { clamp, distance2D, randomBetween } from "../../lib/math";
 import type { GameEffects } from "../../render/GameEffects";
+import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createEnemyModel } from "../../render/meshes";
 import type { EnemyState, GameRuntimeState } from "../../types";
@@ -75,6 +76,7 @@ export class EnemySystem {
 
   clear() {
     for (const enemy of this.enemies) {
+      this.disposeEnemy(enemy);
       enemy.group.removeFromParent();
     }
     this.enemies = [];
@@ -97,6 +99,7 @@ export class EnemySystem {
     }
 
     const deathPosition = enemy.group.position.clone();
+    this.disposeEnemy(enemy);
     enemy.group.removeFromParent();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
     state.kills += 1;
@@ -149,5 +152,9 @@ export class EnemySystem {
       flashTimer: 0,
     });
     this.enemyId += 1;
+  }
+
+  private disposeEnemy(enemy: EnemyState) {
+    disposeObject3D(enemy.group, { preserveMaterials: Object.values(this.materials) });
   }
 }

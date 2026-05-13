@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { distance2D } from "../../lib/math";
+import { disposeObject3D } from "../../render/dispose";
 import { createCrosshair, createRing } from "../../render/primitives";
 import type { SpellConfig, SpellId } from "../../types";
 import { clampToSpellRange } from "./SpellSystem";
@@ -15,6 +16,7 @@ export class TargetingRenderer {
     pointerWorld: THREE.Vector3;
     playerPosition: THREE.Vector3;
   }) {
+    disposeObject3D(this.group);
     this.group.clear();
 
     if (!params.castMode) {

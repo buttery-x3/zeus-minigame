@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { clamp } from "../lib/math";
 import type { EffectState } from "../types";
+import { disposeObject3D } from "./dispose";
 import { createLine, createRing, jaggedLine, setLineOpacity } from "./primitives";
 
 export class GameEffects {
@@ -15,6 +16,7 @@ export class GameEffects {
       effect.update?.(lifeRatio);
 
       if (effect.ttl <= 0) {
+        disposeObject3D(effect.object);
         effect.object.removeFromParent();
         return false;
       }

@@ -133,6 +133,7 @@ export class ZeusGame {
 
     if (this.state.health <= 0) {
       this.state.gameOver = true;
+      this.spells.cancelTargeting();
       this.player.setDefeated();
     }
   }
