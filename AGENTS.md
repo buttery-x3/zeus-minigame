@@ -21,6 +21,36 @@ The dev server normally runs at `http://127.0.0.1:5173/`.
 
 Run `npm run verify` after changing gameplay, HUD, camera, input, scene setup, rendering, or core styles. If behavior changes intentionally, update `scripts/verify-render.mjs` and `docs/TESTING.md` in the same patch.
 
+## Git Workflow
+
+- Start any code or docs change by checking `git status -sb` so the current branch and uncommitted work are understood.
+- Treat pre-existing uncommitted changes as user-owned unless the user clearly says otherwise. Do not revert, overwrite, or tidy them as part of unrelated work.
+- Never run destructive git operations such as `git reset --hard`, branch deletion, force-push, rebase, or checkout/restore of user changes without explicit user approval.
+- Keep `main` clean and releasable. Use feature branches to isolate non-trivial work before editing.
+- Default branch name format for agent-created branches is `codex/<short-task-slug>`.
+- Prefer a new feature branch for gameplay, rendering, input, HUD, scene setup, verification, multi-file, risky, or experimental changes.
+- Staying on the current branch is fine for read-only investigation, tiny docs edits, or changes the user explicitly wants applied where they are.
+- If the worktree is dirty, summarize the existing changes before creating or switching branches.
+- Make commits only after the change is coherent and relevant verification has run. Keep commits small and focused.
+- Do not push, open a pull request, merge to `main`, or delete branches unless the user asks for that step.
+
+When the user asks for a plan, include a short `Git Handling` item that covers:
+
+- Current branch and worktree state.
+- Whether a new feature branch is recommended and why.
+- Whether commits are expected.
+- Whether pushing, PR creation, or merging should wait for explicit approval.
+
+Example:
+
+```md
+Git Handling:
+- Current branch: main, worktree clean.
+- Recommend creating codex/lightning-targeting-fix before edits because this touches gameplay and verification.
+- Commit after npm run verify passes.
+- Do not push or merge unless requested.
+```
+
 ## Coordinate Conventions
 
 - Gameplay uses the Three.js `X/Z` ground plane.
