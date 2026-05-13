@@ -122,7 +122,6 @@ export class ZeusGame {
     const playerPosition = this.player.object.position;
 
     this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
-    this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
     this.profiler.measure("terrain", () => this.terrain.update(playerPosition));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,
@@ -140,6 +139,7 @@ export class ZeusGame {
     }));
 
     if (this.state.gameOver || this.state.paused) {
+      this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
       if (this.state.gameOver) {
         this.profiler.measure("effects", () => this.effects.update(dt));
       }
@@ -152,6 +152,7 @@ export class ZeusGame {
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("effects", () => this.effects.update(dt));
+    this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
   }
 
   private damagePlayer(amount: number) {
