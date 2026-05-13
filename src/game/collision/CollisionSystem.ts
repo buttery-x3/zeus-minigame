@@ -43,19 +43,25 @@ export class CollisionSystem {
       return { ...direct, destination: requested, requestedBlocked };
     }
 
-    let best: ResolvedPath | null = null;
-    for (const candidate of this.findNearbyOpenCandidates(requested, radius)) {
-      const path = this.findPath(start, candidate, radius);
-      if (!path) {
-        continue;
+    for (const candidates of this.findNearbyOpenCandidateRings(requested, radius)) {
+      let best: ResolvedPath | null = null;
+      for (const candidate of candidates) {
+        const path = this.findPath(start, candidate, radius);
+        if (!path) {
+          continue;
+        }
+
+        if (!best || path.distance < best.distance) {
+          best = { ...path, destination: candidate, requestedBlocked };
+        }
       }
 
-      if (!best || path.distance < best.distance) {
-        best = { ...path, destination: candidate, requestedBlocked };
+      if (best) {
+        return best;
       }
     }
 
-    return best;
+    return null;
   }
 
   moveWithCollision(position: THREE.Vector3, desiredDelta: THREE.Vector3, radius: number) {
@@ -86,27 +92,33 @@ export class CollisionSystem {
     let best: THREE.Vector3 | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
 
-    for (const candidate of this.findNearbyOpenCandidates(clamped, radius, maxRing)) {
-      const distance = distance2D(clamped.x, clamped.z, candidate.x, candidate.z);
-      if (distance < bestDistance) {
-        best = candidate;
-        bestDistance = distance;
+    for (const candidates of this.findNearbyOpenCandidateRings(clamped, radius, maxRing)) {
+      for (const candidate of candidates) {
+        const distance = distance2D(clamped.x, clamped.z, candidate.x, candidate.z);
+        if (distance < bestDistance) {
+          best = candidate;
+          bestDistance = distance;
+        }
       }
+
+      return best;
     }
 
-    return best;
+    return null;
   }
 
   private canMoveBetween(from: THREE.Vector3, to: THREE.Vector3, radius: number) {
     return this.canOccupy(to.x, to.z, radius) && hasLineOfSight(this.gridWorld, from, to, radius);
   }
 
-  private findNearbyOpenCandidates(point: THREE.Vector3, radius: number, maxRing = 6) {
+  private findNearbyOpenCandidateRings(point: THREE.Vector3, radius: number, maxRing = 6) {
     const center = this.gridWorld.worldToCell(point.x, point.z);
-    const candidates: THREE.Vector3[] = [];
+    const rings: THREE.Vector3[][] = [];
     const seen = new Set<string>();
 
     for (let ring = 0; ring <= maxRing; ring += 1) {
+      const candidates: THREE.Vector3[] = [];
+
       for (let z = center.z - ring; z <= center.z + ring; z += 1) {
         for (let x = center.x - ring; x <= center.x + ring; x += 1) {
           if (ring > 0 && x !== center.x - ring && x !== center.x + ring && z !== center.z - ring && z !== center.z + ring) {
@@ -127,11 +139,11 @@ export class CollisionSystem {
       }
 
       if (candidates.length > 0) {
-        return candidates;
+        rings.push(candidates);
       }
     }
 
-    return candidates;
+    return rings;
   }
 
   private pointInsideCell(point: THREE.Vector3, cellX: number, cellZ: number, radius: number) {
