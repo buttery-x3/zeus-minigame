@@ -5,3 +5,4 @@ verify/
 *.log
 .codex-ssh/
 .codex-ssh-current/
+docs/DEPLOYMENT.md
