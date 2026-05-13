@@ -14,7 +14,7 @@ The app serves the Vite production build from `dist/` with a small Node static s
 ## First Setup
 
 ```bash
-git clone https://github.com/eudaimyst/zeus-minigame.git
+git clone https://github.com/buttery-x3/zeus-minigame.git
 cd zeus-minigame
 npm ci
 npm run build
