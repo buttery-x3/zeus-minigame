@@ -55,6 +55,7 @@ async function verifyInBrowser() {
       await page.waitForSelector("canvas");
       await page.waitForSelector(".hud__stats");
 
+      await verifyCameraRigStability(page, viewport);
       await exerciseCoreInteractions(page, viewport);
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
@@ -75,6 +76,32 @@ async function verifyInBrowser() {
   return results;
 }
 
+async function verifyCameraRigStability(page, viewport) {
+  const start = await readDiagnostics(page);
+
+  await page.mouse.click(viewport.width * 0.68, viewport.height * 0.56);
+  await page.waitForTimeout(260);
+  const firstMove = await readDiagnostics(page);
+
+  await page.mouse.click(viewport.width * 0.32, viewport.height * 0.48);
+  await page.waitForTimeout(260);
+  const secondMove = await readDiagnostics(page);
+
+  const cameraDrift = Math.max(
+    quaternionDistance(start.camera.quaternion, firstMove.camera.quaternion),
+    quaternionDistance(start.camera.quaternion, secondMove.camera.quaternion),
+    quaternionDistance(firstMove.camera.quaternion, secondMove.camera.quaternion),
+  );
+
+  const playerTurned = Math.abs(firstMove.player.rotationY - secondMove.player.rotationY) > 0.4;
+  if (!playerTurned) {
+    throw new Error(`${viewport.name} camera check did not exercise opposing movement directions`);
+  }
+  if (cameraDrift > 0.001) {
+    throw new Error(`${viewport.name} camera orientation drifted while following player: ${cameraDrift}`);
+  }
+}
+
 async function exerciseCoreInteractions(page, viewport) {
   await page.mouse.move(viewport.width * 0.62, viewport.height * 0.58);
   await page.mouse.down();
@@ -86,6 +113,22 @@ async function exerciseCoreInteractions(page, viewport) {
   await page.keyboard.press("KeyW");
   await page.mouse.click(viewport.width * 0.45, viewport.height * 0.55);
   await page.waitForTimeout(700);
+}
+
+async function readDiagnostics(page) {
+  return page.evaluate(() => {
+    const game = window.__ZEUS_GAME__;
+    if (!game) {
+      throw new Error("Missing Zeus game diagnostics hook");
+    }
+
+    return game.getDiagnostics();
+  });
+}
+
+function quaternionDistance(a, b) {
+  const dot = Math.abs(a.reduce((sum, value, index) => sum + value * b[index], 0));
+  return 1 - Math.min(1, dot);
 }
 
 async function collectCanvasMetrics(page) {

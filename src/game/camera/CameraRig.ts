@@ -2,6 +2,9 @@ import * as THREE from "three";
 import { CAMERA_ZOOM } from "../../config";
 
 export class CameraRig {
+  private readonly followFocus = new THREE.Vector3();
+  private readonly cameraOffset = new THREE.Vector3(32, 36, 32);
+
   constructor(
     private readonly camera: THREE.OrthographicCamera,
     private readonly renderer: THREE.WebGLRenderer,
@@ -9,9 +12,10 @@ export class CameraRig {
   ) {}
 
   update(dt: number, target: THREE.Vector3) {
-    const cameraTarget = new THREE.Vector3(target.x + 32, 36, target.z + 32);
-    this.camera.position.lerp(cameraTarget, 1 - Math.pow(0.001, dt));
-    this.camera.lookAt(target.x, 0, target.z);
+    const followAmount = 1 - Math.pow(0.001, dt);
+    this.followFocus.lerp(target, followAmount);
+    this.camera.position.copy(this.followFocus).add(this.cameraOffset);
+    this.camera.lookAt(this.followFocus);
   }
 
   resize = () => {

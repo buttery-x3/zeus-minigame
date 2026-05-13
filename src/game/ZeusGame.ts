@@ -85,6 +85,23 @@ export class ZeusGame {
     this.scene.dispose();
   }
 
+  getDiagnostics() {
+    const cameraForward = new THREE.Vector3();
+    this.scene.camera.getWorldDirection(cameraForward);
+
+    return {
+      camera: {
+        position: this.scene.camera.position.toArray(),
+        quaternion: this.scene.camera.quaternion.toArray(),
+        forward: cameraForward.toArray(),
+      },
+      player: {
+        position: this.player.object.position.toArray(),
+        rotationY: this.player.object.rotation.y,
+      },
+    };
+  }
+
   private readonly tick = (time: number) => {
     const dt = Math.min(0.05, this.clock.getDelta() || (time - this.lastTime) / 1000 || 0.016);
     this.lastTime = time;

@@ -24,6 +24,7 @@ npm run verify
 - Starts the Vite dev server if `http://127.0.0.1:5173/` is not already reachable.
 - Launches a Chromium-based browser through `playwright-core`.
 - Loads desktop and mobile viewports.
+- Checks that the follow camera keeps a stable orientation while click movement changes direction.
 - Exercises click movement plus `Q` and `W` targeted casts.
 - Checks that the WebGL canvas is not blank or visually flat.
 - Checks that core HUD text and ability buttons exist.
