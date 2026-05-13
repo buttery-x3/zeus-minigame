@@ -122,6 +122,7 @@ export class ZeusGame {
     const playerPosition = this.player.object.position;
 
     this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
+    this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
     this.profiler.measure("terrain", () => this.terrain.update(playerPosition));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,

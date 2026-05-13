@@ -7,6 +7,7 @@ const METRICS = [
   ["gameLogic", "Game"],
   ["render", "Render"],
   ["camera", "Camera"],
+  ["lighting", "Lighting"],
   ["terrain", "Terrain"],
   ["targeting", "Targeting"],
   ["hud", "HUD"],

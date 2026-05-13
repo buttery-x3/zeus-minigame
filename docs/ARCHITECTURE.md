@@ -23,7 +23,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/input/GameInput.ts`: pointer/keyboard input and ground-plane raycasting.
 - `src/game/perf/Profiler.ts`: rolling frame, subsystem, render, and pathfinding timing metrics.
 - `src/game/player/PlayerController.ts`: player mesh, movement target, move marker, and player visual state.
-- `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, and ground setup.
+- `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, shadow rig, and ground setup.
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
 - `src/game/terrain/TerrainSystem.ts`: visible terrain window rendering.
@@ -32,6 +32,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/render/materials.ts`: shared Three.js material creation.
 - `src/render/meshes.ts`: player, enemy, and terrain glyph mesh factories.
 - `src/render/primitives.ts`: reusable Three.js line/ring/lightning helper primitives.
+- `src/render/ShadowRig.ts`: player-following directional shadow camera with texel-snapped focus to reduce shimmer.
 - `src/ui/window`: small DOM window manager with movable, closable, modal, and lockable windows.
 - `src/ui/Hud.ts`: DOM HUD window creation and updates.
 - `src/ui/GameUi.ts`: composition root for HUD windows, pause menu, diagnostics, and toolbar controls.

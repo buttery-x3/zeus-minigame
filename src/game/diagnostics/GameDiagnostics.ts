@@ -26,6 +26,7 @@ export class GameDiagnostics {
         quaternion: this.scene.camera.quaternion.toArray(),
         forward: cameraForward.toArray(),
       },
+      lighting: this.scene.getLightingDiagnostics(),
       player: {
         position: this.player.object.position.toArray(),
         rotationY: this.player.object.rotation.y,

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { WORLD_SIZE } from "../../config";
 import { mustQuery } from "../../lib/dom";
+import { ShadowRig } from "../../render/ShadowRig";
 
 type SceneObjects = {
   terrain: THREE.Group;
@@ -18,6 +19,7 @@ export class GameScene {
   readonly renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
 
   private readonly container = mustQuery<HTMLElement>(document, "#game");
+  private shadowRig: ShadowRig | null = null;
 
   mount(objects: SceneObjects) {
     this.setupRenderer();
@@ -29,6 +31,14 @@ export class GameScene {
 
   render() {
     this.renderer.render(this.scene, this.camera);
+  }
+
+  updateLighting(focus: THREE.Vector3) {
+    this.shadowRig?.update(focus);
+  }
+
+  getLightingDiagnostics() {
+    return this.shadowRig?.diagnostics() ?? null;
   }
 
   dispose() {
@@ -50,17 +60,7 @@ export class GameScene {
     const hemi = new THREE.HemisphereLight(0xbedce4, 0x251a18, 1.8);
     this.scene.add(hemi);
 
-    const keyLight = new THREE.DirectionalLight(0xfff0c8, 2.2);
-    keyLight.position.set(-22, 38, 18);
-    keyLight.castShadow = true;
-    keyLight.shadow.camera.near = 1;
-    keyLight.shadow.camera.far = 90;
-    keyLight.shadow.camera.left = -42;
-    keyLight.shadow.camera.right = 42;
-    keyLight.shadow.camera.top = 42;
-    keyLight.shadow.camera.bottom = -42;
-    keyLight.shadow.mapSize.set(2048, 2048);
-    this.scene.add(keyLight);
+    this.shadowRig = new ShadowRig(this.scene);
   }
 
   private setupGround() {

@@ -58,6 +58,7 @@ async function verifyInBrowser() {
       await page.waitForSelector(".ui-toolbar");
 
       await verifyCameraRigStability(page, viewport);
+      await verifyShadowRigTracking(page, viewport);
       await verifyBlockerNavigation(page, viewport);
       await verifyWindowUi(page);
       await exerciseCoreInteractions(page, viewport);
@@ -78,6 +79,31 @@ async function verifyInBrowser() {
   }
 
   return results;
+}
+
+async function verifyShadowRigTracking(page, viewport) {
+  const start = await readDiagnostics(page);
+  if (!start.lighting) {
+    throw new Error(`${viewport.name} missing lighting diagnostics`);
+  }
+
+  await page.mouse.click(viewport.width * 0.82, viewport.height * 0.62);
+  await page.waitForTimeout(1200);
+  const after = await readDiagnostics(page);
+
+  const playerMove = groundDistance(after.player.position, start.player.position);
+  const shadowMove = groundDistance(after.lighting.focus, start.lighting.focus);
+  const focusDistance = groundDistance(after.lighting.focus, after.player.position);
+
+  if (playerMove < 8) {
+    throw new Error(`${viewport.name} shadow rig check did not move the player far enough: ${playerMove}`);
+  }
+  if (shadowMove < 8) {
+    throw new Error(`${viewport.name} shadow rig did not follow gameplay focus: ${shadowMove}`);
+  }
+  if (focusDistance > after.lighting.texelSize * 3) {
+    throw new Error(`${viewport.name} shadow focus is not snapped near player: ${focusDistance}`);
+  }
 }
 
 async function verifyWindowUi(page) {
