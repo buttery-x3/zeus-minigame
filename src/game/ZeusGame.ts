@@ -2,15 +2,16 @@ import * as THREE from "three";
 import {
   INITIAL_NEXT_WAVE_AT,
   INITIAL_SPAWN_INTERVAL,
-  PLAYER_COLLISION_RADIUS,
   PLAYER_MAX_HEALTH,
   PLAYER_MAX_MANA,
 } from "../config";
 import { CameraRig } from "./camera/CameraRig";
 import { CollisionSystem } from "./collision/CollisionSystem";
+import { GameDiagnostics } from "./diagnostics/GameDiagnostics";
 import { EnemySystem } from "./enemies/EnemySystem";
 import { HudPresenter } from "./hud/HudPresenter";
 import { GameInput } from "./input/GameInput";
+import { Profiler } from "./perf/Profiler";
 import { PlayerController } from "./player/PlayerController";
 import { GameScene } from "./scene/GameScene";
 import { SpellSystem } from "./spells/SpellSystem";
@@ -19,13 +20,14 @@ import { TerrainSystem } from "./terrain/TerrainSystem";
 import type { GameRuntimeState } from "../types";
 import { GameEffects } from "../render/GameEffects";
 import { createGameMaterials } from "../render/materials";
-import { Hud } from "../ui/Hud";
+import { GameUi } from "../ui/GameUi";
 import { GridWorld } from "../world/GridWorld";
 
 export class ZeusGame {
   private readonly clock = new THREE.Clock();
+  private readonly profiler = new Profiler();
   private readonly gridWorld = new GridWorld();
-  private readonly collision = new CollisionSystem(this.gridWorld);
+  private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
   private readonly materials = createGameMaterials();
   private readonly groups = {
     terrain: new THREE.Group(),
@@ -38,9 +40,13 @@ export class ZeusGame {
   private readonly scene = new GameScene();
   private readonly effects = new GameEffects(this.groups.effects);
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
+  private readonly diagnostics = new GameDiagnostics(this.scene, this.gridWorld, this.collision, this.player, this.profiler);
   private readonly cameraRig = new CameraRig(this.scene.camera, this.scene.renderer);
-  private readonly hud = new Hud();
-  private readonly hudPresenter = new HudPresenter(this.hud, this.gridWorld);
+  private readonly ui = new GameUi({
+    resume: () => this.setPaused(false),
+    togglePause: () => this.setPaused(!this.state.paused),
+  });
+  private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(this.groups.enemies, this.collision, this.materials, this.effects, {
     damagePlayer: (amount) => this.damagePlayer(amount),
   });
@@ -51,12 +57,15 @@ export class ZeusGame {
   private readonly terrain = new TerrainSystem(this.gridWorld, this.groups.terrain, this.groups.blockers, this.materials);
   private readonly input = new GameInput(this.scene.camera, this.scene.renderer, this.gridWorld, {
     isGameOver: () => this.state.gameOver,
+    isPaused: () => this.state.paused,
     getCastMode: () => this.spells.castMode,
     beginTargeting: (spellId) => this.spells.beginTargeting(spellId, this.state),
     cancelTargeting: () => this.spells.cancelTargeting(),
     castAt: (target) => this.spells.castAt(target, this.player.object.position, this.state),
     setMoveTarget: (x, z) => this.player.setMoveTarget(x, z),
     restart: () => this.restart(),
+    handleEscape: () => this.handleEscape(),
+    toggleDiagnostics: () => this.ui.toggleDiagnostics(),
   });
 
   private state = createInitialState();
@@ -89,87 +98,59 @@ export class ZeusGame {
     window.cancelAnimationFrame(this.animationId);
     window.removeEventListener("resize", this.cameraRig.resize);
     this.input.dispose();
-    this.hud.remove();
+    this.ui.remove();
     this.scene.dispose();
   }
 
   getDiagnostics() {
-    const cameraForward = new THREE.Vector3();
-    this.scene.camera.getWorldDirection(cameraForward);
-
-    return {
-      camera: {
-        position: this.scene.camera.position.toArray(),
-        quaternion: this.scene.camera.quaternion.toArray(),
-        forward: cameraForward.toArray(),
-      },
-      player: {
-        position: this.player.object.position.toArray(),
-        rotationY: this.player.object.rotation.y,
-        navigation: {
-          ...this.player.getNavigationDiagnostics(),
-          destinationBlocked: !this.collision.canOccupy(this.player.moveTarget.x, this.player.moveTarget.z, PLAYER_COLLISION_RADIUS),
-          occupiesBlocked: !this.collision.canOccupy(
-            this.player.object.position.x,
-            this.player.object.position.z,
-            PLAYER_COLLISION_RADIUS,
-          ),
-        },
-      },
-      nearestBlockedCell: this.findNearestBlockedCell(this.player.object.position, 18),
-    };
-  }
-
-  projectGroundToScreen(x: number, z: number) {
-    const rect = this.scene.renderer.domElement.getBoundingClientRect();
-    const projected = new THREE.Vector3(x, 0, z).project(this.scene.camera);
-
-    return {
-      x: rect.left + ((projected.x + 1) / 2) * rect.width,
-      y: rect.top + ((1 - projected.y) / 2) * rect.height,
-      visible: projected.z >= -1 && projected.z <= 1 && projected.x >= -1 && projected.x <= 1 && projected.y >= -1 && projected.y <= 1,
-    };
+    return this.diagnostics.get(this.state);
   }
 
   private readonly tick = (time: number) => {
     const dt = Math.min(0.05, this.clock.getDelta() || (time - this.lastTime) / 1000 || 0.016);
     this.lastTime = time;
 
-    this.update(dt);
-    this.scene.render();
+    this.profiler.beginFrame(time);
+    this.profiler.measure("gameLogic", () => this.update(dt));
+    this.profiler.measure("render", () => this.scene.render());
+    this.profiler.endFrame();
+    this.ui.updateDiagnostics(this.profiler.snapshot());
     this.animationId = window.requestAnimationFrame(this.tick);
   };
 
   private update(dt: number) {
     const playerPosition = this.player.object.position;
 
-    this.cameraRig.update(dt, playerPosition);
-    this.terrain.update(playerPosition);
-    this.targeting.update({
+    this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
+    this.profiler.measure("terrain", () => this.terrain.update(playerPosition));
+    this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,
       spells: this.spells.spells,
       pointerWorld: this.input.pointerWorld,
       playerPosition,
-    });
-    this.hudPresenter.update({
+    }));
+    this.profiler.measure("hud", () => this.hudPresenter.update({
       state: this.state,
       playerPosition,
       castMode: this.spells.castMode,
       cooldowns: this.spells.cooldowns,
       spells: this.spells.spells,
-    });
+      paused: this.state.paused,
+    }));
 
-    if (this.state.gameOver) {
-      this.effects.update(dt);
+    if (this.state.gameOver || this.state.paused) {
+      if (this.state.gameOver) {
+        this.profiler.measure("effects", () => this.effects.update(dt));
+      }
       return;
     }
 
     this.state.mana = Math.min(PLAYER_MAX_MANA, this.state.mana + dt * 8.5);
-    this.spells.update(dt);
-    this.player.update(dt, this.input.shouldMoveContinuously(), this.input.pointerWorld);
-    this.enemies.update(dt, this.state, playerPosition);
-    this.enemies.updateSpawner(dt, this.state, playerPosition);
-    this.effects.update(dt);
+    this.profiler.measure("spells", () => this.spells.update(dt));
+    this.profiler.measure("player", () => this.player.update(dt, this.input.shouldMoveContinuously(), this.input.pointerWorld));
+    this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
+    this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
+    this.profiler.measure("effects", () => this.effects.update(dt));
   }
 
   private damagePlayer(amount: number) {
@@ -186,44 +167,30 @@ export class ZeusGame {
 
   private restart() {
     this.state = createInitialState();
+    this.ui.setPaused(false);
     this.spells.reset();
     this.player.reset();
     this.enemies.reset(this.state, this.player.object.position);
   }
 
-  private findNearestBlockedCell(position: THREE.Vector3, maxRadius: number) {
-    const center = this.gridWorld.worldToCell(position.x, position.z);
-
-    for (let radius = 1; radius <= maxRadius; radius += 1) {
-      for (let z = center.z - radius; z <= center.z + radius; z += 1) {
-        for (let x = center.x - radius; x <= center.x + radius; x += 1) {
-          if (x !== center.x - radius && x !== center.x + radius && z !== center.z - radius && z !== center.z + radius) {
-            continue;
-          }
-          if (x < 0 || z < 0 || x >= this.gridWorld.worldCells || z >= this.gridWorld.worldCells) {
-            continue;
-          }
-          if (!this.gridWorld.getCell(x, z).blocked) {
-            continue;
-          }
-
-          const world = this.gridWorld.cellToWorld(x, z);
-          const screen = this.projectGroundToScreen(world.x, world.z);
-          if (!screen.visible) {
-            continue;
-          }
-
-          return {
-            cell: { x, z },
-            world: [world.x, 0, world.z],
-            screen,
-          };
-        }
-      }
+  private handleEscape() {
+    if (this.state.paused) {
+      this.setPaused(false);
+    } else if (this.spells.castMode) {
+      this.spells.cancelTargeting();
+    } else {
+      this.setPaused(true);
     }
-
-    return null;
   }
+
+  private setPaused(paused: boolean) {
+    this.state.paused = paused;
+    if (paused) {
+      this.spells.cancelTargeting();
+    }
+    this.ui.setPaused(paused);
+  }
+
 }
 
 function createInitialState(): GameRuntimeState {
@@ -236,5 +203,6 @@ function createInitialState(): GameRuntimeState {
     spawnInterval: INITIAL_SPAWN_INTERVAL,
     nextWaveAt: INITIAL_NEXT_WAVE_AT,
     gameOver: false,
+    paused: false,
   };
 }

@@ -53,10 +53,13 @@ async function verifyInBrowser() {
 
       await page.goto(url, { waitUntil: "networkidle" });
       await page.waitForSelector("canvas");
+      await page.waitForSelector(".ui-layer");
       await page.waitForSelector(".hud__stats");
+      await page.waitForSelector(".ui-toolbar");
 
       await verifyCameraRigStability(page, viewport);
       await verifyBlockerNavigation(page, viewport);
+      await verifyWindowUi(page);
       await exerciseCoreInteractions(page, viewport);
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
@@ -75,6 +78,36 @@ async function verifyInBrowser() {
   }
 
   return results;
+}
+
+async function verifyWindowUi(page) {
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+
+  let diagnostics = await readDiagnostics(page);
+  if (!diagnostics.paused) {
+    throw new Error("Pause toolbar button did not pause the game");
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
+  diagnostics = await readDiagnostics(page);
+  if (diagnostics.paused) {
+    throw new Error("Escape did not resume from pause menu");
+  }
+
+  await page.keyboard.press("Backquote");
+  await page.waitForSelector('[data-window-id="diagnostics"]:not([hidden])');
+  await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.textContent?.includes("Path"));
+
+  await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
+  const locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
+  if (!locked) {
+    throw new Error("Diagnostics lock button did not lock the window");
+  }
+
+  await page.click('[data-window-id="diagnostics"] .game-window__action--close');
+  await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
 }
 
 async function verifyCameraRigStability(page, viewport) {
@@ -219,7 +252,7 @@ async function collectHudMetrics(page) {
   return page.evaluate(() => {
     const text = document.body.innerText;
     const abilities = [...document.querySelectorAll(".ability")].map((element) => element.textContent?.trim() ?? "");
-    const statusVisible = getComputedStyle(document.querySelector(".hud") ?? document.body).display !== "none";
+    const statusVisible = getComputedStyle(document.querySelector(".ui-layer") ?? document.body).display !== "none";
     return {
       hasKills: text.includes("Kills"),
       hasWave: text.includes("Wave"),

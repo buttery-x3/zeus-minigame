@@ -14,6 +14,7 @@ export class HudPresenter {
     castMode: SpellId | null;
     cooldowns: Record<SpellId, number>;
     spells: Record<SpellId, SpellConfig>;
+    paused: boolean;
   }) {
     const cell = this.gridWorld.worldToCell(params.playerPosition.x, params.playerPosition.z);
     this.hud.update({
@@ -27,6 +28,7 @@ export class HudPresenter {
       cooldowns: params.cooldowns,
       spells: params.spells,
       gameOver: params.state.gameOver,
+      paused: params.paused,
     });
   }
 }

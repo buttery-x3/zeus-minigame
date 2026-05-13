@@ -9,8 +9,10 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Hold or click left mouse to move.
 - Press `Q`, then left-click a target area to cast Chain Lightning.
 - Press `W`, then left-click a target area to cast Lightning Bolt.
-- Press `Esc` to cancel targeting.
+- Press `Esc` to cancel targeting, pause, or resume depending on the current state.
+- Press backtick or `F3` to toggle diagnostics.
 - Press `R` after defeat to restart.
+- Use the top-right controls to pause or open diagnostics.
 
 ## Player
 
@@ -18,6 +20,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Mana starts at `100`.
 - Mana regenerates over time and gains a small bump from kills.
 - Movement is click/hold-to-move on the `X/Z` ground plane.
+- Vitals, position, status, abilities, and diagnostics are DOM windows that can be moved when unlocked.
 
 ## Spells
 

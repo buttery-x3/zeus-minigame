@@ -4,12 +4,15 @@ import type { GridWorld } from "../../world/GridWorld";
 
 type InputCallbacks = {
   isGameOver: () => boolean;
+  isPaused: () => boolean;
   getCastMode: () => SpellId | null;
   beginTargeting: (spellId: SpellId) => void;
   cancelTargeting: () => void;
   castAt: (target: THREE.Vector3) => void;
   setMoveTarget: (x: number, z: number) => void;
   restart: () => void;
+  handleEscape: () => void;
+  toggleDiagnostics: () => void;
 };
 
 export class GameInput {
@@ -51,19 +54,31 @@ export class GameInput {
       return;
     }
 
+    if (event.key === "Escape") {
+      this.callbacks.handleEscape();
+      return;
+    }
+
+    if (event.code === "Backquote" || event.key === "F3") {
+      this.callbacks.toggleDiagnostics();
+      return;
+    }
+
+    if (this.callbacks.isPaused()) {
+      return;
+    }
+
     if (event.key.toLowerCase() === "q") {
       this.callbacks.beginTargeting("chain");
     } else if (event.key.toLowerCase() === "w") {
       this.callbacks.beginTargeting("bolt");
-    } else if (event.key === "Escape") {
-      this.callbacks.cancelTargeting();
     } else if (event.key.toLowerCase() === "r" && this.callbacks.isGameOver()) {
       this.callbacks.restart();
     }
   };
 
   private readonly handlePointerDown = (event: PointerEvent) => {
-    if (event.button !== 0 || this.callbacks.isGameOver()) {
+    if (event.button !== 0 || this.callbacks.isGameOver() || this.callbacks.isPaused() || this.isUiEvent(event)) {
       return;
     }
 
@@ -80,6 +95,9 @@ export class GameInput {
   };
 
   private readonly handlePointerMove = (event: PointerEvent) => {
+    if (this.isUiEvent(event)) {
+      return;
+    }
     this.updatePointerWorld(event);
   };
 
@@ -93,6 +111,10 @@ export class GameInput {
   private readonly preventContextMenu = (event: Event) => {
     event.preventDefault();
   };
+
+  private isUiEvent(event: Event) {
+    return event.target instanceof Element && event.target.closest(".ui-layer");
+  }
 
   private updatePointerWorld(event: PointerEvent) {
     const rect = this.renderer.domElement.getBoundingClientRect();

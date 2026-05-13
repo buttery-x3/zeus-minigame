@@ -5,6 +5,7 @@ import type { GridWorld } from "../../world/GridWorld";
 import { hasLineOfSight } from "./linecast";
 import { findPath, type PathResult } from "./pathfinding";
 import { canOccupyWorld, clampWorldToRadius, getCellBounds, isCellBlocked, isCellInBounds } from "./occupancy";
+import type { Profiler } from "../perf/Profiler";
 
 export type ResolvedPath = PathResult & {
   destination: THREE.Vector3;
@@ -12,7 +13,10 @@ export type ResolvedPath = PathResult & {
 };
 
 export class CollisionSystem {
-  constructor(private readonly gridWorld: GridWorld) {}
+  constructor(
+    private readonly gridWorld: GridWorld,
+    private readonly profiler?: Profiler,
+  ) {}
 
   canOccupy(worldX: number, worldZ: number, radius: number) {
     return canOccupyWorld(this.gridWorld, worldX, worldZ, radius);
@@ -24,7 +28,10 @@ export class CollisionSystem {
 
   findPath(start: THREE.Vector3, goal: THREE.Vector3, radius: number, maxIterations = PATHFINDING_MAX_ITERATIONS) {
     const clampedGoal = clampWorldToRadius(this.gridWorld, new THREE.Vector3(goal.x, 0, goal.z), radius);
-    return findPath(this.gridWorld, start, clampedGoal, { radius, maxIterations });
+    const startedAt = performance.now();
+    const result = findPath(this.gridWorld, start, clampedGoal, { radius, maxIterations });
+    this.profiler?.recordPathfinding(performance.now() - startedAt, result?.iterations ?? 0, result !== null);
+    return result;
   }
 
   resolvePathToTarget(start: THREE.Vector3, requestedTarget: THREE.Vector3, radius: number): ResolvedPath | null {

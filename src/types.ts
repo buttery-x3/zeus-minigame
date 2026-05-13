@@ -51,4 +51,5 @@ export type GameRuntimeState = {
   spawnInterval: number;
   nextWaveAt: number;
   gameOver: boolean;
+  paused: boolean;
 };
