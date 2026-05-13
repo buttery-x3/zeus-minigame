@@ -16,14 +16,17 @@ export type EnemyState = {
   group: THREE.Group;
   body: THREE.Mesh;
   path: THREE.Vector3[];
+  pathQueued: boolean;
   hp: number;
   maxHp: number;
   speed: number;
   touchCooldown: number;
   flashTimer: number;
-  repathTimer: number;
-  targetCellKey: string;
+  stallTimer: number;
+  navigationMode: EnemyNavigationMode;
 };
+
+export type EnemyNavigationMode = "direct" | "flow" | "acquire" | "fallback" | "waiting";
 
 export type SpellConfig = {
   id: SpellId;

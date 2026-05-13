@@ -4,7 +4,6 @@ import {
   INITIAL_ENEMY_COUNT,
   INITIAL_NEXT_WAVE_AT,
   INITIAL_SPAWN_INTERVAL,
-  PATHFINDING_MAX_ITERATIONS,
   PLAYER_MAX_MANA,
   WORLD_HALF,
 } from "../../config";
@@ -14,8 +13,10 @@ import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createEnemyModel } from "../../render/meshes";
 import type { EnemyState, GameRuntimeState } from "../../types";
+import type { GridWorld } from "../../world/GridWorld";
 import type { CollisionSystem } from "../collision/CollisionSystem";
-import { EnemyNavigation } from "./EnemyNavigation";
+import type { Profiler } from "../perf/Profiler";
+import { EnemyNavigation } from "./navigation/EnemyNavigation";
 
 type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
@@ -29,16 +30,20 @@ export class EnemySystem {
   constructor(
     private readonly group: THREE.Group,
     private readonly collision: CollisionSystem,
+    gridWorld: GridWorld,
+    profiler: Profiler,
     private readonly materials: GameMaterials,
     private readonly effects: GameEffects,
     private readonly callbacks: EnemySystemCallbacks,
   ) {
-    this.navigation = new EnemyNavigation(collision);
+    this.navigation = new EnemyNavigation(gridWorld, collision, profiler);
   }
 
   update(dt: number, state: GameRuntimeState, playerPosition: THREE.Vector3) {
+    this.navigation.beginFrame(playerPosition);
+
     for (const enemy of this.enemies) {
-      const navigationTarget = this.navigation.getTarget(enemy, dt, playerPosition);
+      const navigationTarget = this.navigation.getTarget(enemy, playerPosition);
       const toTarget = new THREE.Vector3(
         navigationTarget.x - enemy.group.position.x,
         0,
@@ -56,11 +61,15 @@ export class EnemySystem {
         const actualX = nextPosition.x - enemy.group.position.x;
         const actualZ = nextPosition.z - enemy.group.position.z;
 
-        if (distance2D(enemy.group.position.x, enemy.group.position.z, nextPosition.x, nextPosition.z) > 0.001) {
+        const movedDistance = distance2D(enemy.group.position.x, enemy.group.position.z, nextPosition.x, nextPosition.z);
+        if (movedDistance > 0.001) {
           enemy.group.position.x = nextPosition.x;
           enemy.group.position.z = nextPosition.z;
           enemy.group.rotation.y = Math.atan2(actualX, actualZ);
         }
+        this.navigation.recordMovement(enemy, movedDistance, dt, playerPosition);
+      } else {
+        this.navigation.recordMovement(enemy, 0, dt, playerPosition);
       }
 
       enemy.group.position.y = Math.sin(performance.now() * 0.006 + enemy.id) * 0.06;
@@ -177,13 +186,14 @@ export class EnemySystem {
       group,
       body,
       path: [],
+      pathQueued: false,
       hp: 70 + state.wave * 9,
       maxHp: 70 + state.wave * 9,
       speed: randomBetween(5.7, 7.4) + state.wave * 0.16,
       touchCooldown: randomBetween(0.1, 0.5),
       flashTimer: 0,
-      repathTimer: randomBetween(0.05, 0.45),
-      targetCellKey: "",
+      stallTimer: 0,
+      navigationMode: "direct",
     });
     this.enemyId += 1;
     return true;
@@ -199,11 +209,7 @@ export class EnemySystem {
         continue;
       }
 
-      if (this.canReachPlayer(point, playerPosition)) {
-        return point;
-      }
-
-      fallback ??= point;
+      return point;
     }
 
     return fallback;
@@ -217,14 +223,8 @@ export class EnemySystem {
     return new THREE.Vector3(x, 0, z);
   }
 
-  private canReachPlayer(point: THREE.Vector3, playerPosition: THREE.Vector3) {
-    return (
-      this.collision.hasLineOfSight(point, playerPosition, ENEMY_COLLISION_RADIUS) ||
-      this.collision.findPath(point, playerPosition, ENEMY_COLLISION_RADIUS, PATHFINDING_MAX_ITERATIONS) !== null
-    );
-  }
-
   private disposeEnemy(enemy: EnemyState) {
+    this.navigation.clearEnemy(enemy);
     disposeObject3D(enemy.group, { preserveMaterials: Object.values(this.materials) });
   }
 }

@@ -30,7 +30,9 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 
 ## Enemies
 
-- Enemies chase directly when blockers do not interrupt line of sight, otherwise they path around blockers.
+- Melee enemies chase directly when blockers do not interrupt line of sight, otherwise they use a shared flow field around Zeus.
+- If an enemy cannot sample the flow field, it steers toward the field edge and only requests a budgeted fallback path if it stalls.
+- Ranged, retreating, special-goal, and future tactical enemy intents are scaffolded but not active yet.
 - Waves accelerate spawning over time.
 - Enemy-enemy collision is intentionally out of scope for the current prototype.
 

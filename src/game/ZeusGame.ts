@@ -47,7 +47,7 @@ export class ZeusGame {
     togglePause: () => this.setPaused(!this.state.paused),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
-  private readonly enemies = new EnemySystem(this.groups.enemies, this.collision, this.materials, this.effects, {
+  private readonly enemies = new EnemySystem(this.groups.enemies, this.collision, this.gridWorld, this.profiler, this.materials, this.effects, {
     damagePlayer: (amount) => this.damagePlayer(amount),
   });
   private readonly spells = new SpellSystem(this.effects, this.enemies, {

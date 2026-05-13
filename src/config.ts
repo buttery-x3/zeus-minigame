@@ -15,6 +15,9 @@ export const CAMERA_ZOOM = 44;
 export const PLAYER_COLLISION_RADIUS = 0.9;
 export const ENEMY_COLLISION_RADIUS = 0.85;
 export const PATHFINDING_MAX_ITERATIONS = 900;
+export const ENEMY_FLOW_FIELD_RADIUS_CELLS = 24;
+export const ENEMY_FALLBACK_PATH_BUDGET_MS = 1.8;
+export const ENEMY_STALL_FALLBACK_SECONDS = 0.7;
 
 export const SPELLS: Record<SpellId, SpellConfig> = {
   chain: {

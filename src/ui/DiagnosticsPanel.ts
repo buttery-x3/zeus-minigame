@@ -21,6 +21,8 @@ export class DiagnosticsPanel {
   private readonly rows = new Map<string, HTMLElement>();
   private readonly fpsValue: HTMLElement;
   private readonly pathValue: HTMLElement;
+  private readonly flowValue: HTMLElement;
+  private readonly modesValue: HTMLElement;
   private nextUpdateAt = 0;
 
   constructor(windowManager: WindowManager, onClose: () => void) {
@@ -30,6 +32,8 @@ export class DiagnosticsPanel {
       <div class="diagnostics__hero"><span data-fps>0</span><small>FPS</small></div>
       <table class="diagnostics__table"><tbody></tbody></table>
       <div class="diagnostics__path" data-path></div>
+      <div class="diagnostics__path" data-flow></div>
+      <div class="diagnostics__path" data-modes></div>
     `;
 
     const body = content.querySelector("tbody");
@@ -42,6 +46,8 @@ export class DiagnosticsPanel {
 
     this.fpsValue = content.querySelector("[data-fps]") as HTMLElement;
     this.pathValue = content.querySelector("[data-path]") as HTMLElement;
+    this.flowValue = content.querySelector("[data-flow]") as HTMLElement;
+    this.modesValue = content.querySelector("[data-modes]") as HTMLElement;
     this.window = windowManager.createWindow({
       id: "diagnostics",
       title: "Diagnostics",
@@ -84,6 +90,9 @@ export class DiagnosticsPanel {
     }
 
     const path = snapshot.pathfinding;
+    const nav = snapshot.enemyNavigation;
     this.pathValue.textContent = `Path ${path.calls} calls, ${path.totalMs.toFixed(2)} ms, avg ${path.avgMs.toFixed(2)}, max ${path.maxMs.toFixed(2)}, iter ${path.iterations}/${path.maxIterations}`;
+    this.flowValue.textContent = `Flow ${nav.flowVisited} cells, rebuild ${nav.flowRebuildMs.toFixed(2)} ms, radius ${nav.flowRadius}, queue ${nav.queueLength}, solved ${nav.queueSolved}, budget ${nav.queueUsedMs.toFixed(2)}/${nav.queueBudgetMs.toFixed(2)} ms`;
+    this.modesValue.textContent = `Modes direct ${nav.direct}, flow ${nav.flow}, acquire ${nav.acquire}, fallback ${nav.fallback}, wait ${nav.waiting}`;
   }
 }

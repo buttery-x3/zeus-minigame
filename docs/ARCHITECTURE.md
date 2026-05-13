@@ -15,9 +15,10 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/types.ts`: shared TypeScript types for gameplay and effects.
 - `src/game/ZeusGame.ts`: composition root, shared runtime state, and update order.
 - `src/game/camera/CameraRig.ts`: orthographic camera follow and resize behavior.
-- `src/game/collision`: blocker occupancy, grid linecasts, Theta* pathfinding, and movement collision helpers.
+- `src/game/collision`: blocker occupancy, grid linecasts, Theta* individual pathfinding, and movement collision helpers.
 - `src/game/diagnostics/GameDiagnostics.ts`: dev/test diagnostics snapshot and world-to-screen probes.
 - `src/game/enemies/EnemySystem.ts`: enemy spawning, movement, contact damage, kill handling, and wave spawn timing.
+- `src/game/enemies/navigation`: hybrid enemy navigation with direct chase, shared flow fields, acquisition steering, typed future intents, and a budgeted fallback path queue.
 - `src/game/hud/HudPresenter.ts`: maps gameplay state into the DOM HUD.
 - `src/game/input/GameInput.ts`: pointer/keyboard input and ground-plane raycasting.
 - `src/game/perf/Profiler.ts`: rolling frame, subsystem, render, and pathfinding timing metrics.
@@ -46,6 +47,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - Rendering helpers should create reusable `THREE.Object3D` instances and avoid owning gameplay state.
 - `ZeusGame` can coordinate systems, but new large systems should become their own modules.
 - Navigation and future vision checks should share the grid linecast helper so blocker semantics stay consistent.
+- Normal melee enemies should not call Theta* directly during frame update; shared flow fields handle swarm chase and the path queue handles rare fallback paths.
 
 ## Future Splits
 

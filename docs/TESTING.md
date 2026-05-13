@@ -27,6 +27,7 @@ npm run verify
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
 - Clicks a visible blocker and checks that navigation resolves to reachable edge space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
+- Checks that diagnostics exposes enemy flow-field metrics and that the smoke path does not create a pathfinding call spike.
 - Exercises click movement plus `Q` and `W` targeted casts.
 - Checks that the WebGL canvas is not blank or visually flat.
 - Checks that core HUD text and ability buttons exist.

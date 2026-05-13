@@ -98,7 +98,15 @@ async function verifyWindowUi(page) {
 
   await page.keyboard.press("Backquote");
   await page.waitForSelector('[data-window-id="diagnostics"]:not([hidden])');
-  await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.textContent?.includes("Path"));
+  await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.textContent?.includes("Flow"));
+
+  diagnostics = await readDiagnostics(page);
+  if (!diagnostics.profiler.enemyNavigation || diagnostics.profiler.enemyNavigation.flowRadius <= 0) {
+    throw new Error("Diagnostics did not expose enemy flow-field metrics");
+  }
+  if (diagnostics.profiler.pathfinding.calls > 20) {
+    throw new Error(`Default verifier pathfinding spike: ${diagnostics.profiler.pathfinding.calls} calls`);
+  }
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
   const locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
