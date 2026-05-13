@@ -26,11 +26,7 @@ pm2 save
 
 ```bash
 cd zeus-minigame
-git pull
-npm ci
-npm run build
-npm run pm2:reload
-pm2 save
+npm run deploy:production
 ```
 
 ## Runtime
