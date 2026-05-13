@@ -15,11 +15,14 @@ export type EnemyState = {
   id: number;
   group: THREE.Group;
   body: THREE.Mesh;
+  path: THREE.Vector3[];
   hp: number;
   maxHp: number;
   speed: number;
   touchCooldown: number;
   flashTimer: number;
+  repathTimer: number;
+  targetCellKey: string;
 };
 
 export type SpellConfig = {

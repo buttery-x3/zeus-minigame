@@ -56,6 +56,7 @@ async function verifyInBrowser() {
       await page.waitForSelector(".hud__stats");
 
       await verifyCameraRigStability(page, viewport);
+      await verifyBlockerNavigation(page, viewport);
       await exerciseCoreInteractions(page, viewport);
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
@@ -102,6 +103,38 @@ async function verifyCameraRigStability(page, viewport) {
   }
 }
 
+async function verifyBlockerNavigation(page, viewport) {
+  const before = await readDiagnostics(page);
+  const blocker = before.nearestBlockedCell;
+  if (!blocker) {
+    throw new Error(`${viewport.name} blocker navigation check could not find a visible blocker`);
+  }
+
+  if (blocker.screen.x < 0 || blocker.screen.x > viewport.width || blocker.screen.y < 0 || blocker.screen.y > viewport.height) {
+    throw new Error(`${viewport.name} visible blocker projected outside viewport: ${JSON.stringify(blocker.screen)}`);
+  }
+
+  await page.mouse.click(blocker.screen.x, blocker.screen.y);
+  await page.waitForTimeout(450);
+
+  const after = await readDiagnostics(page);
+  const navigation = after.player.navigation;
+  if (!navigation.requestedBlocked) {
+    throw new Error(`${viewport.name} blocker click did not register as a blocked request`);
+  }
+  if (navigation.destinationBlocked || navigation.occupiesBlocked) {
+    throw new Error(`${viewport.name} blocker navigation resolved into blocked space: ${JSON.stringify(navigation)}`);
+  }
+
+  const moveTarget = navigation.moveTarget;
+  if (groundDistance(moveTarget, blocker.world) < 0.25) {
+    throw new Error(`${viewport.name} blocker navigation did not move target away from blocked cell`);
+  }
+  if (groundDistance(moveTarget, blocker.world) > 10) {
+    throw new Error(`${viewport.name} blocker navigation target was not near clicked blocker edge`);
+  }
+}
+
 async function exerciseCoreInteractions(page, viewport) {
   await page.mouse.move(viewport.width * 0.62, viewport.height * 0.58);
   await page.mouse.down();
@@ -129,6 +162,10 @@ async function readDiagnostics(page) {
 function quaternionDistance(a, b) {
   const dot = Math.abs(a.reduce((sum, value, index) => sum + value * b[index], 0));
   return 1 - Math.min(1, dot);
+}
+
+function groundDistance(a, b) {
+  return Math.hypot(a[0] - b[0], a[2] - b[2]);
 }
 
 async function collectCanvasMetrics(page) {

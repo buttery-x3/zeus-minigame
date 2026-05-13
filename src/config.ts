@@ -12,6 +12,9 @@ export const INITIAL_ENEMY_COUNT = 8;
 export const INITIAL_SPAWN_INTERVAL = 1.25;
 export const INITIAL_NEXT_WAVE_AT = 12;
 export const CAMERA_ZOOM = 44;
+export const PLAYER_COLLISION_RADIUS = 0.9;
+export const ENEMY_COLLISION_RADIUS = 0.85;
+export const PATHFINDING_MAX_ITERATIONS = 900;
 
 export const SPELLS: Record<SpellId, SpellConfig> = {
   chain: {

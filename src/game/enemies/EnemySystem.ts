@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import {
+  ENEMY_COLLISION_RADIUS,
   INITIAL_ENEMY_COUNT,
   INITIAL_NEXT_WAVE_AT,
   INITIAL_SPAWN_INTERVAL,
+  PATHFINDING_MAX_ITERATIONS,
   PLAYER_MAX_MANA,
   WORLD_HALF,
 } from "../../config";
@@ -12,6 +14,8 @@ import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createEnemyModel } from "../../render/meshes";
 import type { EnemyState, GameRuntimeState } from "../../types";
+import type { CollisionSystem } from "../collision/CollisionSystem";
+import { EnemyNavigation } from "./EnemyNavigation";
 
 type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
@@ -20,24 +24,43 @@ type EnemySystemCallbacks = {
 export class EnemySystem {
   private enemies: EnemyState[] = [];
   private enemyId = 0;
+  private readonly navigation: EnemyNavigation;
 
   constructor(
     private readonly group: THREE.Group,
+    private readonly collision: CollisionSystem,
     private readonly materials: GameMaterials,
     private readonly effects: GameEffects,
     private readonly callbacks: EnemySystemCallbacks,
-  ) {}
+  ) {
+    this.navigation = new EnemyNavigation(collision);
+  }
 
   update(dt: number, state: GameRuntimeState, playerPosition: THREE.Vector3) {
     for (const enemy of this.enemies) {
-      const toPlayer = new THREE.Vector3(playerPosition.x - enemy.group.position.x, 0, playerPosition.z - enemy.group.position.z);
-      const distance = toPlayer.length();
+      const navigationTarget = this.navigation.getTarget(enemy, dt, playerPosition);
+      const toTarget = new THREE.Vector3(
+        navigationTarget.x - enemy.group.position.x,
+        0,
+        navigationTarget.z - enemy.group.position.z,
+      );
+      const distance = toTarget.length();
 
       if (distance > 0.001) {
-        toPlayer.normalize();
-        enemy.group.position.x += toPlayer.x * enemy.speed * dt;
-        enemy.group.position.z += toPlayer.z * enemy.speed * dt;
-        enemy.group.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
+        toTarget.normalize();
+        const nextPosition = this.collision.moveWithCollision(
+          enemy.group.position,
+          new THREE.Vector3(toTarget.x * enemy.speed * dt, 0, toTarget.z * enemy.speed * dt),
+          ENEMY_COLLISION_RADIUS,
+        );
+        const actualX = nextPosition.x - enemy.group.position.x;
+        const actualZ = nextPosition.z - enemy.group.position.z;
+
+        if (distance2D(enemy.group.position.x, enemy.group.position.z, nextPosition.x, nextPosition.z) > 0.001) {
+          enemy.group.position.x = nextPosition.x;
+          enemy.group.position.z = nextPosition.z;
+          enemy.group.rotation.y = Math.atan2(actualX, actualZ);
+        }
       }
 
       enemy.group.position.y = Math.sin(performance.now() * 0.006 + enemy.id) * 0.06;
@@ -45,7 +68,8 @@ export class EnemySystem {
       enemy.flashTimer = Math.max(0, enemy.flashTimer - dt);
       enemy.body.material = enemy.flashTimer > 0 ? this.materials.enemyHit : this.materials.enemy;
 
-      if (distance < 2.25 && enemy.touchCooldown <= 0) {
+      const playerDistance = distance2D(playerPosition.x, playerPosition.z, enemy.group.position.x, enemy.group.position.z);
+      if (playerDistance < 2.25 && enemy.touchCooldown <= 0) {
         enemy.touchCooldown = 0.58;
         this.callbacks.damagePlayer(8 + state.wave);
       }
@@ -69,8 +93,14 @@ export class EnemySystem {
   }
 
   spawnInitial(state: GameRuntimeState, playerPosition: THREE.Vector3) {
-    for (let i = 0; i < INITIAL_ENEMY_COUNT; i += 1) {
-      this.spawn(state, playerPosition, true);
+    let spawned = 0;
+    let attempts = 0;
+
+    while (spawned < INITIAL_ENEMY_COUNT && attempts < INITIAL_ENEMY_COUNT * 4) {
+      if (this.spawn(state, playerPosition, true)) {
+        spawned += 1;
+      }
+      attempts += 1;
     }
   }
 
@@ -133,25 +163,65 @@ export class EnemySystem {
   }
 
   private spawn(state: GameRuntimeState, playerPosition: THREE.Vector3, initial = false) {
-    const angle = randomBetween(0, Math.PI * 2);
-    const distance = initial ? randomBetween(20, 34) : randomBetween(42, 56);
-    const x = clamp(playerPosition.x + Math.cos(angle) * distance, -WORLD_HALF + 5, WORLD_HALF - 5);
-    const z = clamp(playerPosition.z + Math.sin(angle) * distance, -WORLD_HALF + 5, WORLD_HALF - 5);
+    const spawnPoint = this.findSpawnPoint(playerPosition, initial);
+    if (!spawnPoint) {
+      return false;
+    }
+
     const { group, body } = createEnemyModel(this.materials.enemy);
-    group.position.set(x, 0, z);
+    group.position.copy(spawnPoint);
     this.group.add(group);
 
     this.enemies.push({
       id: this.enemyId,
       group,
       body,
+      path: [],
       hp: 70 + state.wave * 9,
       maxHp: 70 + state.wave * 9,
       speed: randomBetween(5.7, 7.4) + state.wave * 0.16,
       touchCooldown: randomBetween(0.1, 0.5),
       flashTimer: 0,
+      repathTimer: randomBetween(0.05, 0.45),
+      targetCellKey: "",
     });
     this.enemyId += 1;
+    return true;
+  }
+
+  private findSpawnPoint(playerPosition: THREE.Vector3, initial: boolean) {
+    let fallback: THREE.Vector3 | null = null;
+
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const point = this.sampleSpawnPoint(playerPosition, initial);
+      if (!this.collision.canOccupy(point.x, point.z, ENEMY_COLLISION_RADIUS)) {
+        fallback ??= this.collision.findNearestOpenPoint(point, ENEMY_COLLISION_RADIUS, 4);
+        continue;
+      }
+
+      if (this.canReachPlayer(point, playerPosition)) {
+        return point;
+      }
+
+      fallback ??= point;
+    }
+
+    return fallback;
+  }
+
+  private sampleSpawnPoint(playerPosition: THREE.Vector3, initial: boolean) {
+    const angle = randomBetween(0, Math.PI * 2);
+    const distance = initial ? randomBetween(20, 34) : randomBetween(42, 56);
+    const x = clamp(playerPosition.x + Math.cos(angle) * distance, -WORLD_HALF + 5, WORLD_HALF - 5);
+    const z = clamp(playerPosition.z + Math.sin(angle) * distance, -WORLD_HALF + 5, WORLD_HALF - 5);
+    return new THREE.Vector3(x, 0, z);
+  }
+
+  private canReachPlayer(point: THREE.Vector3, playerPosition: THREE.Vector3) {
+    return (
+      this.collision.hasLineOfSight(point, playerPosition, ENEMY_COLLISION_RADIUS) ||
+      this.collision.findPath(point, playerPosition, ENEMY_COLLISION_RADIUS, PATHFINDING_MAX_ITERATIONS) !== null
+    );
   }
 
   private disposeEnemy(enemy: EnemyState) {

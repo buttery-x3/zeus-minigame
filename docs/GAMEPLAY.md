@@ -27,12 +27,12 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 
 ## Enemies
 
-- Enemies are currently simple melee chasers.
+- Enemies chase directly when blockers do not interrupt line of sight, otherwise they path around blockers.
 - Waves accelerate spawning over time.
-- Enemy collision/pathfinding is intentionally simple and should be expanded before obstacle-heavy maps.
+- Enemy-enemy collision is intentionally out of scope for the current prototype.
 
 ## World
 
 - The world is a deterministic grid over the `X/Z` plane.
 - Terrain cells currently include floor, scarred, charged, and reserved blocker cells.
-- Reserved blockers are the placeholder for future obstacle/pathing and WFC-generated terrain work.
+- Reserved blockers block movement and are used by player/enemy pathfinding.
