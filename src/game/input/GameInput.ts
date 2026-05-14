@@ -5,6 +5,7 @@ import type { GridWorld } from "../../world/GridWorld";
 type InputCallbacks = {
   isGameOver: () => boolean;
   isPaused: () => boolean;
+  isQuickCastEnabled: () => boolean;
   getCastMode: () => SpellId | null;
   beginTargeting: (spellId: SpellId) => void;
   cancelTargeting: () => void;
@@ -30,6 +31,10 @@ export class GameInput {
   private hasPointerClient = false;
   private heldMoveRefireIn = 0;
   private moveRequestPending = false;
+  private quickCastHeldSpell: SpellId | null = null;
+  private quickCastHeldCode: string | null = null;
+  private quickCastHeldKey: string | null = null;
+  private quickCastCanceled = false;
 
   constructor(
     private readonly camera: THREE.Camera,
@@ -38,6 +43,7 @@ export class GameInput {
     private readonly callbacks: InputCallbacks,
   ) {
     window.addEventListener("keydown", this.handleKeyDown);
+    window.addEventListener("keyup", this.handleKeyUp);
     window.addEventListener("pointerdown", this.handlePointerDown);
     window.addEventListener("pointermove", this.handlePointerMove);
     window.addEventListener("pointerup", this.handlePointerUp);
@@ -72,13 +78,14 @@ export class GameInput {
       this.pressedPointerId !== null &&
       !this.callbacks.isGameOver() &&
       !this.callbacks.isPaused() &&
-      !this.callbacks.getCastMode() &&
+      (!this.callbacks.getCastMode() || this.callbacks.isQuickCastEnabled()) &&
       !this.inputMoveLocked
     );
   }
 
   dispose() {
     window.removeEventListener("keydown", this.handleKeyDown);
+    window.removeEventListener("keyup", this.handleKeyUp);
     window.removeEventListener("pointerdown", this.handlePointerDown);
     window.removeEventListener("pointermove", this.handlePointerMove);
     window.removeEventListener("pointerup", this.handlePointerUp);
@@ -92,6 +99,7 @@ export class GameInput {
     }
 
     if (event.key === "Escape") {
+      this.quickCastCanceled = this.quickCastCanceled || this.quickCastHeldSpell !== null;
       this.callbacks.handleEscape();
       return;
     }
@@ -105,18 +113,50 @@ export class GameInput {
       return;
     }
 
-    if (event.key.toLowerCase() === "v") {
+    const key = event.key.toLowerCase();
+    const spellId = spellIdFromKey(key);
+
+    if (key === "v") {
       this.callbacks.toggleEnemyHealthBarMode();
-    } else if (event.key.toLowerCase() === "q") {
-      this.callbacks.beginTargeting("chain");
-    } else if (event.key.toLowerCase() === "w") {
-      this.callbacks.beginTargeting("bolt");
-    } else if (event.key.toLowerCase() === "r" && this.callbacks.isGameOver()) {
+    } else if (spellId) {
+      this.handleSpellKeyDown(event, spellId);
+    } else if (key === "r" && this.callbacks.isGameOver()) {
       this.callbacks.restart();
     }
   };
 
+  private readonly handleKeyUp = (event: KeyboardEvent) => {
+    const key = event.key.toLowerCase();
+    if (!this.quickCastHeldSpell || (event.code !== this.quickCastHeldCode && key !== this.quickCastHeldKey)) {
+      return;
+    }
+
+    const spellId = this.quickCastHeldSpell;
+    const wasCanceled = this.quickCastCanceled;
+    this.clearQuickCastHold();
+
+    if (
+      wasCanceled ||
+      !this.callbacks.isQuickCastEnabled() ||
+      this.callbacks.isGameOver() ||
+      this.callbacks.isPaused() ||
+      this.callbacks.getCastMode() !== spellId
+    ) {
+      return;
+    }
+
+    this.callbacks.castAt(this.pointerWorld);
+  };
+
   private readonly handlePointerDown = (event: PointerEvent) => {
+    if (event.button === 2) {
+      event.preventDefault();
+      if (!this.callbacks.isGameOver() && !this.callbacks.isPaused() && !this.isUiEvent(event) && this.callbacks.getCastMode()) {
+        this.cancelTargeting();
+      }
+      return;
+    }
+
     if (event.button !== 0 || this.callbacks.isGameOver() || this.callbacks.isPaused() || this.isUiEvent(event)) {
       return;
     }
@@ -127,8 +167,12 @@ export class GameInput {
     this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
 
     if (this.callbacks.getCastMode()) {
-      this.callbacks.castAt(this.pointerWorld);
-      this.inputMoveLocked = true;
+      if (this.callbacks.isQuickCastEnabled()) {
+        this.callbacks.setMoveTarget(this.pointerWorld.x, this.pointerWorld.z);
+      } else {
+        this.callbacks.castAt(this.pointerWorld);
+        this.inputMoveLocked = true;
+      }
       return;
     }
 
@@ -160,6 +204,35 @@ export class GameInput {
     event.preventDefault();
   };
 
+  private handleSpellKeyDown(event: KeyboardEvent, spellId: SpellId) {
+    if (!this.callbacks.isQuickCastEnabled()) {
+      this.callbacks.beginTargeting(spellId);
+      return;
+    }
+
+    if (this.quickCastHeldSpell) {
+      return;
+    }
+
+    this.quickCastHeldSpell = spellId;
+    this.quickCastHeldCode = event.code;
+    this.quickCastHeldKey = event.key.toLowerCase();
+    this.quickCastCanceled = false;
+    this.callbacks.beginTargeting(spellId);
+  }
+
+  private cancelTargeting() {
+    this.quickCastCanceled = this.quickCastCanceled || this.quickCastHeldSpell !== null;
+    this.callbacks.cancelTargeting();
+  }
+
+  private clearQuickCastHold() {
+    this.quickCastHeldSpell = null;
+    this.quickCastHeldCode = null;
+    this.quickCastHeldKey = null;
+    this.quickCastCanceled = false;
+  }
+
   private isUiEvent(event: Event) {
     return event.target instanceof Element && event.target.closest(".ui-layer");
   }
@@ -182,4 +255,14 @@ export class GameInput {
     this.raycaster.ray.intersectPlane(this.groundPlane, this.pointerWorld);
     this.gridWorld.clampWorld(this.pointerWorld);
   }
+}
+
+function spellIdFromKey(key: string): SpellId | null {
+  if (key === "q") {
+    return "chain";
+  }
+  if (key === "w") {
+    return "bolt";
+  }
+  return null;
 }

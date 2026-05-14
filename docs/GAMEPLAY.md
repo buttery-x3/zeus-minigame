@@ -7,9 +7,9 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 ## Controls
 
 - Hold or click left mouse to move.
-- Press `Q`, then left-click a target area to cast Chain Lightning.
-- Press `W`, then left-click a target area to cast Lightning Bolt.
-- Press `Esc` to cancel targeting, pause, or resume depending on the current state.
+- Quick Cast is on by default: hold `Q` or `W` to target, then release the key to cast.
+- When Quick Cast is off in the pause menu, press `Q` or `W`, then left-click a target area to cast.
+- Press `Esc` or right-click to cancel targeting. `Esc` also pauses or resumes depending on the current state.
 - Press backtick or `F3` to toggle diagnostics.
 - Press `V` to toggle enemy health bars between smart and always visible.
 - Press `R` after defeat to restart.

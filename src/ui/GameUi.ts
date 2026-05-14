@@ -11,6 +11,8 @@ type GameUiCallbacks = {
   togglePause: () => void;
   enemyHealthBarMode: EnemyHealthBarVisibilityMode;
   setEnemyHealthBarMode: (mode: EnemyHealthBarVisibilityMode) => void;
+  quickCastEnabled: boolean;
+  setQuickCastEnabled: (enabled: boolean) => void;
 };
 
 export class GameUi {
@@ -35,8 +37,10 @@ export class GameUi {
         resume: callbacks.resume,
         toggleDiagnostics: () => this.toggleDiagnostics(),
         setEnemyHealthBarMode: callbacks.setEnemyHealthBarMode,
+        setQuickCastEnabled: callbacks.setQuickCastEnabled,
       },
       callbacks.enemyHealthBarMode,
+      callbacks.quickCastEnabled,
     );
   }
 
@@ -47,6 +51,10 @@ export class GameUi {
 
   setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {
     this.pauseMenu.setEnemyHealthBarMode(mode);
+  }
+
+  setQuickCastEnabled(enabled: boolean) {
+    this.pauseMenu.setQuickCastEnabled(enabled);
   }
 
   toggleDiagnostics() {

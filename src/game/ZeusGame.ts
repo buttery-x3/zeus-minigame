@@ -45,11 +45,14 @@ export class ZeusGame {
   private readonly diagnostics = new GameDiagnostics(this.scene, this.gridWorld, this.collision, this.player, this.profiler);
   private readonly cameraRig = new CameraRig(this.scene.camera, this.scene.renderer);
   private enemyHealthBarMode: EnemyHealthBarVisibilityMode = DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE;
+  private quickCastEnabled = true;
   private readonly ui = new GameUi({
     resume: () => this.setPaused(false),
     togglePause: () => this.setPaused(!this.state.paused),
     enemyHealthBarMode: this.enemyHealthBarMode,
     setEnemyHealthBarMode: (mode) => this.setEnemyHealthBarMode(mode),
+    quickCastEnabled: this.quickCastEnabled,
+    setQuickCastEnabled: (enabled) => this.setQuickCastEnabled(enabled),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(
@@ -72,6 +75,7 @@ export class ZeusGame {
   private readonly input = new GameInput(this.scene.camera, this.scene.renderer, this.gridWorld, {
     isGameOver: () => this.state.gameOver,
     isPaused: () => this.state.paused,
+    isQuickCastEnabled: () => this.quickCastEnabled,
     getCastMode: () => this.spells.castMode,
     beginTargeting: (spellId) => this.spells.beginTargeting(spellId, this.state),
     cancelTargeting: () => this.spells.cancelTargeting(),
@@ -121,6 +125,13 @@ export class ZeusGame {
   getDiagnostics() {
     return {
       ...this.diagnostics.get(this.state),
+      input: {
+        quickCastEnabled: this.quickCastEnabled,
+      },
+      spells: {
+        castMode: this.spells.castMode,
+        cooldowns: { ...this.spells.cooldowns },
+      },
       enemyHealthBars: {
         mode: this.enemyHealthBarMode,
         ...this.enemies.getHealthBarDiagnostics(),
@@ -225,6 +236,11 @@ export class ZeusGame {
   private setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {
     this.enemyHealthBarMode = mode;
     this.ui.setEnemyHealthBarMode(mode);
+  }
+
+  private setQuickCastEnabled(enabled: boolean) {
+    this.quickCastEnabled = enabled;
+    this.ui.setQuickCastEnabled(enabled);
   }
 
   private toggleEnemyHealthBarMode() {
