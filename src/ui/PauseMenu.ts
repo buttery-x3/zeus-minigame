@@ -1,4 +1,5 @@
 import type { EnemyHealthBarVisibilityMode } from "../types";
+import { mustQuery } from "../lib/dom";
 import type { GameWindow } from "./window/GameWindow";
 import type { WindowManager } from "./window/WindowManager";
 
@@ -6,16 +7,19 @@ type PauseMenuCallbacks = {
   resume: () => void;
   toggleDiagnostics: () => void;
   setEnemyHealthBarMode: (mode: EnemyHealthBarVisibilityMode) => void;
+  setQuickCastEnabled: (enabled: boolean) => void;
 };
 
 export class PauseMenu {
   private readonly window: GameWindow;
   private readonly healthModeButtons: HTMLButtonElement[];
+  private readonly quickCastToggle: HTMLInputElement;
 
   constructor(
     windowManager: WindowManager,
     callbacks: PauseMenuCallbacks,
     enemyHealthBarMode: EnemyHealthBarVisibilityMode,
+    quickCastEnabled: boolean,
   ) {
     const content = document.createElement("div");
     content.className = "pause-menu";
@@ -29,6 +33,11 @@ export class PauseMenu {
           <button type="button" data-health-mode="always" role="radio">Always</button>
         </div>
       </div>
+      <label class="pause-menu__setting pause-menu__switch" data-quick-cast-toggle>
+        <span>Quick Cast</span>
+        <input type="checkbox" data-quick-cast aria-label="Quick cast" />
+        <i aria-hidden="true"></i>
+      </label>
       <div class="pause-menu__actions">
         <button type="button" data-action="resume">Resume</button>
         <button type="button" data-action="diagnostics">Diagnostics</button>
@@ -46,6 +55,13 @@ export class PauseMenu {
       });
     });
     this.setEnemyHealthBarMode(enemyHealthBarMode);
+
+    this.quickCastToggle = mustQuery<HTMLInputElement>(content, "[data-quick-cast]");
+    this.quickCastToggle.addEventListener("change", () => {
+      this.setQuickCastEnabled(this.quickCastToggle.checked);
+      callbacks.setQuickCastEnabled(this.quickCastToggle.checked);
+    });
+    this.setQuickCastEnabled(quickCastEnabled);
 
     this.window = windowManager.createWindow({
       id: "pause-menu",
@@ -71,5 +87,10 @@ export class PauseMenu {
       button.classList.toggle("pause-menu__segmented-button--active", isActive);
       button.setAttribute("aria-checked", String(isActive));
     }
+  }
+
+  setQuickCastEnabled(enabled: boolean) {
+    this.quickCastToggle.checked = enabled;
+    this.quickCastToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
   }
 }

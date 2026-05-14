@@ -145,6 +145,7 @@ async function verifyWindowUi(page, viewport) {
   }
 
   await verifyEnemyHealthBarOptions(page);
+  await verifyQuickCastOption(page);
 
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
@@ -192,6 +193,32 @@ async function verifyEnemyHealthBarOptions(page) {
     if (diagnostics.enemyHealthBars.mode !== mode) {
       throw new Error(`Enemy health bar mode button did not select ${mode}`);
     }
+  }
+}
+
+async function verifyQuickCastOption(page) {
+  let diagnostics = await readDiagnostics(page);
+  if (!diagnostics.input.quickCastEnabled) {
+    throw new Error("Quick Cast should be enabled by default");
+  }
+
+  let checked = await page.$eval("[data-quick-cast]", (input) => input.checked);
+  if (!checked) {
+    throw new Error("Quick Cast toggle did not render enabled by default");
+  }
+
+  await page.click("[data-quick-cast-toggle]");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.quickCastEnabled === false);
+  checked = await page.$eval("[data-quick-cast]", (input) => input.checked);
+  if (checked) {
+    throw new Error("Quick Cast toggle did not turn off");
+  }
+
+  await page.click("[data-quick-cast-toggle]");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.quickCastEnabled === true);
+  diagnostics = await readDiagnostics(page);
+  if (!diagnostics.input.quickCastEnabled) {
+    throw new Error("Quick Cast toggle did not turn back on");
   }
 }
 
@@ -284,11 +311,136 @@ async function exerciseCoreInteractions(page, viewport) {
   await page.waitForTimeout(250);
   await page.mouse.up();
 
-  await page.keyboard.press("KeyQ");
-  await page.mouse.click(viewport.width * 0.55, viewport.height * 0.48);
-  await page.keyboard.press("KeyW");
-  await page.mouse.click(viewport.width * 0.45, viewport.height * 0.55);
+  const diagnostics = await readDiagnostics(page);
+  if (!diagnostics.input.quickCastEnabled) {
+    throw new Error(`${viewport.name} expected Quick Cast to be enabled for default spell flow`);
+  }
+
+  await verifyQuickCastCancel(page, viewport);
+  await verifyQuickCastRelease(page, viewport, "chain", "KeyQ", 0.55, 0.48);
+  await verifyQuickCastRelease(page, viewport, "bolt", "KeyW", 0.45, 0.55);
+
+  await reloadGame(page);
+  await setQuickCast(page, false);
+  await verifyLegacyRightClickCancel(page, viewport);
+  await verifyLegacyClickCast(page, viewport);
+  await setQuickCast(page, true);
+
   await page.waitForTimeout(700);
+}
+
+async function verifyQuickCastCancel(page, viewport) {
+  await waitForSpellReady(page, "chain");
+  const before = await readDiagnostics(page);
+
+  await page.mouse.move(viewport.width * 0.57, viewport.height * 0.5);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.down("KeyW");
+  await page.waitForTimeout(80);
+
+  const overlap = await readDiagnostics(page);
+  if (overlap.spells.castMode !== "chain") {
+    throw new Error(`${viewport.name} overlapping quick-cast key replaced the held spell`);
+  }
+  if (overlap.spells.cooldowns.bolt > before.spells.cooldowns.bolt + 0.05) {
+    throw new Error(`${viewport.name} overlapping quick-cast key cast the ignored spell`);
+  }
+
+  await page.keyboard.up("KeyW");
+  await page.mouse.click(viewport.width * 0.57, viewport.height * 0.5, { button: "right" });
+  await waitForNoCastMode(page);
+  await page.keyboard.up("KeyQ");
+  await page.waitForTimeout(80);
+
+  const after = await readDiagnostics(page);
+  if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
+    throw new Error(`${viewport.name} right-click cancel still cast the quick-cast spell`);
+  }
+}
+
+async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRatio) {
+  await waitForSpellReady(page, spellId);
+  await page.mouse.move(viewport.width * xRatio, viewport.height * yRatio);
+  await page.keyboard.down(key);
+  await waitForCastMode(page, spellId);
+  await page.keyboard.up(key);
+  await waitForSpellCooldown(page, spellId);
+}
+
+async function verifyLegacyRightClickCancel(page, viewport) {
+  await waitForSpellReady(page, "bolt");
+  const before = await readDiagnostics(page);
+
+  await page.keyboard.press("KeyW");
+  await waitForCastMode(page, "bolt");
+  await page.mouse.click(viewport.width * 0.46, viewport.height * 0.54, { button: "right" });
+  await waitForNoCastMode(page);
+  await page.waitForTimeout(80);
+
+  const after = await readDiagnostics(page);
+  if (after.spells.cooldowns.bolt > before.spells.cooldowns.bolt + 0.05) {
+    throw new Error(`${viewport.name} right-click cancel still cast the legacy targeted spell`);
+  }
+}
+
+async function verifyLegacyClickCast(page, viewport) {
+  await waitForSpellReady(page, "chain");
+  await page.keyboard.press("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.mouse.click(viewport.width * 0.55, viewport.height * 0.48);
+  await waitForSpellCooldown(page, "chain");
+}
+
+async function setQuickCast(page, enabled) {
+  const diagnostics = await readDiagnostics(page);
+  if (!diagnostics.paused) {
+    await page.click('[data-ui-action="pause"]');
+    await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  }
+
+  if (diagnostics.input.quickCastEnabled !== enabled) {
+    await page.click("[data-quick-cast-toggle]");
+    await page.waitForFunction((expected) => window.__ZEUS_GAME__?.getDiagnostics().input.quickCastEnabled === expected, enabled);
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+}
+
+async function waitForSpellReady(page, spellId) {
+  await page.waitForFunction(
+    (id) => {
+      const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+      return diagnostics && !diagnostics.paused && diagnostics.spells.cooldowns[id] <= 0.05;
+    },
+    spellId,
+    { timeout: 6000 },
+  );
+}
+
+async function waitForSpellCooldown(page, spellId) {
+  await page.waitForFunction((id) => {
+    const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+    return diagnostics && !diagnostics.spells.castMode && diagnostics.spells.cooldowns[id] > 0.2;
+  }, spellId);
+}
+
+async function waitForCastMode(page, spellId) {
+  await page.waitForFunction((id) => window.__ZEUS_GAME__?.getDiagnostics().spells.castMode === id, spellId);
+}
+
+async function waitForNoCastMode(page) {
+  await page.waitForFunction(() => !window.__ZEUS_GAME__?.getDiagnostics().spells.castMode);
+}
+
+async function reloadGame(page) {
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector("canvas");
+  await page.waitForSelector(".ui-layer");
+  await page.waitForSelector(".hud__stats");
+  await page.waitForSelector(".ui-toolbar");
 }
 
 async function readDiagnostics(page) {
