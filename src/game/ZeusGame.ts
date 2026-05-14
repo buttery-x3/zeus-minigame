@@ -136,6 +136,7 @@ export class ZeusGame {
         mode: this.enemyHealthBarMode,
         ...this.enemies.getHealthBarDiagnostics(),
       },
+      enemyAvoidance: this.enemies.getAvoidanceDiagnostics(),
     };
   }
 

@@ -30,6 +30,7 @@ npm run verify
 - Clicks a visible blocker and checks that navigation resolves to reachable edge space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
 - Checks the pause menu enemy health bar visibility options and Quick Cast toggle.
+- Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
 - Checks that diagnostics exposes enemy flow-field metrics and that the smoke path does not create a pathfinding call spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes without smart revealing every enemy.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
@@ -60,6 +61,7 @@ npm run verify:render
 Update `scripts/verify-render.mjs` when adding or changing:
 
 - Core controls or input flows.
+- Enemy movement, collision, or avoidance behavior.
 - New required HUD elements.
 - New default spells or ability keys.
 - Camera behavior that changes framing.

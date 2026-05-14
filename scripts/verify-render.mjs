@@ -62,6 +62,7 @@ async function verifyInBrowser() {
       await verifyHeldClickTracksCamera(page, viewport);
       await verifyBlockerNavigation(page, viewport);
       await verifyEnemyHealthBars(page, viewport);
+      await verifyEnemyAvoidance(page, viewport);
       await verifyWindowUi(page, viewport);
       await exerciseCoreInteractions(page, viewport);
       await verifyEnemyPathfindingBudget(page, viewport, "after core interactions");
@@ -303,6 +304,27 @@ async function verifyEnemyHealthBars(page, viewport) {
     const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
     return bars?.mode === "smart" && bars.total > 0 && bars.visible < bars.total;
   });
+}
+
+async function verifyEnemyAvoidance(page, viewport) {
+  const before = await readDiagnostics(page);
+  if (!before.enemyAvoidance) {
+    throw new Error(`${viewport.name} missing enemy avoidance diagnostics`);
+  }
+
+  await page.waitForFunction(() => {
+    const avoidance = window.__ZEUS_GAME__?.getDiagnostics().enemyAvoidance;
+    return avoidance?.enemyCount >= 8 && avoidance.maxNeighbors > 0;
+  });
+
+  const after = await readDiagnostics(page);
+  const avoidance = after.enemyAvoidance;
+  if (avoidance.maxSpeedRatio > 1.05) {
+    throw new Error(`${viewport.name} enemy avoidance exceeded speed budget: ${JSON.stringify(avoidance)}`);
+  }
+  if (avoidance.maxOverlap > 0.95) {
+    throw new Error(`${viewport.name} enemy avoidance allowed excessive clumping: ${JSON.stringify(avoidance)}`);
+  }
 }
 
 async function exerciseCoreInteractions(page, viewport) {
