@@ -7,6 +7,7 @@ type SceneObjects = {
   terrain: THREE.Group;
   blockers: THREE.Group;
   enemies: THREE.Group;
+  enemyHealthBars: THREE.Group;
   effects: THREE.Group;
   targeting: THREE.Group;
   player: THREE.Group;
@@ -25,7 +26,15 @@ export class GameScene {
     this.setupRenderer();
     this.setupLighting();
     this.setupGround();
-    this.scene.add(objects.terrain, objects.blockers, objects.enemies, objects.effects, objects.targeting, objects.moveMarker);
+    this.scene.add(
+      objects.terrain,
+      objects.blockers,
+      objects.enemies,
+      objects.enemyHealthBars,
+      objects.effects,
+      objects.targeting,
+      objects.moveMarker,
+    );
     this.scene.add(objects.player);
   }
 

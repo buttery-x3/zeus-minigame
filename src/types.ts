@@ -2,6 +2,8 @@ import type * as THREE from "three";
 
 export type SpellId = "chain" | "bolt";
 
+export type EnemyHealthBarVisibilityMode = "always" | "smart";
+
 export type TerrainKind = "floor" | "scarred" | "charged" | "reserved_blocker";
 
 export type TerrainCell = {

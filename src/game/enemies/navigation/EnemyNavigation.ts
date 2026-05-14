@@ -10,6 +10,8 @@ import { getMeleeChaseIntent } from "./EnemyIntent";
 import { EnemyPathQueue } from "./EnemyPathQueue";
 import { directionTo, targetFromDirection } from "./EnemySteering";
 
+const STALL_RESET_PROGRESS = 0.02;
+
 export class EnemyNavigation {
   private readonly flowField: EnemyFlowField;
   private readonly pathQueue: EnemyPathQueue;
@@ -64,8 +66,8 @@ export class EnemyNavigation {
     return this.wait(enemy, playerPosition);
   }
 
-  recordMovement(enemy: EnemyState, movedDistance: number, dt: number, playerPosition: THREE.Vector3) {
-    if (enemy.navigationMode === "direct" || movedDistance > 0.025) {
+  recordMovement(enemy: EnemyState, targetProgress: number, dt: number, playerPosition: THREE.Vector3) {
+    if (enemy.navigationMode === "direct" || targetProgress > STALL_RESET_PROGRESS) {
       enemy.stallTimer = 0;
       return;
     }
@@ -76,8 +78,10 @@ export class EnemyNavigation {
     }
 
     const acquisitionTarget = this.flowField.getAcquisitionTarget(enemy.group.position);
-    this.pathQueue.request(enemy, acquisitionTarget ?? playerPosition);
+    const fallbackGoal = enemy.navigationMode === "flow" ? playerPosition : (acquisitionTarget ?? playerPosition);
     enemy.navigationMode = "waiting";
+    enemy.stallTimer = 0;
+    this.pathQueue.request(enemy, fallbackGoal);
   }
 
   clearEnemy(enemy: EnemyState) {

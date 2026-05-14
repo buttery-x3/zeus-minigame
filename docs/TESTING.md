@@ -28,8 +28,11 @@ npm run verify
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
 - Clicks a visible blocker and checks that navigation resolves to reachable edge space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
+- Checks the pause menu enemy health bar visibility options.
 - Checks that diagnostics exposes enemy flow-field metrics and that the smoke path does not create a pathfinding call spike.
+- Presses `V` to verify enemy health bars toggle between smart and always visible modes without smart revealing every enemy.
 - Exercises click movement plus `Q` and `W` targeted casts.
+- Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
 - Checks that the WebGL canvas is not blank or visually flat.
 - Checks that core HUD text and ability buttons exist.
 - Saves screenshots into `verify/`.

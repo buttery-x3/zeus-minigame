@@ -12,10 +12,11 @@ import type { GameEffects } from "../../render/GameEffects";
 import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createEnemyModel } from "../../render/meshes";
-import type { EnemyState, GameRuntimeState } from "../../types";
+import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from "../../types";
 import type { GridWorld } from "../../world/GridWorld";
 import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { Profiler } from "../perf/Profiler";
+import { EnemyHealthBars } from "./EnemyHealthBars";
 import { EnemyNavigation } from "./navigation/EnemyNavigation";
 
 type EnemySystemCallbacks = {
@@ -26,9 +27,11 @@ export class EnemySystem {
   private enemies: EnemyState[] = [];
   private enemyId = 0;
   private readonly navigation: EnemyNavigation;
+  private readonly healthBars: EnemyHealthBars;
 
   constructor(
     private readonly group: THREE.Group,
+    healthBarGroup: THREE.Group,
     private readonly collision: CollisionSystem,
     gridWorld: GridWorld,
     profiler: Profiler,
@@ -37,6 +40,7 @@ export class EnemySystem {
     private readonly callbacks: EnemySystemCallbacks,
   ) {
     this.navigation = new EnemyNavigation(gridWorld, collision, profiler);
+    this.healthBars = new EnemyHealthBars(healthBarGroup);
   }
 
   update(dt: number, state: GameRuntimeState, playerPosition: THREE.Vector3) {
@@ -50,6 +54,8 @@ export class EnemySystem {
         navigationTarget.z - enemy.group.position.z,
       );
       const distance = toTarget.length();
+      let movedDistance = 0;
+      let targetProgress = 0;
 
       if (distance > 0.001) {
         toTarget.normalize();
@@ -61,16 +67,18 @@ export class EnemySystem {
         const actualX = nextPosition.x - enemy.group.position.x;
         const actualZ = nextPosition.z - enemy.group.position.z;
 
-        const movedDistance = distance2D(enemy.group.position.x, enemy.group.position.z, nextPosition.x, nextPosition.z);
+        movedDistance = distance2D(enemy.group.position.x, enemy.group.position.z, nextPosition.x, nextPosition.z);
+        targetProgress =
+          distance -
+          distance2D(nextPosition.x, nextPosition.z, navigationTarget.x, navigationTarget.z);
         if (movedDistance > 0.001) {
           enemy.group.position.x = nextPosition.x;
           enemy.group.position.z = nextPosition.z;
           enemy.group.rotation.y = Math.atan2(actualX, actualZ);
         }
-        this.navigation.recordMovement(enemy, movedDistance, dt, playerPosition);
-      } else {
-        this.navigation.recordMovement(enemy, 0, dt, playerPosition);
       }
+
+      this.navigation.recordMovement(enemy, targetProgress, dt, playerPosition);
 
       enemy.group.position.y = Math.sin(performance.now() * 0.006 + enemy.id) * 0.06;
       enemy.touchCooldown = Math.max(0, enemy.touchCooldown - dt);
@@ -119,6 +127,7 @@ export class EnemySystem {
       enemy.group.removeFromParent();
     }
     this.enemies = [];
+    this.healthBars.clear();
   }
 
   reset(state: GameRuntimeState, playerPosition: THREE.Vector3) {
@@ -130,8 +139,9 @@ export class EnemySystem {
   }
 
   damageEnemy(enemy: EnemyState, amount: number, state: GameRuntimeState) {
-    enemy.hp -= amount;
+    enemy.hp = Math.max(0, enemy.hp - amount);
     enemy.flashTimer = 0.09;
+    this.healthBars.updateHealth(enemy);
 
     if (enemy.hp > 0) {
       return;
@@ -171,6 +181,20 @@ export class EnemySystem {
     }
   }
 
+  updateHealthBars(
+    dt: number,
+    camera: THREE.Camera,
+    mode: EnemyHealthBarVisibilityMode,
+    playerPosition: THREE.Vector3,
+    pointerWorld: THREE.Vector3,
+  ) {
+    this.healthBars.update(this.enemies, { camera, dt, mode, playerPosition, pointerWorld });
+  }
+
+  getHealthBarDiagnostics() {
+    return this.healthBars.diagnostics();
+  }
+
   private spawn(state: GameRuntimeState, playerPosition: THREE.Vector3, initial = false) {
     const spawnPoint = this.findSpawnPoint(playerPosition, initial);
     if (!spawnPoint) {
@@ -181,7 +205,7 @@ export class EnemySystem {
     group.position.copy(spawnPoint);
     this.group.add(group);
 
-    this.enemies.push({
+    const enemy: EnemyState = {
       id: this.enemyId,
       group,
       body,
@@ -194,7 +218,10 @@ export class EnemySystem {
       flashTimer: 0,
       stallTimer: 0,
       navigationMode: "direct",
-    });
+    };
+
+    this.enemies.push(enemy);
+    this.healthBars.add(enemy);
     this.enemyId += 1;
     return true;
   }
@@ -225,6 +252,7 @@ export class EnemySystem {
 
   private disposeEnemy(enemy: EnemyState) {
     this.navigation.clearEnemy(enemy);
+    this.healthBars.remove(enemy);
     disposeObject3D(enemy.group, { preserveMaterials: Object.values(this.materials) });
   }
 }

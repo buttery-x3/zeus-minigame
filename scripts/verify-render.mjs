@@ -60,8 +60,10 @@ async function verifyInBrowser() {
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
       await verifyBlockerNavigation(page, viewport);
-      await verifyWindowUi(page);
+      await verifyEnemyHealthBars(page, viewport);
+      await verifyWindowUi(page, viewport);
       await exerciseCoreInteractions(page, viewport);
+      await verifyEnemyPathfindingBudget(page, viewport, "after core interactions");
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -106,7 +108,7 @@ async function verifyShadowRigTracking(page, viewport) {
   }
 }
 
-async function verifyWindowUi(page) {
+async function verifyWindowUi(page, viewport) {
   await page.click('[data-ui-action="pause"]');
   await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
 
@@ -114,6 +116,8 @@ async function verifyWindowUi(page) {
   if (!diagnostics.paused) {
     throw new Error("Pause toolbar button did not pause the game");
   }
+
+  await verifyEnemyHealthBarOptions(page);
 
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
@@ -130,9 +134,7 @@ async function verifyWindowUi(page) {
   if (!diagnostics.profiler.enemyNavigation || diagnostics.profiler.enemyNavigation.flowRadius <= 0) {
     throw new Error("Diagnostics did not expose enemy flow-field metrics");
   }
-  if (diagnostics.profiler.pathfinding.calls > 20) {
-    throw new Error(`Default verifier pathfinding spike: ${diagnostics.profiler.pathfinding.calls} calls`);
-  }
+  verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, "diagnostics window");
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
   const locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
@@ -142,6 +144,28 @@ async function verifyWindowUi(page) {
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
+}
+
+async function verifyEnemyPathfindingBudget(page, viewport, phase) {
+  await page.waitForTimeout(300);
+  verifyEnemyPathfindingBudgetSnapshot(await readDiagnostics(page), viewport, phase);
+}
+
+function verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, phase) {
+  const calls = diagnostics.profiler.pathfinding.calls;
+  if (calls > 20) {
+    throw new Error(`${viewport.name} pathfinding spike ${phase}: ${calls} calls`);
+  }
+}
+
+async function verifyEnemyHealthBarOptions(page) {
+  for (const mode of ["always", "smart"]) {
+    await page.click(`[data-health-mode="${mode}"]`);
+    const diagnostics = await readDiagnostics(page);
+    if (diagnostics.enemyHealthBars.mode !== mode) {
+      throw new Error(`Enemy health bar mode button did not select ${mode}`);
+    }
+  }
 }
 
 async function verifyCameraRigStability(page, viewport) {
@@ -200,6 +224,31 @@ async function verifyBlockerNavigation(page, viewport) {
   if (groundDistance(moveTarget, blocker.world) > 10) {
     throw new Error(`${viewport.name} blocker navigation target was not near clicked blocker edge`);
   }
+}
+
+async function verifyEnemyHealthBars(page, viewport) {
+  const before = await readDiagnostics(page);
+  if (!before.enemyHealthBars) {
+    throw new Error(`${viewport.name} missing enemy health bar diagnostics`);
+  }
+  if (before.enemyHealthBars.mode !== "smart") {
+    throw new Error(`${viewport.name} expected smart enemy health bar mode by default`);
+  }
+  if (before.enemyHealthBars.total < 1) {
+    throw new Error(`${viewport.name} expected spawned enemy health bars`);
+  }
+
+  await page.keyboard.press("KeyV");
+  await page.waitForFunction(() => {
+    const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
+    return bars?.mode === "always" && bars.total > 0 && bars.visible === bars.total;
+  });
+
+  await page.keyboard.press("KeyV");
+  await page.waitForFunction(() => {
+    const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
+    return bars?.mode === "smart" && bars.total > 0 && bars.visible < bars.total;
+  });
 }
 
 async function exerciseCoreInteractions(page, viewport) {

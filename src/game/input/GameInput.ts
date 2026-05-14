@@ -13,6 +13,7 @@ type InputCallbacks = {
   restart: () => void;
   handleEscape: () => void;
   toggleDiagnostics: () => void;
+  toggleEnemyHealthBarMode: () => void;
 };
 
 export class GameInput {
@@ -68,7 +69,9 @@ export class GameInput {
       return;
     }
 
-    if (event.key.toLowerCase() === "q") {
+    if (event.key.toLowerCase() === "v") {
+      this.callbacks.toggleEnemyHealthBarMode();
+    } else if (event.key.toLowerCase() === "q") {
       this.callbacks.beginTargeting("chain");
     } else if (event.key.toLowerCase() === "w") {
       this.callbacks.beginTargeting("bolt");
