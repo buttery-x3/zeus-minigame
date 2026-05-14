@@ -54,6 +54,8 @@ export class EnemySystem {
         navigationTarget.z - enemy.group.position.z,
       );
       const distance = toTarget.length();
+      let movedDistance = 0;
+      let targetProgress = 0;
 
       if (distance > 0.001) {
         toTarget.normalize();
@@ -65,16 +67,18 @@ export class EnemySystem {
         const actualX = nextPosition.x - enemy.group.position.x;
         const actualZ = nextPosition.z - enemy.group.position.z;
 
-        const movedDistance = distance2D(enemy.group.position.x, enemy.group.position.z, nextPosition.x, nextPosition.z);
+        movedDistance = distance2D(enemy.group.position.x, enemy.group.position.z, nextPosition.x, nextPosition.z);
+        targetProgress =
+          distance -
+          distance2D(nextPosition.x, nextPosition.z, navigationTarget.x, navigationTarget.z);
         if (movedDistance > 0.001) {
           enemy.group.position.x = nextPosition.x;
           enemy.group.position.z = nextPosition.z;
           enemy.group.rotation.y = Math.atan2(actualX, actualZ);
         }
-        this.navigation.recordMovement(enemy, movedDistance, dt, playerPosition);
-      } else {
-        this.navigation.recordMovement(enemy, 0, dt, playerPosition);
       }
+
+      this.navigation.recordMovement(enemy, targetProgress, dt, playerPosition);
 
       enemy.group.position.y = Math.sin(performance.now() * 0.006 + enemy.id) * 0.06;
       enemy.touchCooldown = Math.max(0, enemy.touchCooldown - dt);

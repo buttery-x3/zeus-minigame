@@ -32,6 +32,7 @@ npm run verify
 - Checks that diagnostics exposes enemy flow-field metrics and that the smoke path does not create a pathfinding call spike.
 - Holds `Alt` to verify enemy health bars reveal every spawned enemy in the default smart mode.
 - Exercises click movement plus `Q` and `W` targeted casts.
+- Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
 - Checks that the WebGL canvas is not blank or visually flat.
 - Checks that core HUD text and ability buttons exist.
 - Saves screenshots into `verify/`.

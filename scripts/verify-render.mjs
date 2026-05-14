@@ -61,8 +61,9 @@ async function verifyInBrowser() {
       await verifyShadowRigTracking(page, viewport);
       await verifyBlockerNavigation(page, viewport);
       await verifyEnemyHealthBars(page, viewport);
-      await verifyWindowUi(page);
+      await verifyWindowUi(page, viewport);
       await exerciseCoreInteractions(page, viewport);
+      await verifyEnemyPathfindingBudget(page, viewport, "after core interactions");
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -107,7 +108,7 @@ async function verifyShadowRigTracking(page, viewport) {
   }
 }
 
-async function verifyWindowUi(page) {
+async function verifyWindowUi(page, viewport) {
   await page.click('[data-ui-action="pause"]');
   await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
 
@@ -133,9 +134,7 @@ async function verifyWindowUi(page) {
   if (!diagnostics.profiler.enemyNavigation || diagnostics.profiler.enemyNavigation.flowRadius <= 0) {
     throw new Error("Diagnostics did not expose enemy flow-field metrics");
   }
-  if (diagnostics.profiler.pathfinding.calls > 20) {
-    throw new Error(`Default verifier pathfinding spike: ${diagnostics.profiler.pathfinding.calls} calls`);
-  }
+  verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, "diagnostics window");
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
   const locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
@@ -145,6 +144,18 @@ async function verifyWindowUi(page) {
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
+}
+
+async function verifyEnemyPathfindingBudget(page, viewport, phase) {
+  await page.waitForTimeout(300);
+  verifyEnemyPathfindingBudgetSnapshot(await readDiagnostics(page), viewport, phase);
+}
+
+function verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, phase) {
+  const calls = diagnostics.profiler.pathfinding.calls;
+  if (calls > 20) {
+    throw new Error(`${viewport.name} pathfinding spike ${phase}: ${calls} calls`);
+  }
 }
 
 async function verifyEnemyHealthBarOptions(page) {
