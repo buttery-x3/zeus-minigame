@@ -59,6 +59,7 @@ async function verifyInBrowser() {
 
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
+      await verifyHeldClickTracksCamera(page, viewport);
       await verifyBlockerNavigation(page, viewport);
       await verifyEnemyHealthBars(page, viewport);
       await verifyWindowUi(page, viewport);
@@ -105,6 +106,32 @@ async function verifyShadowRigTracking(page, viewport) {
   }
   if (focusDistance > after.lighting.texelSize * 3) {
     throw new Error(`${viewport.name} shadow focus is not snapped near player: ${focusDistance}`);
+  }
+}
+
+async function verifyHeldClickTracksCamera(page, viewport) {
+  await page.mouse.move(viewport.width * 0.72, viewport.height * 0.58);
+  const before = await readDiagnostics(page);
+
+  await page.mouse.down();
+  try {
+    await page.waitForTimeout(120);
+    const initialHold = await readDiagnostics(page);
+
+    await page.waitForTimeout(850);
+    const afterHold = await readDiagnostics(page);
+
+    const playerMove = groundDistance(afterHold.player.position, before.player.position);
+    const targetShift = groundDistance(afterHold.player.navigation.moveTarget, initialHold.player.navigation.moveTarget);
+
+    if (playerMove < 5) {
+      throw new Error(`${viewport.name} held-click check did not move the player far enough: ${playerMove}`);
+    }
+    if (targetShift < 2) {
+      throw new Error(`${viewport.name} held-click target did not refresh as the camera moved: ${targetShift}`);
+    }
+  } finally {
+    await page.mouse.up();
   }
 }
 

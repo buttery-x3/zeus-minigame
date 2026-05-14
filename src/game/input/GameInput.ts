@@ -16,14 +16,20 @@ type InputCallbacks = {
   toggleEnemyHealthBarMode: () => void;
 };
 
+const HELD_MOVE_REFIRE_SECONDS = 0.2;
+
 export class GameInput {
   readonly pointerWorld = new THREE.Vector3();
 
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
+  private readonly pointerClient = new THREE.Vector2();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private pressedPointerId: number | null = null;
   private inputMoveLocked = false;
+  private hasPointerClient = false;
+  private heldMoveRefireIn = 0;
+  private moveRequestPending = false;
 
   constructor(
     private readonly camera: THREE.Camera,
@@ -35,11 +41,40 @@ export class GameInput {
     window.addEventListener("pointerdown", this.handlePointerDown);
     window.addEventListener("pointermove", this.handlePointerMove);
     window.addEventListener("pointerup", this.handlePointerUp);
+    window.addEventListener("pointercancel", this.handlePointerUp);
     window.addEventListener("contextmenu", this.preventContextMenu);
   }
 
-  shouldMoveContinuously() {
-    return this.pressedPointerId !== null && !this.callbacks.getCastMode() && !this.inputMoveLocked;
+  update(dt: number) {
+    this.refreshPointerWorld();
+
+    if (!this.isHoldingMove()) {
+      this.heldMoveRefireIn = 0;
+      this.moveRequestPending = false;
+      return;
+    }
+
+    this.heldMoveRefireIn -= dt;
+    if (this.heldMoveRefireIn <= 0) {
+      this.moveRequestPending = true;
+      this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
+    }
+  }
+
+  consumeMoveRequest() {
+    const shouldMove = this.isHoldingMove() && this.moveRequestPending;
+    this.moveRequestPending = false;
+    return shouldMove;
+  }
+
+  private isHoldingMove() {
+    return (
+      this.pressedPointerId !== null &&
+      !this.callbacks.isGameOver() &&
+      !this.callbacks.isPaused() &&
+      !this.callbacks.getCastMode() &&
+      !this.inputMoveLocked
+    );
   }
 
   dispose() {
@@ -47,6 +82,7 @@ export class GameInput {
     window.removeEventListener("pointerdown", this.handlePointerDown);
     window.removeEventListener("pointermove", this.handlePointerMove);
     window.removeEventListener("pointerup", this.handlePointerUp);
+    window.removeEventListener("pointercancel", this.handlePointerUp);
     window.removeEventListener("contextmenu", this.preventContextMenu);
   }
 
@@ -87,6 +123,8 @@ export class GameInput {
 
     this.updatePointerWorld(event);
     this.pressedPointerId = event.pointerId;
+    this.moveRequestPending = false;
+    this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
 
     if (this.callbacks.getCastMode()) {
       this.callbacks.castAt(this.pointerWorld);
@@ -102,12 +140,19 @@ export class GameInput {
       return;
     }
     this.updatePointerWorld(event);
+
+    if (this.isHoldingMove()) {
+      this.moveRequestPending = true;
+      this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
+    }
   };
 
   private readonly handlePointerUp = (event: PointerEvent) => {
     if (event.pointerId === this.pressedPointerId) {
       this.pressedPointerId = null;
       this.inputMoveLocked = false;
+      this.moveRequestPending = false;
+      this.heldMoveRefireIn = 0;
     }
   };
 
@@ -120,9 +165,19 @@ export class GameInput {
   }
 
   private updatePointerWorld(event: PointerEvent) {
+    this.pointerClient.set(event.clientX, event.clientY);
+    this.hasPointerClient = true;
+    this.refreshPointerWorld();
+  }
+
+  private refreshPointerWorld() {
+    if (!this.hasPointerClient) {
+      return;
+    }
+
     const rect = this.renderer.domElement.getBoundingClientRect();
-    this.pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointerNdc.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+    this.pointerNdc.x = ((this.pointerClient.x - rect.left) / rect.width) * 2 - 1;
+    this.pointerNdc.y = -(((this.pointerClient.y - rect.top) / rect.height) * 2 - 1);
     this.raycaster.setFromCamera(this.pointerNdc, this.camera);
     this.raycaster.ray.intersectPlane(this.groundPlane, this.pointerWorld);
     this.gridWorld.clampWorld(this.pointerWorld);
