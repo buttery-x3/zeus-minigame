@@ -1,0 +1,56 @@
+.ui-toolbar {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 90;
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.ui-tool {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.ui-tool--pause i::before,
+.ui-tool--pause i::after {
+  position: absolute;
+  top: 2px;
+  width: 4px;
+  height: 11px;
+  border-radius: 2px;
+  content: "";
+  background: #f1fbf9;
+}
+
+.ui-tool--pause i::before {
+  left: 3px;
+}
+
+.ui-tool--pause i::after {
+  right: 3px;
+}
+
+.ui-tool--diagnostics i::before {
+  position: absolute;
+  left: 1px;
+  bottom: 1px;
+  width: 12px;
+  height: 8px;
+  border: 2px solid #f1fbf9;
+  border-top: 0;
+  border-right: 0;
+  content: "";
+}
+
+.ui-tool--diagnostics i::after {
+  position: absolute;
+  left: 3px;
+  top: 4px;
+  width: 9px;
+  height: 7px;
+  content: "";
+  background: linear-gradient(135deg, transparent 45%, #79f0cc 46% 58%, transparent 59%);
+}

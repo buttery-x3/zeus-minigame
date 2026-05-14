@@ -1,0 +1,29 @@
+.game-window__action,
+.ui-tool {
+  position: relative;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgb(145 194 192 / 28%);
+  border-radius: 6px;
+  background: rgb(7 12 13 / 72%);
+  color: #d8f6f3;
+  cursor: pointer;
+}
+
+.game-window__action:hover,
+.ui-tool:hover,
+.ui-tool--active {
+  border-color: rgb(116 218 237 / 70%);
+  background: rgb(25 47 49 / 82%);
+  box-shadow: 0 0 18px rgb(116 218 237 / 18%);
+}
+
+.game-window__action i,
+.ui-tool i {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
