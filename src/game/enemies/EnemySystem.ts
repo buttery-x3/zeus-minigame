@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   ENEMY_COLLISION_RADIUS,
+  ENEMY_UNIT_SEPARATION_RADIUS,
   INITIAL_ENEMY_COUNT,
   INITIAL_NEXT_WAVE_AT,
   INITIAL_SPAWN_INTERVAL,
@@ -16,6 +17,7 @@ import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from 
 import type { GridWorld } from "../../world/GridWorld";
 import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { Profiler } from "../perf/Profiler";
+import { EnemyAvoidance } from "./EnemyAvoidance";
 import { EnemyHealthBars } from "./EnemyHealthBars";
 import { EnemyNavigation } from "./navigation/EnemyNavigation";
 
@@ -23,10 +25,17 @@ type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
 };
 
+type EnemyMovePlan = {
+  enemy: EnemyState;
+  navigationTarget: THREE.Vector3;
+  velocity: THREE.Vector3;
+};
+
 export class EnemySystem {
   private enemies: EnemyState[] = [];
   private enemyId = 0;
   private readonly navigation: EnemyNavigation;
+  private readonly avoidance = new EnemyAvoidance();
   private readonly healthBars: EnemyHealthBars;
 
   constructor(
@@ -45,7 +54,9 @@ export class EnemySystem {
 
   update(dt: number, state: GameRuntimeState, playerPosition: THREE.Vector3) {
     this.navigation.beginFrame(playerPosition);
+    this.avoidance.beginFrame(this.enemies);
 
+    const movePlans: EnemyMovePlan[] = [];
     for (const enemy of this.enemies) {
       const navigationTarget = this.navigation.getTarget(enemy, playerPosition);
       const toTarget = new THREE.Vector3(
@@ -54,23 +65,38 @@ export class EnemySystem {
         navigationTarget.z - enemy.group.position.z,
       );
       const distance = toTarget.length();
-      let movedDistance = 0;
-      let targetProgress = 0;
+      const desiredVelocity = new THREE.Vector3();
 
       if (distance > 0.001) {
         toTarget.normalize();
+        desiredVelocity.set(toTarget.x * enemy.speed, 0, toTarget.z * enemy.speed);
+      }
+
+      movePlans.push({
+        enemy,
+        navigationTarget,
+        velocity: this.avoidance.steer(enemy, desiredVelocity, navigationTarget),
+      });
+    }
+
+    for (const { enemy, navigationTarget, velocity } of movePlans) {
+      let movedDistance = 0;
+      let targetProgress = 0;
+
+      if (velocity.lengthSq() > 0.000001) {
+        const startX = enemy.group.position.x;
+        const startZ = enemy.group.position.z;
+        const startDistanceToTarget = distance2D(startX, startZ, navigationTarget.x, navigationTarget.z);
         const nextPosition = this.collision.moveWithCollision(
           enemy.group.position,
-          new THREE.Vector3(toTarget.x * enemy.speed * dt, 0, toTarget.z * enemy.speed * dt),
+          new THREE.Vector3(velocity.x * dt, 0, velocity.z * dt),
           ENEMY_COLLISION_RADIUS,
         );
         const actualX = nextPosition.x - enemy.group.position.x;
         const actualZ = nextPosition.z - enemy.group.position.z;
 
-        movedDistance = distance2D(enemy.group.position.x, enemy.group.position.z, nextPosition.x, nextPosition.z);
-        targetProgress =
-          distance -
-          distance2D(nextPosition.x, nextPosition.z, navigationTarget.x, navigationTarget.z);
+        movedDistance = distance2D(startX, startZ, nextPosition.x, nextPosition.z);
+        targetProgress = startDistanceToTarget - distance2D(nextPosition.x, nextPosition.z, navigationTarget.x, navigationTarget.z);
         if (movedDistance > 0.001) {
           enemy.group.position.x = nextPosition.x;
           enemy.group.position.z = nextPosition.z;
@@ -78,6 +104,7 @@ export class EnemySystem {
         }
       }
 
+      this.avoidance.recordSpeedRatio(movedDistance / Math.max(enemy.speed * dt, 0.0001));
       this.navigation.recordMovement(enemy, targetProgress, dt, playerPosition);
 
       enemy.group.position.y = Math.sin(performance.now() * 0.006 + enemy.id) * 0.06;
@@ -195,6 +222,10 @@ export class EnemySystem {
     return this.healthBars.diagnostics();
   }
 
+  getAvoidanceDiagnostics() {
+    return this.avoidance.diagnostics();
+  }
+
   private spawn(state: GameRuntimeState, playerPosition: THREE.Vector3, initial = false) {
     const spawnPoint = this.findSpawnPoint(playerPosition, initial);
     if (!spawnPoint) {
@@ -235,6 +266,9 @@ export class EnemySystem {
         fallback ??= this.collision.findNearestOpenPoint(point, ENEMY_COLLISION_RADIUS, 4);
         continue;
       }
+      if (!this.isSpawnClearOfEnemies(point)) {
+        continue;
+      }
 
       return point;
     }
@@ -248,6 +282,15 @@ export class EnemySystem {
     const x = clamp(playerPosition.x + Math.cos(angle) * distance, -WORLD_HALF + 5, WORLD_HALF - 5);
     const z = clamp(playerPosition.z + Math.sin(angle) * distance, -WORLD_HALF + 5, WORLD_HALF - 5);
     return new THREE.Vector3(x, 0, z);
+  }
+
+  private isSpawnClearOfEnemies(point: THREE.Vector3) {
+    for (const enemy of this.enemies) {
+      if (distance2D(point.x, point.z, enemy.group.position.x, enemy.group.position.z) < ENEMY_UNIT_SEPARATION_RADIUS) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private disposeEnemy(enemy: EnemyState) {
