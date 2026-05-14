@@ -16,7 +16,7 @@ type InputCallbacks = {
   toggleEnemyHealthBarMode: () => void;
 };
 
-const HELD_MOVE_REFIRE_SECONDS = 0.2;
+const HELD_MOVE_REFIRE_SECONDS = 0.1;
 
 export class GameInput {
   readonly pointerWorld = new THREE.Vector3();
