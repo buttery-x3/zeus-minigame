@@ -6,6 +6,7 @@ import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { Profiler } from "../perf/Profiler";
 import type { PlayerController } from "../player/PlayerController";
 import type { GameScene } from "../scene/GameScene";
+import type { VisibilitySystem } from "../visibility/VisibilitySystem";
 
 export class GameDiagnostics {
   constructor(
@@ -13,12 +14,14 @@ export class GameDiagnostics {
     private readonly gridWorld: GridWorld,
     private readonly collision: CollisionSystem,
     private readonly player: PlayerController,
+    private readonly visibility: VisibilitySystem,
     private readonly profiler: Profiler,
   ) {}
 
   get(state: GameRuntimeState) {
     const cameraForward = new THREE.Vector3();
     this.scene.camera.getWorldDirection(cameraForward);
+    const visibilityDiagnostics = this.visibility.getDiagnostics();
 
     return {
       camera: {
@@ -41,6 +44,36 @@ export class GameDiagnostics {
         },
       },
       nearestBlockedCell: this.findNearestBlockedCell(this.player.object.position, 18),
+      visibility: visibilityDiagnostics,
+      visibilitySamples: {
+        shadowedCell: visibilityDiagnostics.shadowSample
+          ? this.visibilitySampleToScreen(visibilityDiagnostics.shadowSample.shadow)
+          : null,
+        visibleMoveCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          12,
+          (x, z) => this.isDirectVisibleMoveCell(x, z),
+          5,
+        ),
+        visibleEastCell: this.findDirectionalVisibilityCell(this.player.object.position, 1, 0),
+        visibleWestCell: this.findDirectionalVisibilityCell(this.player.object.position, -1, 0),
+        nearestUndiscoveredCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          28,
+          (x, z) => !this.visibility.isDiscoveredCell(x, z),
+        ),
+        farUndiscoveredCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          28,
+          (x, z) => !this.visibility.isDiscoveredCell(x, z),
+          this.visibility.outerRadiusCells + 2,
+        ),
+        nearestDiscoveredHiddenCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          28,
+          (x, z) => this.visibility.isDiscoveredCell(x, z) && !this.visibility.isVisibleCell(x, z),
+        ),
+      },
       paused: state.paused,
       profiler: this.profiler.snapshot(),
     };
@@ -69,7 +102,98 @@ export class GameDiagnostics {
           if (x < 0 || z < 0 || x >= this.gridWorld.worldCells || z >= this.gridWorld.worldCells) {
             continue;
           }
-          if (!this.gridWorld.getCell(x, z).blocked) {
+          if (!this.gridWorld.getCell(x, z).blocked || !this.visibility.isVisibleCell(x, z)) {
+            continue;
+          }
+
+          const world = this.gridWorld.cellToWorld(x, z);
+          const screen = this.projectGroundToScreen(world.x, world.z);
+          if (!screen.visible) {
+            continue;
+          }
+
+          return {
+            cell: { x, z },
+            world: [world.x, 0, world.z],
+            screen,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private findDirectionalVisibilityCell(position: THREE.Vector3, dirX: number, dirZ: number) {
+    const center = this.gridWorld.worldToCell(position.x, position.z);
+
+    for (let radius = 8; radius >= 5; radius -= 1) {
+      for (let lateral = 0; lateral <= 2; lateral += 1) {
+        for (const side of lateral === 0 ? [0] : [-lateral, lateral]) {
+          const x = center.x + dirX * radius + (dirZ === 0 ? 0 : side);
+          const z = center.z + dirZ * radius + (dirX === 0 ? 0 : side);
+          if (x < 0 || z < 0 || x >= this.gridWorld.worldCells || z >= this.gridWorld.worldCells) {
+            continue;
+          }
+          if (!this.isDirectVisibleMoveCell(x, z)) {
+            continue;
+          }
+
+          const world = this.gridWorld.cellToWorld(x, z);
+          const screen = this.projectGroundToScreen(world.x, world.z);
+          if (!screen.visible) {
+            continue;
+          }
+
+          return {
+            cell: { x, z },
+            world: [world.x, 0, world.z],
+            screen,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private isDirectVisibleMoveCell(cellX: number, cellZ: number) {
+    if (!this.visibility.isVisibleCell(cellX, cellZ) || this.gridWorld.getCell(cellX, cellZ).blocked) {
+      return false;
+    }
+
+    const world = this.gridWorld.cellToWorld(cellX, cellZ);
+    return (
+      this.collision.canOccupy(world.x, world.z, PLAYER_COLLISION_RADIUS) &&
+      this.collision.hasLineOfSight(this.player.object.position, new THREE.Vector3(world.x, 0, world.z), PLAYER_COLLISION_RADIUS)
+    );
+  }
+
+  private visibilitySampleToScreen(cell: { x: number; z: number }) {
+    const world = this.gridWorld.cellToWorld(cell.x, cell.z);
+    const screen = this.projectGroundToScreen(world.x, world.z);
+    return {
+      cell,
+      world: [world.x, 0, world.z],
+      screen,
+    };
+  }
+
+  private findNearestVisibilityCell(
+    position: THREE.Vector3,
+    maxRadius: number,
+    predicate: (x: number, z: number) => boolean,
+    minRadius = 1,
+  ) {
+    const center = this.gridWorld.worldToCell(position.x, position.z);
+
+    for (let radius = minRadius; radius <= maxRadius; radius += 1) {
+      for (let z = center.z - radius; z <= center.z + radius; z += 1) {
+        for (let x = center.x - radius; x <= center.x + radius; x += 1) {
+          if (x !== center.x - radius && x !== center.x + radius && z !== center.z - radius && z !== center.z + radius) {
+            continue;
+          }
+          if (x < 0 || z < 0 || x >= this.gridWorld.worldCells || z >= this.gridWorld.worldCells || !predicate(x, z)) {
             continue;
           }
 

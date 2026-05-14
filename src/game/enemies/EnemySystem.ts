@@ -34,6 +34,7 @@ type EnemyMovePlan = {
 export class EnemySystem {
   private enemies: EnemyState[] = [];
   private enemyId = 0;
+  private worldVisibleCount = 0;
   private readonly navigation: EnemyNavigation;
   private readonly avoidance = new EnemyAvoidance();
   private readonly healthBars: EnemyHealthBars;
@@ -110,6 +111,7 @@ export class EnemySystem {
       enemy.group.position.y = Math.sin(performance.now() * 0.006 + enemy.id) * 0.06;
       enemy.touchCooldown = Math.max(0, enemy.touchCooldown - dt);
       enemy.flashTimer = Math.max(0, enemy.flashTimer - dt);
+      enemy.visibilityHintTimer = Math.max(0, enemy.visibilityHintTimer - dt);
       enemy.body.material = enemy.flashTimer > 0 ? this.materials.enemyHit : this.materials.enemy;
 
       const playerDistance = distance2D(playerPosition.x, playerPosition.z, enemy.group.position.x, enemy.group.position.z);
@@ -168,6 +170,7 @@ export class EnemySystem {
   damageEnemy(enemy: EnemyState, amount: number, state: GameRuntimeState) {
     enemy.hp = Math.max(0, enemy.hp - amount);
     enemy.flashTimer = 0.09;
+    enemy.visibilityHintTimer = 1.8;
     this.healthBars.updateHealth(enemy);
 
     if (enemy.hp > 0) {
@@ -183,12 +186,17 @@ export class EnemySystem {
     this.effects.createShockwave(deathPosition, 0x67e3c0, 3);
   }
 
-  findClosest(target: THREE.Vector3, maxDistance: number, excluded: Set<EnemyState> = new Set()) {
+  findClosest(
+    target: THREE.Vector3,
+    maxDistance: number,
+    excluded: Set<EnemyState> = new Set(),
+    predicate: (enemy: EnemyState) => boolean = () => true,
+  ) {
     let closest: EnemyState | null = null;
     let closestDistance = maxDistance;
 
     for (const enemy of this.enemies) {
-      if (excluded.has(enemy)) {
+      if (excluded.has(enemy) || !predicate(enemy)) {
         continue;
       }
 
@@ -214,12 +222,33 @@ export class EnemySystem {
     mode: EnemyHealthBarVisibilityMode,
     playerPosition: THREE.Vector3,
     pointerWorld: THREE.Vector3,
+    isWorldVisible: (enemy: EnemyState) => boolean,
   ) {
-    this.healthBars.update(this.enemies, { camera, dt, mode, playerPosition, pointerWorld });
+    this.healthBars.update(this.enemies, { camera, dt, mode, playerPosition, pointerWorld, isWorldVisible });
+  }
+
+  updateVisibility(isWorldVisible: (enemy: EnemyState) => boolean) {
+    let worldVisibleCount = 0;
+    for (const enemy of this.enemies) {
+      const visible = isWorldVisible(enemy);
+      enemy.group.visible = visible;
+      if (visible) {
+        worldVisibleCount += 1;
+      }
+    }
+    this.worldVisibleCount = worldVisibleCount;
   }
 
   getHealthBarDiagnostics() {
     return this.healthBars.diagnostics();
+  }
+
+  getVisibilityDiagnostics() {
+    return {
+      total: this.enemies.length,
+      visible: this.worldVisibleCount,
+      hidden: Math.max(0, this.enemies.length - this.worldVisibleCount),
+    };
   }
 
   getAvoidanceDiagnostics() {
@@ -247,6 +276,7 @@ export class EnemySystem {
       speed: randomBetween(5.7, 7.4) + state.wave * 0.16,
       touchCooldown: randomBetween(0.1, 0.5),
       flashTimer: 0,
+      visibilityHintTimer: 0,
       stallTimer: 0,
       navigationMode: "direct",
     };

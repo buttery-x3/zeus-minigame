@@ -19,6 +19,7 @@ type EnemyHealthBarUpdate = {
   mode: EnemyHealthBarVisibilityMode;
   playerPosition: THREE.Vector3;
   pointerWorld: THREE.Vector3;
+  isWorldVisible: (enemy: EnemyState) => boolean;
 };
 
 export class EnemyHealthBar {
@@ -53,7 +54,10 @@ export class EnemyHealthBar {
     this.object.position.set(enemy.group.position.x, enemy.group.position.y + BAR_OFFSET_Y, enemy.group.position.z);
     this.object.quaternion.copy(params.camera.quaternion);
 
-    this.object.visible = params.mode === "always" || (params.mode === "smart" && this.shouldShowSmart(enemy, params));
+    const worldVisible = params.isWorldVisible(enemy);
+    const visibilityHint = !worldVisible && this.smartVisibleTimer > 0;
+    this.object.visible =
+      visibilityHint || (worldVisible && (params.mode === "always" || (params.mode === "smart" && this.shouldShowSmart(enemy, params))));
 
     return this.object.visible;
   }

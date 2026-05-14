@@ -7,6 +7,8 @@ import type { EnemySystem } from "../enemies/EnemySystem";
 
 type SpellSystemCallbacks = {
   invalidCast: () => void;
+  canCastAt: (target: THREE.Vector3) => boolean;
+  canAffectEnemy: (enemy: EnemyState) => boolean;
 };
 
 export class SpellSystem {
@@ -68,6 +70,11 @@ export class SpellSystem {
     }
 
     const target = clampToSpellRange(rawTarget, playerPosition, spell.range);
+    if (!this.callbacks.canCastAt(target)) {
+      this.callbacks.invalidCast();
+      return;
+    }
+
     state.mana -= spell.manaCost;
     this.cooldowns[spellId] = spell.cooldown;
 
@@ -79,7 +86,7 @@ export class SpellSystem {
   }
 
   private castChainLightning(target: THREE.Vector3, playerPosition: THREE.Vector3, state: GameRuntimeState) {
-    const firstTarget = this.enemySystem.findClosest(target, 12);
+    const firstTarget = this.enemySystem.findClosest(target, 12, new Set(), (enemy) => this.callbacks.canAffectEnemy(enemy));
     if (!firstTarget) {
       this.effects.createShockwave(target, 0x83dfff, 3.5);
       return;
@@ -98,12 +105,12 @@ export class SpellSystem {
       this.enemySystem.damageEnemy(current, damage, state);
       origin = enemyPosition;
       damage *= 0.82;
-      current = this.enemySystem.findClosest(origin, 18, struck);
+      current = this.enemySystem.findClosest(origin, 18, struck, (enemy) => this.callbacks.canAffectEnemy(enemy));
     }
   }
 
   private castLightningBolt(target: THREE.Vector3, state: GameRuntimeState) {
-    const primary = this.enemySystem.findClosest(target, 7);
+    const primary = this.enemySystem.findClosest(target, 7, new Set(), (enemy) => this.callbacks.canAffectEnemy(enemy));
     const impact = primary ? primary.group.position.clone() : target.clone();
     impact.y = 0;
 
@@ -116,6 +123,9 @@ export class SpellSystem {
 
     this.enemySystem.forEach((enemy) => {
       if (enemy === primary) {
+        return;
+      }
+      if (!this.callbacks.canAffectEnemy(enemy)) {
         return;
       }
 

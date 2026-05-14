@@ -24,6 +24,7 @@ export type EnemyState = {
   speed: number;
   touchCooldown: number;
   flashTimer: number;
+  visibilityHintTimer: number;
   stallTimer: number;
   navigationMode: EnemyNavigationMode;
 };

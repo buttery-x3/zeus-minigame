@@ -21,12 +21,14 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Mana starts at `100`.
 - Mana regenerates over time and gains a small bump from kills.
 - Movement is click/hold-to-move on the `X/Z` ground plane.
+- Movement commands require known terrain: Zeus can move to previously discovered walkable ground even when it is no longer currently visible.
 - Vitals, position, status, abilities, and diagnostics are DOM windows that can be moved when unlocked.
 
 ## Spells
 
 - Chain Lightning targets an enemy near the clicked area, then jumps to nearby enemies with decaying damage.
 - Lightning Bolt strikes near the clicked area, deals high single-target damage, and splashes nearby enemies.
+- Spells require current visibility and light at the target point. Casts into blocker shadows, undiscovered terrain, or remembered darkness are rejected before spending mana or cooldown.
 - Spells use explicit mana costs, cooldowns, and targeting ranges from `src/config.ts`.
 
 ## Enemies
@@ -36,6 +38,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Ranged, retreating, special-goal, and future tactical enemy intents are scaffolded but not active yet.
 - Waves accelerate spawning over time.
 - Enemy health bars default to smart visibility: recently damaged enemies, enemies near the cursor, and wounded enemies close to Zeus are shown. The pause menu and `V` key can switch them to always visible.
+- Enemy meshes respect world visibility. Hidden enemies continue simulating, while recently damaged hidden enemies can leave a short health-bar hint.
 - Enemy-enemy collision is intentionally out of scope for the current prototype.
 
 ## World
@@ -43,3 +46,5 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - The world is a deterministic grid over the `X/Z` plane.
 - Terrain cells currently include floor, scarred, charged, and reserved blocker cells.
 - Reserved blockers block movement and are used by player/enemy pathfinding.
+- Gameplay visibility is tracked separately from Three.js render lighting. Zeus has a world light radius with blocker-aware field of view, per-cell light falloff, permanent discovered memory, and void treatment for undiscovered cells.
+- Discovered terrain remains visible as dim memory when it leaves current line of sight, but active details and actors require current visibility.
