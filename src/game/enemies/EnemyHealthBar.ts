@@ -15,7 +15,6 @@ type EnemyHealthBarUpdate = {
   camera: THREE.Camera;
   dt: number;
   mode: EnemyHealthBarVisibilityMode;
-  revealAll: boolean;
 };
 
 export class EnemyHealthBar {
@@ -50,10 +49,7 @@ export class EnemyHealthBar {
     this.object.position.set(enemy.group.position.x, enemy.group.position.y + BAR_OFFSET_Y, enemy.group.position.z);
     this.object.quaternion.copy(params.camera.quaternion);
 
-    this.object.visible =
-      params.revealAll ||
-      params.mode === "always" ||
-      (params.mode === "smart" && this.smartVisibleTimer > 0 && this.healthRatio < 1);
+    this.object.visible = params.mode === "always" || (params.mode === "smart" && this.smartVisibleTimer > 0 && this.healthRatio < 1);
 
     return this.object.visible;
   }

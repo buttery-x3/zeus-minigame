@@ -45,6 +45,10 @@ export class GameUi {
     this.toolbar.setPaused(paused);
   }
 
+  setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {
+    this.pauseMenu.setEnemyHealthBarMode(mode);
+  }
+
   toggleDiagnostics() {
     this.diagnostics.toggle();
     this.toolbar.setDiagnosticsOpen(this.diagnostics.isOpen());

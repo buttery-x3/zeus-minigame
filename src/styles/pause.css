@@ -47,9 +47,9 @@
 
 .pause-menu__segmented {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   overflow: hidden;
-  width: min(100%, 268px);
+  width: min(100%, 198px);
   border: 1px solid rgb(116 218 237 / 34%);
   border-radius: 7px;
   background: rgb(8 15 16 / 70%);

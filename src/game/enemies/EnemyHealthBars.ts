@@ -6,7 +6,6 @@ type EnemyHealthBarsUpdate = {
   camera: THREE.Camera;
   dt: number;
   mode: EnemyHealthBarVisibilityMode;
-  revealAll: boolean;
 };
 
 export class EnemyHealthBars {

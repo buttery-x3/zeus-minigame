@@ -49,9 +49,7 @@ export class ZeusGame {
     resume: () => this.setPaused(false),
     togglePause: () => this.setPaused(!this.state.paused),
     enemyHealthBarMode: this.enemyHealthBarMode,
-    setEnemyHealthBarMode: (mode) => {
-      this.enemyHealthBarMode = mode;
-    },
+    setEnemyHealthBarMode: (mode) => this.setEnemyHealthBarMode(mode),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(
@@ -82,6 +80,7 @@ export class ZeusGame {
     restart: () => this.restart(),
     handleEscape: () => this.handleEscape(),
     toggleDiagnostics: () => this.ui.toggleDiagnostics(),
+    toggleEnemyHealthBarMode: () => this.toggleEnemyHealthBarMode(),
   });
 
   private state = createInitialState();
@@ -124,7 +123,6 @@ export class ZeusGame {
       ...this.diagnostics.get(this.state),
       enemyHealthBars: {
         mode: this.enemyHealthBarMode,
-        revealAll: this.input.isEnemyHealthRevealHeld(),
         ...this.enemies.getHealthBarDiagnostics(),
       },
     };
@@ -164,7 +162,7 @@ export class ZeusGame {
 
     if (this.state.gameOver || this.state.paused) {
       this.profiler.measure("enemyHealthBars", () =>
-        this.enemies.updateHealthBars(0, this.scene.camera, this.enemyHealthBarMode, this.input.isEnemyHealthRevealHeld()),
+        this.enemies.updateHealthBars(0, this.scene.camera, this.enemyHealthBarMode),
       );
       this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
       if (this.state.gameOver) {
@@ -179,7 +177,7 @@ export class ZeusGame {
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("enemyHealthBars", () =>
-      this.enemies.updateHealthBars(dt, this.scene.camera, this.enemyHealthBarMode, this.input.isEnemyHealthRevealHeld()),
+      this.enemies.updateHealthBars(dt, this.scene.camera, this.enemyHealthBarMode),
     );
     this.profiler.measure("effects", () => this.effects.update(dt));
     this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
@@ -221,6 +219,15 @@ export class ZeusGame {
       this.spells.cancelTargeting();
     }
     this.ui.setPaused(paused);
+  }
+
+  private setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {
+    this.enemyHealthBarMode = mode;
+    this.ui.setEnemyHealthBarMode(mode);
+  }
+
+  private toggleEnemyHealthBarMode() {
+    this.setEnemyHealthBarMode(this.enemyHealthBarMode === "smart" ? "always" : "smart");
   }
 
 }

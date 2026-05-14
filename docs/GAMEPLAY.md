@@ -11,7 +11,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Press `W`, then left-click a target area to cast Lightning Bolt.
 - Press `Esc` to cancel targeting, pause, or resume depending on the current state.
 - Press backtick or `F3` to toggle diagnostics.
-- Hold `Alt` to reveal all enemy health bars.
+- Press `V` to toggle enemy health bars between smart and always visible.
 - Press `R` after defeat to restart.
 - Use the top-right controls to pause or open diagnostics.
 
@@ -35,7 +35,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - If an enemy cannot sample the flow field, it steers toward the field edge and only requests a budgeted fallback path if it stalls.
 - Ranged, retreating, special-goal, and future tactical enemy intents are scaffolded but not active yet.
 - Waves accelerate spawning over time.
-- Enemy health bars default to smart visibility after damage; the pause menu can switch them to always visible or hidden.
+- Enemy health bars default to smart visibility after damage; the pause menu and `V` key can switch them to always visible.
 - Enemy-enemy collision is intentionally out of scope for the current prototype.
 
 ## World

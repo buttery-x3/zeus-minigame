@@ -13,6 +13,7 @@ type InputCallbacks = {
   restart: () => void;
   handleEscape: () => void;
   toggleDiagnostics: () => void;
+  toggleEnemyHealthBarMode: () => void;
 };
 
 export class GameInput {
@@ -23,7 +24,6 @@ export class GameInput {
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private pressedPointerId: number | null = null;
   private inputMoveLocked = false;
-  private enemyHealthRevealHeld = false;
 
   constructor(
     private readonly camera: THREE.Camera,
@@ -32,8 +32,6 @@ export class GameInput {
     private readonly callbacks: InputCallbacks,
   ) {
     window.addEventListener("keydown", this.handleKeyDown);
-    window.addEventListener("keyup", this.handleKeyUp);
-    window.addEventListener("blur", this.handleBlur);
     window.addEventListener("pointerdown", this.handlePointerDown);
     window.addEventListener("pointermove", this.handlePointerMove);
     window.addEventListener("pointerup", this.handlePointerUp);
@@ -44,14 +42,8 @@ export class GameInput {
     return this.pressedPointerId !== null && !this.callbacks.getCastMode() && !this.inputMoveLocked;
   }
 
-  isEnemyHealthRevealHeld() {
-    return this.enemyHealthRevealHeld;
-  }
-
   dispose() {
     window.removeEventListener("keydown", this.handleKeyDown);
-    window.removeEventListener("keyup", this.handleKeyUp);
-    window.removeEventListener("blur", this.handleBlur);
     window.removeEventListener("pointerdown", this.handlePointerDown);
     window.removeEventListener("pointermove", this.handlePointerMove);
     window.removeEventListener("pointerup", this.handlePointerUp);
@@ -59,11 +51,6 @@ export class GameInput {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent) => {
-    if (isAltKey(event)) {
-      this.enemyHealthRevealHeld = true;
-      return;
-    }
-
     if (event.repeat) {
       return;
     }
@@ -82,23 +69,15 @@ export class GameInput {
       return;
     }
 
-    if (event.key.toLowerCase() === "q") {
+    if (event.key.toLowerCase() === "v") {
+      this.callbacks.toggleEnemyHealthBarMode();
+    } else if (event.key.toLowerCase() === "q") {
       this.callbacks.beginTargeting("chain");
     } else if (event.key.toLowerCase() === "w") {
       this.callbacks.beginTargeting("bolt");
     } else if (event.key.toLowerCase() === "r" && this.callbacks.isGameOver()) {
       this.callbacks.restart();
     }
-  };
-
-  private readonly handleKeyUp = (event: KeyboardEvent) => {
-    if (isAltKey(event)) {
-      this.enemyHealthRevealHeld = false;
-    }
-  };
-
-  private readonly handleBlur = () => {
-    this.enemyHealthRevealHeld = false;
   };
 
   private readonly handlePointerDown = (event: PointerEvent) => {
@@ -148,8 +127,4 @@ export class GameInput {
     this.raycaster.ray.intersectPlane(this.groundPlane, this.pointerWorld);
     this.gridWorld.clampWorld(this.pointerWorld);
   }
-}
-
-function isAltKey(event: KeyboardEvent) {
-  return event.key === "Alt" || event.code === "AltLeft" || event.code === "AltRight";
 }

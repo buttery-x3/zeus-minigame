@@ -25,9 +25,8 @@ export class PauseMenu {
       <div class="pause-menu__setting">
         <span>Enemy HP</span>
         <div class="pause-menu__segmented" role="radiogroup" aria-label="Enemy health bar visibility">
-          <button type="button" data-health-mode="always" role="radio">Always</button>
           <button type="button" data-health-mode="smart" role="radio">Smart</button>
-          <button type="button" data-health-mode="hidden" role="radio">Hidden</button>
+          <button type="button" data-health-mode="always" role="radio">Always</button>
         </div>
       </div>
       <div class="pause-menu__actions">
@@ -66,7 +65,7 @@ export class PauseMenu {
     this.window.setVisible(open);
   }
 
-  private setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {
+  setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {
     for (const button of this.healthModeButtons) {
       const isActive = button.dataset.healthMode === mode;
       button.classList.toggle("pause-menu__segmented-button--active", isActive);

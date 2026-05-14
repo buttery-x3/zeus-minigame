@@ -30,7 +30,7 @@ npm run verify
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
 - Checks the pause menu enemy health bar visibility options.
 - Checks that diagnostics exposes enemy flow-field metrics and that the smoke path does not create a pathfinding call spike.
-- Holds `Alt` to verify enemy health bars reveal every spawned enemy in the default smart mode.
+- Presses `V` to verify enemy health bars toggle between smart and always visible modes.
 - Exercises click movement plus `Q` and `W` targeted casts.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
 - Checks that the WebGL canvas is not blank or visually flat.

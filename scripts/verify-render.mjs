@@ -159,7 +159,7 @@ function verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, phase) {
 }
 
 async function verifyEnemyHealthBarOptions(page) {
-  for (const mode of ["hidden", "always", "smart"]) {
+  for (const mode of ["always", "smart"]) {
     await page.click(`[data-health-mode="${mode}"]`);
     const diagnostics = await readDiagnostics(page);
     if (diagnostics.enemyHealthBars.mode !== mode) {
@@ -238,17 +238,14 @@ async function verifyEnemyHealthBars(page, viewport) {
     throw new Error(`${viewport.name} expected spawned enemy health bars`);
   }
 
-  await page.keyboard.down("Alt");
-  try {
-    await page.waitForFunction(() => {
-      const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
-      return bars?.revealAll && bars.total > 0 && bars.visible === bars.total;
-    });
-  } finally {
-    await page.keyboard.up("Alt");
-  }
+  await page.keyboard.press("KeyV");
+  await page.waitForFunction(() => {
+    const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
+    return bars?.mode === "always" && bars.total > 0 && bars.visible === bars.total;
+  });
 
-  await page.waitForFunction(() => !window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars.revealAll);
+  await page.keyboard.press("KeyV");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars.mode === "smart");
 }
 
 async function exerciseCoreInteractions(page, viewport) {
