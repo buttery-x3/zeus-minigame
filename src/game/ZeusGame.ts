@@ -144,6 +144,7 @@ export class ZeusGame {
     const playerPosition = this.player.object.position;
 
     this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
+    this.profiler.measure("input", () => this.input.update(dt));
     this.profiler.measure("terrain", () => this.terrain.update(playerPosition));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,
@@ -173,7 +174,7 @@ export class ZeusGame {
 
     this.state.mana = Math.min(PLAYER_MAX_MANA, this.state.mana + dt * 8.5);
     this.profiler.measure("spells", () => this.spells.update(dt));
-    this.profiler.measure("player", () => this.player.update(dt, this.input.shouldMoveContinuously(), this.input.pointerWorld));
+    this.profiler.measure("player", () => this.player.update(dt, this.input.consumeMoveRequest(), this.input.pointerWorld));
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("enemyHealthBars", () =>
