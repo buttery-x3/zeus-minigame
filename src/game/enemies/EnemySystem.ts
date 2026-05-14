@@ -12,10 +12,11 @@ import type { GameEffects } from "../../render/GameEffects";
 import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createEnemyModel } from "../../render/meshes";
-import type { EnemyState, GameRuntimeState } from "../../types";
+import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from "../../types";
 import type { GridWorld } from "../../world/GridWorld";
 import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { Profiler } from "../perf/Profiler";
+import { EnemyHealthBars } from "./EnemyHealthBars";
 import { EnemyNavigation } from "./navigation/EnemyNavigation";
 
 type EnemySystemCallbacks = {
@@ -26,9 +27,11 @@ export class EnemySystem {
   private enemies: EnemyState[] = [];
   private enemyId = 0;
   private readonly navigation: EnemyNavigation;
+  private readonly healthBars: EnemyHealthBars;
 
   constructor(
     private readonly group: THREE.Group,
+    healthBarGroup: THREE.Group,
     private readonly collision: CollisionSystem,
     gridWorld: GridWorld,
     profiler: Profiler,
@@ -37,6 +40,7 @@ export class EnemySystem {
     private readonly callbacks: EnemySystemCallbacks,
   ) {
     this.navigation = new EnemyNavigation(gridWorld, collision, profiler);
+    this.healthBars = new EnemyHealthBars(healthBarGroup);
   }
 
   update(dt: number, state: GameRuntimeState, playerPosition: THREE.Vector3) {
@@ -119,6 +123,7 @@ export class EnemySystem {
       enemy.group.removeFromParent();
     }
     this.enemies = [];
+    this.healthBars.clear();
   }
 
   reset(state: GameRuntimeState, playerPosition: THREE.Vector3) {
@@ -130,8 +135,9 @@ export class EnemySystem {
   }
 
   damageEnemy(enemy: EnemyState, amount: number, state: GameRuntimeState) {
-    enemy.hp -= amount;
+    enemy.hp = Math.max(0, enemy.hp - amount);
     enemy.flashTimer = 0.09;
+    this.healthBars.updateHealth(enemy);
 
     if (enemy.hp > 0) {
       return;
@@ -171,6 +177,14 @@ export class EnemySystem {
     }
   }
 
+  updateHealthBars(dt: number, camera: THREE.Camera, mode: EnemyHealthBarVisibilityMode, revealAll: boolean) {
+    this.healthBars.update(this.enemies, { camera, dt, mode, revealAll });
+  }
+
+  getHealthBarDiagnostics() {
+    return this.healthBars.diagnostics();
+  }
+
   private spawn(state: GameRuntimeState, playerPosition: THREE.Vector3, initial = false) {
     const spawnPoint = this.findSpawnPoint(playerPosition, initial);
     if (!spawnPoint) {
@@ -181,7 +195,7 @@ export class EnemySystem {
     group.position.copy(spawnPoint);
     this.group.add(group);
 
-    this.enemies.push({
+    const enemy: EnemyState = {
       id: this.enemyId,
       group,
       body,
@@ -194,7 +208,10 @@ export class EnemySystem {
       flashTimer: 0,
       stallTimer: 0,
       navigationMode: "direct",
-    });
+    };
+
+    this.enemies.push(enemy);
+    this.healthBars.add(enemy);
     this.enemyId += 1;
     return true;
   }
@@ -225,6 +242,7 @@ export class EnemySystem {
 
   private disposeEnemy(enemy: EnemyState) {
     this.navigation.clearEnemy(enemy);
+    this.healthBars.remove(enemy);
     disposeObject3D(enemy.group, { preserveMaterials: Object.values(this.materials) });
   }
 }

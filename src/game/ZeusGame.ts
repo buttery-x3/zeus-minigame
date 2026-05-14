@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import {
+  DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE,
   INITIAL_NEXT_WAVE_AT,
   INITIAL_SPAWN_INTERVAL,
   PLAYER_MAX_HEALTH,
@@ -17,7 +18,7 @@ import { GameScene } from "./scene/GameScene";
 import { SpellSystem } from "./spells/SpellSystem";
 import { TargetingRenderer } from "./spells/TargetingRenderer";
 import { TerrainSystem } from "./terrain/TerrainSystem";
-import type { GameRuntimeState } from "../types";
+import type { EnemyHealthBarVisibilityMode, GameRuntimeState } from "../types";
 import { GameEffects } from "../render/GameEffects";
 import { createGameMaterials } from "../render/materials";
 import { GameUi } from "../ui/GameUi";
@@ -33,6 +34,7 @@ export class ZeusGame {
     terrain: new THREE.Group(),
     blockers: new THREE.Group(),
     enemies: new THREE.Group(),
+    enemyHealthBars: new THREE.Group(),
     effects: new THREE.Group(),
     targeting: new THREE.Group(),
   };
@@ -42,14 +44,28 @@ export class ZeusGame {
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
   private readonly diagnostics = new GameDiagnostics(this.scene, this.gridWorld, this.collision, this.player, this.profiler);
   private readonly cameraRig = new CameraRig(this.scene.camera, this.scene.renderer);
+  private enemyHealthBarMode: EnemyHealthBarVisibilityMode = DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE;
   private readonly ui = new GameUi({
     resume: () => this.setPaused(false),
     togglePause: () => this.setPaused(!this.state.paused),
+    enemyHealthBarMode: this.enemyHealthBarMode,
+    setEnemyHealthBarMode: (mode) => {
+      this.enemyHealthBarMode = mode;
+    },
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
-  private readonly enemies = new EnemySystem(this.groups.enemies, this.collision, this.gridWorld, this.profiler, this.materials, this.effects, {
-    damagePlayer: (amount) => this.damagePlayer(amount),
-  });
+  private readonly enemies = new EnemySystem(
+    this.groups.enemies,
+    this.groups.enemyHealthBars,
+    this.collision,
+    this.gridWorld,
+    this.profiler,
+    this.materials,
+    this.effects,
+    {
+      damagePlayer: (amount) => this.damagePlayer(amount),
+    },
+  );
   private readonly spells = new SpellSystem(this.effects, this.enemies, {
     invalidCast: () => this.player.flash(0x657172),
   });
@@ -77,6 +93,7 @@ export class ZeusGame {
       terrain: this.groups.terrain,
       blockers: this.groups.blockers,
       enemies: this.groups.enemies,
+      enemyHealthBars: this.groups.enemyHealthBars,
       effects: this.groups.effects,
       targeting: this.groups.targeting,
       player: this.player.object,
@@ -103,7 +120,14 @@ export class ZeusGame {
   }
 
   getDiagnostics() {
-    return this.diagnostics.get(this.state);
+    return {
+      ...this.diagnostics.get(this.state),
+      enemyHealthBars: {
+        mode: this.enemyHealthBarMode,
+        revealAll: this.input.isEnemyHealthRevealHeld(),
+        ...this.enemies.getHealthBarDiagnostics(),
+      },
+    };
   }
 
   private readonly tick = (time: number) => {
@@ -139,6 +163,9 @@ export class ZeusGame {
     }));
 
     if (this.state.gameOver || this.state.paused) {
+      this.profiler.measure("enemyHealthBars", () =>
+        this.enemies.updateHealthBars(0, this.scene.camera, this.enemyHealthBarMode, this.input.isEnemyHealthRevealHeld()),
+      );
       this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
       if (this.state.gameOver) {
         this.profiler.measure("effects", () => this.effects.update(dt));
@@ -151,6 +178,9 @@ export class ZeusGame {
     this.profiler.measure("player", () => this.player.update(dt, this.input.shouldMoveContinuously(), this.input.pointerWorld));
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
+    this.profiler.measure("enemyHealthBars", () =>
+      this.enemies.updateHealthBars(dt, this.scene.camera, this.enemyHealthBarMode, this.input.isEnemyHealthRevealHeld()),
+    );
     this.profiler.measure("effects", () => this.effects.update(dt));
     this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
   }

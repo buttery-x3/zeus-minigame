@@ -18,6 +18,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/collision`: blocker occupancy, grid linecasts, Theta* individual pathfinding, and movement collision helpers.
 - `src/game/diagnostics/GameDiagnostics.ts`: dev/test diagnostics snapshot and world-to-screen probes.
 - `src/game/enemies/EnemySystem.ts`: enemy spawning, movement, contact damage, kill handling, and wave spawn timing.
+- `src/game/enemies/EnemyHealthBars.ts`: in-world enemy health bar lifecycle, visibility modes, and diagnostics.
 - `src/game/enemies/navigation`: hybrid enemy navigation with direct chase, shared flow fields, acquisition steering, typed future intents, and a budgeted fallback path queue.
 - `src/game/hud/HudPresenter.ts`: maps gameplay state into the DOM HUD.
 - `src/game/input/GameInput.ts`: pointer/keyboard input and ground-plane raycasting.

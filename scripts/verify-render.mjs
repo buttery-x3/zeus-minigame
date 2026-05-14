@@ -60,6 +60,7 @@ async function verifyInBrowser() {
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
       await verifyBlockerNavigation(page, viewport);
+      await verifyEnemyHealthBars(page, viewport);
       await verifyWindowUi(page);
       await exerciseCoreInteractions(page, viewport);
 
@@ -115,6 +116,8 @@ async function verifyWindowUi(page) {
     throw new Error("Pause toolbar button did not pause the game");
   }
 
+  await verifyEnemyHealthBarOptions(page);
+
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
   diagnostics = await readDiagnostics(page);
@@ -142,6 +145,16 @@ async function verifyWindowUi(page) {
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
+}
+
+async function verifyEnemyHealthBarOptions(page) {
+  for (const mode of ["hidden", "always", "smart"]) {
+    await page.click(`[data-health-mode="${mode}"]`);
+    const diagnostics = await readDiagnostics(page);
+    if (diagnostics.enemyHealthBars.mode !== mode) {
+      throw new Error(`Enemy health bar mode button did not select ${mode}`);
+    }
+  }
 }
 
 async function verifyCameraRigStability(page, viewport) {
@@ -200,6 +213,31 @@ async function verifyBlockerNavigation(page, viewport) {
   if (groundDistance(moveTarget, blocker.world) > 10) {
     throw new Error(`${viewport.name} blocker navigation target was not near clicked blocker edge`);
   }
+}
+
+async function verifyEnemyHealthBars(page, viewport) {
+  const before = await readDiagnostics(page);
+  if (!before.enemyHealthBars) {
+    throw new Error(`${viewport.name} missing enemy health bar diagnostics`);
+  }
+  if (before.enemyHealthBars.mode !== "smart") {
+    throw new Error(`${viewport.name} expected smart enemy health bar mode by default`);
+  }
+  if (before.enemyHealthBars.total < 1) {
+    throw new Error(`${viewport.name} expected spawned enemy health bars`);
+  }
+
+  await page.keyboard.down("Alt");
+  try {
+    await page.waitForFunction(() => {
+      const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
+      return bars?.revealAll && bars.total > 0 && bars.visible === bars.total;
+    });
+  } finally {
+    await page.keyboard.up("Alt");
+  }
+
+  await page.waitForFunction(() => !window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars.revealAll);
 }
 
 async function exerciseCoreInteractions(page, viewport) {

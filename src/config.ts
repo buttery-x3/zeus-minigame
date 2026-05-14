@@ -1,4 +1,4 @@
-import type { SpellConfig, SpellId } from "./types";
+import type { EnemyHealthBarVisibilityMode, SpellConfig, SpellId } from "./types";
 
 export const TILE_SIZE = 4;
 export const WORLD_CELLS = 180;
@@ -18,6 +18,7 @@ export const PATHFINDING_MAX_ITERATIONS = 900;
 export const ENEMY_FLOW_FIELD_RADIUS_CELLS = 24;
 export const ENEMY_FALLBACK_PATH_BUDGET_MS = 1.8;
 export const ENEMY_STALL_FALLBACK_SECONDS = 0.7;
+export const DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE: EnemyHealthBarVisibilityMode = "smart";
 
 export const SPELLS: Record<SpellId, SpellConfig> = {
   chain: {
