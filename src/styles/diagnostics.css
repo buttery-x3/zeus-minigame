@@ -1,0 +1,61 @@
+.diagnostics-window .game-window__content {
+  padding: 10px 12px 12px;
+}
+
+.diagnostics {
+  display: grid;
+  gap: 10px;
+}
+
+.diagnostics__hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #f4fffb;
+}
+
+.diagnostics__hero span {
+  min-width: 48px;
+  font-size: 30px;
+  font-weight: 850;
+}
+
+.diagnostics__hero small {
+  color: #8db9b7;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.diagnostics__table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #b7d5d2;
+  font-size: 12px;
+}
+
+.diagnostics__table th,
+.diagnostics__table td {
+  padding: 4px 0;
+  border-top: 1px solid rgb(160 187 178 / 12%);
+}
+
+.diagnostics__table th {
+  color: #8fb0ae;
+  font-weight: 650;
+  text-align: left;
+}
+
+.diagnostics__table td {
+  color: #ecfaf7;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.diagnostics__path {
+  padding-top: 8px;
+  border-top: 1px solid rgb(160 187 178 / 16%);
+  color: #9fc9c6;
+  font-size: 11px;
+  line-height: 1.45;
+}

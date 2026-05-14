@@ -1,0 +1,51 @@
+.pause-window {
+  text-align: center;
+}
+
+.pause-menu {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  padding: 4px 0 8px;
+}
+
+.pause-menu__mark {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgb(121 240 204 / 64%);
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent 34%, #79f0cc 35% 43%, transparent 44% 56%, #79f0cc 57% 65%, transparent 66%),
+    rgb(121 240 204 / 9%);
+  box-shadow: 0 0 28px rgb(121 240 204 / 22%);
+}
+
+.pause-menu h2 {
+  margin: 0;
+  color: #f2fbf8;
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.pause-menu__actions {
+  display: flex;
+  gap: 10px;
+}
+
+.pause-menu button {
+  min-width: 118px;
+  height: 38px;
+  border: 1px solid rgb(116 218 237 / 42%);
+  border-radius: 7px;
+  background: rgb(15 28 30 / 82%);
+  color: #e8fbf8;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.pause-menu button:hover {
+  border-color: #79f0cc;
+  background: rgb(26 50 52 / 88%);
+}

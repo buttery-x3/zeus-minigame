@@ -1,0 +1,14 @@
+@media (max-width: 680px) {
+  .hud__status {
+    font-size: 16px;
+  }
+
+  .ui-toolbar {
+    top: 14px;
+    right: 14px;
+  }
+
+  .game-window__titlebar {
+    height: 28px;
+  }
+}

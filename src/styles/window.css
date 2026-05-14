@@ -1,0 +1,132 @@
+.ui-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  color: #d7eef1;
+}
+
+.ui-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  background:
+    radial-gradient(circle at 50% 35%, rgb(92 193 255 / 11%), transparent 36%),
+    rgb(4 8 9 / 62%);
+  backdrop-filter: blur(3px);
+}
+
+.ui-modal-backdrop[hidden],
+.game-window[hidden] {
+  display: none;
+}
+
+.game-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgb(154 203 202 / 24%);
+  background:
+    linear-gradient(180deg, rgb(18 30 31 / 92%), rgb(6 10 10 / 86%)),
+    #09100f;
+  box-shadow:
+    0 18px 46px rgb(0 0 0 / 42%),
+    inset 0 1px 0 rgb(255 255 255 / 8%);
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+}
+
+.game-window::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, #63e7d0, #72c7ff, #ffe27a);
+  opacity: 0.8;
+}
+
+.game-window__titlebar {
+  display: flex;
+  height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 11px;
+  cursor: grab;
+  background: rgb(255 255 255 / 4%);
+  color: #b9d8d5;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.game-window--locked .game-window__titlebar {
+  cursor: default;
+}
+
+.game-window__actions {
+  display: flex;
+  gap: 5px;
+}
+
+.game-window__action--close i::before,
+.game-window__action--close i::after {
+  position: absolute;
+  top: 6px;
+  left: 1px;
+  width: 12px;
+  height: 2px;
+  border-radius: 2px;
+  content: "";
+  background: #f1fbf9;
+}
+
+.game-window__action--close i::before {
+  transform: rotate(45deg);
+}
+
+.game-window__action--close i::after {
+  transform: rotate(-45deg);
+}
+
+.game-window__action--lock i::before {
+  position: absolute;
+  left: 2px;
+  bottom: 1px;
+  width: 10px;
+  height: 7px;
+  border-radius: 2px;
+  content: "";
+  background: #d8f6f3;
+}
+
+.game-window__action--lock i::after {
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  width: 6px;
+  height: 7px;
+  border: 2px solid #d8f6f3;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  content: "";
+}
+
+.game-window--locked .game-window__action--lock {
+  border-color: rgb(255 226 122 / 66%);
+  color: #ffe27a;
+}
+
+.game-window--locked .game-window__action--lock i::before {
+  background: #ffe27a;
+}
+
+.game-window--locked .game-window__action--lock i::after {
+  border-color: #ffe27a;
+}
+
+.game-window__content {
+  padding: 12px;
+}
