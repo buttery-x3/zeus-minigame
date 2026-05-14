@@ -46,5 +46,5 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - The world is a deterministic grid over the `X/Z` plane.
 - Terrain cells currently include floor, scarred, charged, and reserved blocker cells.
 - Reserved blockers block movement and are used by player/enemy pathfinding.
-- Gameplay visibility is tracked separately from Three.js render lighting. Zeus has a world light radius with blocker-aware field of view, per-cell light falloff, permanent discovered memory, and void treatment for undiscovered cells.
-- Discovered terrain remains visible as dim memory when it leaves current line of sight, but active details and actors require current visibility.
+- Gameplay visibility is tracked separately from Three.js render lighting. Zeus has a world light radius with blocker-aware field of view, per-cell light falloff, permanent discovered navigation memory, and void treatment for unlit cells.
+- Discovered terrain outside all current light goes dark again. Discovered terrain only remains dimly readable when it is inside the current light radius but hidden by blocker line of sight; active details and actors require direct current visibility.

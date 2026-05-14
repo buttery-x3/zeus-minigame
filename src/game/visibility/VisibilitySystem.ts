@@ -12,6 +12,7 @@ export type VisibilityCell = {
   discovered: boolean;
   visible: boolean;
   light: number;
+  lightReach: number;
   memoryLight: number;
   lastSeenAt: number;
 };
@@ -50,9 +51,13 @@ export class VisibilitySystem {
   private readonly visible: Uint8Array;
   private readonly discovered: Uint8Array;
   private readonly light: Float32Array;
+  private readonly lightReach: Float32Array;
   private readonly memoryLight: Float32Array;
   private readonly lastSeenAt: Float32Array;
   private visibleCount = 0;
+  private lightReachCount = 0;
+  private occludedMemoryCount = 0;
+  private discoveredUnlitCount = 0;
   private discoveredCount = 0;
   private version = 0;
   private lastComputeMs = 0;
@@ -64,6 +69,7 @@ export class VisibilitySystem {
     this.visible = new Uint8Array(cellCount);
     this.discovered = new Uint8Array(cellCount);
     this.light = new Float32Array(cellCount);
+    this.lightReach = new Float32Array(cellCount);
     this.memoryLight = new Float32Array(cellCount);
     this.lastSeenAt = new Float32Array(cellCount);
   }
@@ -80,19 +86,23 @@ export class VisibilitySystem {
     this.lastSourceCell = sourceCell;
     this.visible.fill(0);
     this.light.fill(0);
+    this.lightReach.fill(0);
     this.visibleCount = 0;
+    this.lightReachCount = 0;
+    this.occludedMemoryCount = 0;
+    this.discoveredUnlitCount = 0;
 
-    this.applyLightSource(
-      {
-        cellX: sourceCell.x,
-        cellZ: sourceCell.z,
-        innerRadiusCells: this.innerRadiusCells,
-        outerRadiusCells: this.outerRadiusCells,
-        intensity: 1,
-        blocksByLos: true,
-      },
-      nowSeconds,
-    );
+    const source = {
+      cellX: sourceCell.x,
+      cellZ: sourceCell.z,
+      innerRadiusCells: this.innerRadiusCells,
+      outerRadiusCells: this.outerRadiusCells,
+      intensity: 1,
+      blocksByLos: true,
+    };
+    this.applyLightReach(source);
+    this.applyLightSource(source, nowSeconds);
+    this.updateMemoryCounts();
 
     this.version += 1;
     this.lastComputeMs = performance.now() - startedAt;
@@ -107,9 +117,13 @@ export class VisibilitySystem {
     this.visible.fill(0);
     this.discovered.fill(0);
     this.light.fill(0);
+    this.lightReach.fill(0);
     this.memoryLight.fill(0);
     this.lastSeenAt.fill(0);
     this.visibleCount = 0;
+    this.lightReachCount = 0;
+    this.occludedMemoryCount = 0;
+    this.discoveredUnlitCount = 0;
     this.discoveredCount = 0;
     this.lastComputeMs = 0;
     this.lastSourceCellKey = "";
@@ -132,6 +146,11 @@ export class VisibilitySystem {
     return this.getLightCell(cell.x, cell.z);
   }
 
+  getLightReachWorld(worldX: number, worldZ: number) {
+    const cell = this.gridWorld.worldToCell(worldX, worldZ);
+    return this.getLightReachCell(cell.x, cell.z);
+  }
+
   isDiscoveredCell(cellX: number, cellZ: number) {
     const index = this.indexIfInBounds(cellX, cellZ);
     return index !== -1 && this.discovered[index] === 1;
@@ -147,6 +166,11 @@ export class VisibilitySystem {
     return index === -1 ? 0 : this.light[index];
   }
 
+  getLightReachCell(cellX: number, cellZ: number) {
+    const index = this.indexIfInBounds(cellX, cellZ);
+    return index === -1 ? 0 : this.lightReach[index];
+  }
+
   getMemoryLightCell(cellX: number, cellZ: number) {
     const index = this.indexIfInBounds(cellX, cellZ);
     return index === -1 ? 0 : this.memoryLight[index];
@@ -155,13 +179,14 @@ export class VisibilitySystem {
   getCell(cellX: number, cellZ: number): VisibilityCell {
     const index = this.indexIfInBounds(cellX, cellZ);
     if (index === -1) {
-      return { discovered: false, visible: false, light: 0, memoryLight: 0, lastSeenAt: 0 };
+      return { discovered: false, visible: false, light: 0, lightReach: 0, memoryLight: 0, lastSeenAt: 0 };
     }
 
     return {
       discovered: this.discovered[index] === 1,
       visible: this.visible[index] === 1,
       light: this.light[index],
+      lightReach: this.lightReach[index],
       memoryLight: this.memoryLight[index],
       lastSeenAt: this.lastSeenAt[index],
     };
@@ -174,10 +199,39 @@ export class VisibilitySystem {
       innerRadiusCells: this.innerRadiusCells,
       outerRadiusCells: this.outerRadiusCells,
       visibleCells: this.visibleCount,
+      lightReachCells: this.lightReachCount,
       discoveredCells: this.discoveredCount,
+      occludedMemoryCells: this.occludedMemoryCount,
+      discoveredUnlitCells: this.discoveredUnlitCount,
       lastComputeMs: this.lastComputeMs,
       shadowSample: this.findShadowSample(),
     };
+  }
+
+  private applyLightReach(source: VisibilityLightSource) {
+    for (let z = source.cellZ - source.outerRadiusCells; z <= source.cellZ + source.outerRadiusCells; z += 1) {
+      for (let x = source.cellX - source.outerRadiusCells; x <= source.cellX + source.outerRadiusCells; x += 1) {
+        if (!this.distanceWithinLight(source, x, z)) {
+          continue;
+        }
+
+        const index = this.indexIfInBounds(x, z);
+        if (index === -1) {
+          continue;
+        }
+
+        const distanceWorld = distance2D(source.cellX, source.cellZ, x, z) * TILE_SIZE;
+        const lightReach = this.lightAtDistance(distanceWorld, source);
+        if (lightReach <= VISIBILITY_LIGHT_EPSILON) {
+          continue;
+        }
+
+        if (this.lightReach[index] <= VISIBILITY_LIGHT_EPSILON) {
+          this.lightReachCount += 1;
+        }
+        this.lightReach[index] = Math.max(this.lightReach[index], lightReach);
+      }
+    }
   }
 
   private applyLightSource(source: VisibilityLightSource, nowSeconds: number) {
@@ -276,6 +330,20 @@ export class VisibilitySystem {
     this.light[index] = Math.max(this.light[index], light);
     this.memoryLight[index] = Math.max(this.memoryLight[index], DISCOVERED_MEMORY_LIGHT);
     this.lastSeenAt[index] = nowSeconds;
+  }
+
+  private updateMemoryCounts() {
+    for (let i = 0; i < this.discovered.length; i += 1) {
+      if (this.discovered[i] === 0) {
+        continue;
+      }
+
+      if (this.lightReach[i] <= VISIBILITY_LIGHT_EPSILON) {
+        this.discoveredUnlitCount += 1;
+      } else if (this.visible[i] === 0) {
+        this.occludedMemoryCount += 1;
+      }
+    }
   }
 
   private lightAtDistance(distanceWorld: number, source: VisibilityLightSource) {

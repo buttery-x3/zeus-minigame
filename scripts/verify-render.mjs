@@ -122,6 +122,9 @@ async function verifyVisibilitySystem(page, viewport) {
   if (start.visibility.discoveredCells < start.visibility.visibleCells) {
     throw new Error(`${viewport.name} discovered cells should include current visible cells: ${JSON.stringify(start.visibility)}`);
   }
+  if (start.visibility.lightReachCells < start.visibility.visibleCells) {
+    throw new Error(`${viewport.name} light reach should include current visible cells: ${JSON.stringify(start.visibility)}`);
+  }
   if (start.visibility.outerRadiusCells <= start.visibility.innerRadiusCells) {
     throw new Error(`${viewport.name} invalid visibility radii: ${JSON.stringify(start.visibility)}`);
   }
@@ -133,20 +136,42 @@ async function verifyVisibilitySystem(page, viewport) {
   await verifyUndiscoveredMoveRejected(page, viewport, start);
 
   const beforeMove = await readDiagnostics(page);
-  await clickVisibleMoveCell(page, viewport, 0.74, 0.62);
-  await page.waitForTimeout(900);
-  const afterMove = await readDiagnostics(page);
+  let afterMove = beforeMove;
+  for (let step = 0; step < 5; step += 1) {
+    await clickVisibleMoveCell(page, viewport, 0.74, 0.62);
+    await page.waitForTimeout(850);
+    afterMove = await readDiagnostics(page);
+    if (afterMove.visibilitySamples.discoveredUnlitCell) {
+      break;
+    }
+  }
 
   if (
     afterMove.visibility.discoveredCells <= beforeMove.visibility.discoveredCells &&
-    !afterMove.visibilitySamples.nearestDiscoveredHiddenCell
+    !afterMove.visibilitySamples.discoveredUnlitCell
   ) {
     throw new Error(
       `${viewport.name} discovered cell count did not grow after exploration: before=${beforeMove.visibility.discoveredCells}, after=${afterMove.visibility.discoveredCells}`,
     );
   }
-  if (!afterMove.visibilitySamples.nearestDiscoveredHiddenCell) {
-    throw new Error(`${viewport.name} expected movement to leave remembered terrain outside current visibility`);
+  if (!afterMove.visibilitySamples.discoveredUnlitCell || afterMove.visibility.discoveredUnlitCells < 1) {
+    throw new Error(`${viewport.name} expected movement to leave discovered terrain outside current light`);
+  }
+
+  const unlit = afterMove.visibilitySamples.discoveredUnlitCell.visibility;
+  if (!unlit.discovered || unlit.visible || unlit.lightReach > 0.001) {
+    throw new Error(`${viewport.name} discovered-unlit sample had wrong visibility state: ${JSON.stringify(unlit)}`);
+  }
+
+  const blockedMemory = afterMove.visibilitySamples.blockedMemoryCell;
+  if (afterMove.visibility.occludedMemoryCells > 0 && !blockedMemory) {
+    throw new Error(`${viewport.name} visibility diagnostics counted blocked memory without exposing a sample`);
+  }
+  if (blockedMemory) {
+    const memory = blockedMemory.visibility;
+    if (!memory.discovered || memory.visible || memory.lightReach <= 0.001) {
+      throw new Error(`${viewport.name} blocked-memory sample had wrong visibility state: ${JSON.stringify(memory)}`);
+    }
   }
 }
 

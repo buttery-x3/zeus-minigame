@@ -27,7 +27,7 @@ npm run verify
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
-- Checks gameplay visibility diagnostics, blocker shadow samples, hidden-cast rejection, undiscovered movement rejection, and remembered terrain after exploration.
+- Checks gameplay visibility diagnostics, blocker shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, and blocker-occluded memory after exploration.
 - Clicks a visible blocker and checks that navigation resolves to reachable edge space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
 - Checks the pause menu enemy health bar visibility options and Quick Cast toggle.

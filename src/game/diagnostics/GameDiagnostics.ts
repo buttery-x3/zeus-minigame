@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PLAYER_COLLISION_RADIUS } from "../../config";
+import { PLAYER_COLLISION_RADIUS, VISIBILITY_LIGHT_EPSILON } from "../../config";
 import type { GameRuntimeState } from "../../types";
 import type { GridWorld } from "../../world/GridWorld";
 import type { CollisionSystem } from "../collision/CollisionSystem";
@@ -73,6 +73,19 @@ export class GameDiagnostics {
           28,
           (x, z) => this.visibility.isDiscoveredCell(x, z) && !this.visibility.isVisibleCell(x, z),
         ),
+        blockedMemoryCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          28,
+          (x, z) =>
+            this.visibility.isDiscoveredCell(x, z) &&
+            !this.visibility.isVisibleCell(x, z) &&
+            this.visibility.getLightReachCell(x, z) > VISIBILITY_LIGHT_EPSILON,
+        ),
+        discoveredUnlitCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          36,
+          (x, z) => this.visibility.isDiscoveredCell(x, z) && this.visibility.getLightReachCell(x, z) <= VISIBILITY_LIGHT_EPSILON,
+        ),
       },
       paused: state.paused,
       profiler: this.profiler.snapshot(),
@@ -116,6 +129,7 @@ export class GameDiagnostics {
             cell: { x, z },
             world: [world.x, 0, world.z],
             screen,
+            visibility: this.visibility.getCell(x, z),
           };
         }
       }
@@ -149,6 +163,7 @@ export class GameDiagnostics {
             cell: { x, z },
             world: [world.x, 0, world.z],
             screen,
+            visibility: this.visibility.getCell(x, z),
           };
         }
       }
@@ -176,6 +191,7 @@ export class GameDiagnostics {
       cell,
       world: [world.x, 0, world.z],
       screen,
+      visibility: this.visibility.getCell(cell.x, cell.z),
     };
   }
 
@@ -207,6 +223,7 @@ export class GameDiagnostics {
             cell: { x, z },
             world: [world.x, 0, world.z],
             screen,
+            visibility: this.visibility.getCell(x, z),
           };
         }
       }

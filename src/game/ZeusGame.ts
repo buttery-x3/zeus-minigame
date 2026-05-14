@@ -22,6 +22,7 @@ import { TerrainSystem } from "./terrain/TerrainSystem";
 import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from "../types";
 import { VisibilitySystem } from "./visibility/VisibilitySystem";
 import { GameEffects } from "../render/GameEffects";
+import { VisibilityOverlay } from "../render/VisibilityOverlay";
 import { createGameMaterials } from "../render/materials";
 import { GameUi } from "../ui/GameUi";
 import { GridWorld } from "../world/GridWorld";
@@ -43,6 +44,7 @@ export class ZeusGame {
   };
 
   private readonly scene = new GameScene();
+  private readonly visibilityOverlay = new VisibilityOverlay();
   private readonly effects = new GameEffects(this.groups.effects);
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
   private readonly diagnostics = new GameDiagnostics(
@@ -107,6 +109,7 @@ export class ZeusGame {
     this.scene.mount({
       terrain: this.groups.terrain,
       blockers: this.groups.blockers,
+      visibility: this.visibilityOverlay.object,
       enemies: this.groups.enemies,
       enemyHealthBars: this.groups.enemyHealthBars,
       effects: this.groups.effects,
@@ -132,6 +135,7 @@ export class ZeusGame {
     window.removeEventListener("resize", this.cameraRig.resize);
     this.input.dispose();
     this.ui.remove();
+    this.visibilityOverlay.dispose();
     this.scene.dispose();
   }
 
@@ -178,7 +182,8 @@ export class ZeusGame {
     }
 
     this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
-    this.profiler.measure("terrain", () => this.terrain.update(playerPosition, this.visibility));
+    this.profiler.measure("terrain", () => this.terrain.update(playerPosition));
+    this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, dt));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,
       spells: this.spells.spells,

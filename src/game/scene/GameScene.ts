@@ -6,6 +6,7 @@ import { ShadowRig } from "../../render/ShadowRig";
 type SceneObjects = {
   terrain: THREE.Group;
   blockers: THREE.Group;
+  visibility: THREE.Object3D;
   enemies: THREE.Group;
   enemyHealthBars: THREE.Group;
   effects: THREE.Group;
@@ -29,6 +30,7 @@ export class GameScene {
     this.scene.add(
       objects.terrain,
       objects.blockers,
+      objects.visibility,
       objects.enemies,
       objects.enemyHealthBars,
       objects.effects,
