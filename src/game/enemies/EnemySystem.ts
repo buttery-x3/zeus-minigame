@@ -181,8 +181,14 @@ export class EnemySystem {
     }
   }
 
-  updateHealthBars(dt: number, camera: THREE.Camera, mode: EnemyHealthBarVisibilityMode) {
-    this.healthBars.update(this.enemies, { camera, dt, mode });
+  updateHealthBars(
+    dt: number,
+    camera: THREE.Camera,
+    mode: EnemyHealthBarVisibilityMode,
+    playerPosition: THREE.Vector3,
+    pointerWorld: THREE.Vector3,
+  ) {
+    this.healthBars.update(this.enemies, { camera, dt, mode, playerPosition, pointerWorld });
   }
 
   getHealthBarDiagnostics() {

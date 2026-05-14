@@ -245,7 +245,10 @@ async function verifyEnemyHealthBars(page, viewport) {
   });
 
   await page.keyboard.press("KeyV");
-  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars.mode === "smart");
+  await page.waitForFunction(() => {
+    const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
+    return bars?.mode === "smart" && bars.total > 0 && bars.visible < bars.total;
+  });
 }
 
 async function exerciseCoreInteractions(page, viewport) {

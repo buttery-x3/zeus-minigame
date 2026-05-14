@@ -6,6 +6,8 @@ type EnemyHealthBarsUpdate = {
   camera: THREE.Camera;
   dt: number;
   mode: EnemyHealthBarVisibilityMode;
+  playerPosition: THREE.Vector3;
+  pointerWorld: THREE.Vector3;
 };
 
 export class EnemyHealthBars {

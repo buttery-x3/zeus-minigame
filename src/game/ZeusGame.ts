@@ -162,7 +162,7 @@ export class ZeusGame {
 
     if (this.state.gameOver || this.state.paused) {
       this.profiler.measure("enemyHealthBars", () =>
-        this.enemies.updateHealthBars(0, this.scene.camera, this.enemyHealthBarMode),
+        this.enemies.updateHealthBars(0, this.scene.camera, this.enemyHealthBarMode, playerPosition, this.input.pointerWorld),
       );
       this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
       if (this.state.gameOver) {
@@ -177,7 +177,7 @@ export class ZeusGame {
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("enemyHealthBars", () =>
-      this.enemies.updateHealthBars(dt, this.scene.camera, this.enemyHealthBarMode),
+      this.enemies.updateHealthBars(dt, this.scene.camera, this.enemyHealthBarMode, playerPosition, this.input.pointerWorld),
     );
     this.profiler.measure("effects", () => this.effects.update(dt));
     this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));

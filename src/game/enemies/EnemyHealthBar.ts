@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { clamp } from "../../lib/math";
+import { clamp, distance2D } from "../../lib/math";
 import { disposeObject3D } from "../../render/dispose";
 import type { EnemyHealthBarVisibilityMode, EnemyState } from "../../types";
 
@@ -9,12 +9,16 @@ const BAR_HEIGHT = 0.18;
 const BACK_WIDTH = 2.05;
 const BACK_HEIGHT = 0.34;
 const SMART_VISIBLE_SECONDS = 2.2;
+const SMART_CURSOR_RADIUS = 4.4;
+const SMART_PLAYER_RADIUS = 15;
 const RENDER_ORDER = 40;
 
 type EnemyHealthBarUpdate = {
   camera: THREE.Camera;
   dt: number;
   mode: EnemyHealthBarVisibilityMode;
+  playerPosition: THREE.Vector3;
+  pointerWorld: THREE.Vector3;
 };
 
 export class EnemyHealthBar {
@@ -49,13 +53,38 @@ export class EnemyHealthBar {
     this.object.position.set(enemy.group.position.x, enemy.group.position.y + BAR_OFFSET_Y, enemy.group.position.z);
     this.object.quaternion.copy(params.camera.quaternion);
 
-    this.object.visible = params.mode === "always" || (params.mode === "smart" && this.smartVisibleTimer > 0 && this.healthRatio < 1);
+    this.object.visible = params.mode === "always" || (params.mode === "smart" && this.shouldShowSmart(enemy, params));
 
     return this.object.visible;
   }
 
   dispose() {
     disposeObject3D(this.object);
+  }
+
+  private shouldShowSmart(enemy: EnemyState, params: EnemyHealthBarUpdate) {
+    const isWounded = this.healthRatio < 1;
+    const cursorDistance = distance2D(
+      params.pointerWorld.x,
+      params.pointerWorld.z,
+      enemy.group.position.x,
+      enemy.group.position.z,
+    );
+    if (cursorDistance <= SMART_CURSOR_RADIUS) {
+      return true;
+    }
+
+    if (!isWounded) {
+      return false;
+    }
+
+    const playerDistance = distance2D(
+      params.playerPosition.x,
+      params.playerPosition.z,
+      enemy.group.position.x,
+      enemy.group.position.z,
+    );
+    return this.smartVisibleTimer > 0 || playerDistance <= SMART_PLAYER_RADIUS;
   }
 }
 
