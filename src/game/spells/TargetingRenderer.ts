@@ -15,6 +15,7 @@ export class TargetingRenderer {
     spells: Record<SpellId, SpellConfig>;
     pointerWorld: THREE.Vector3;
     playerPosition: THREE.Vector3;
+    allowMaxRangeTargetSnap: boolean;
     canCastAt: (target: THREE.Vector3) => boolean;
   }) {
     disposeObject3D(this.group);
@@ -27,9 +28,11 @@ export class TargetingRenderer {
 
     this.group.visible = true;
     const spell = params.spells[params.castMode];
-    const target = clampToSpellRange(params.pointerWorld, params.playerPosition, spell.range);
+    const target = params.allowMaxRangeTargetSnap
+      ? clampToSpellRange(params.pointerWorld, params.playerPosition, spell.range)
+      : new THREE.Vector3(params.pointerWorld.x, 0, params.pointerWorld.z);
     const inRange = distance2D(params.playerPosition.x, params.playerPosition.z, params.pointerWorld.x, params.pointerWorld.z) <= spell.range;
-    const color = inRange && params.canCastAt(target) ? spell.color : 0xff5465;
+    const color = (params.allowMaxRangeTargetSnap || inRange) && params.canCastAt(target) ? spell.color : 0xff5465;
 
     const spellRadius = params.castMode === "chain" ? 4.4 : 3.3;
     const rangeRing = createRing(spell.range, color, 0.18);

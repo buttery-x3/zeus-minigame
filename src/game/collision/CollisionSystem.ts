@@ -12,6 +12,10 @@ export type ResolvedPath = PathResult & {
   requestedBlocked: boolean;
 };
 
+type ResolvePathOptions = {
+  canUseDestination?: (destination: THREE.Vector3) => boolean;
+};
+
 export class CollisionSystem {
   constructor(
     private readonly gridWorld: GridWorld,
@@ -34,10 +38,16 @@ export class CollisionSystem {
     return result;
   }
 
-  resolvePathToTarget(start: THREE.Vector3, requestedTarget: THREE.Vector3, radius: number): ResolvedPath | null {
+  resolvePathToTarget(
+    start: THREE.Vector3,
+    requestedTarget: THREE.Vector3,
+    radius: number,
+    options: ResolvePathOptions = {},
+  ): ResolvedPath | null {
     const requested = clampWorldToRadius(this.gridWorld, new THREE.Vector3(requestedTarget.x, 0, requestedTarget.z), radius);
     const requestedBlocked = !this.canOccupy(requested.x, requested.z, radius);
-    const direct = requestedBlocked ? null : this.findPath(start, requested, radius);
+    const canUseDestination = options.canUseDestination ?? (() => true);
+    const direct = requestedBlocked || !canUseDestination(requested) ? null : this.findPath(start, requested, radius);
 
     if (direct) {
       return { ...direct, destination: requested, requestedBlocked };
@@ -46,6 +56,10 @@ export class CollisionSystem {
     for (const candidates of this.findNearbyOpenCandidateRings(requested, radius)) {
       let best: ResolvedPath | null = null;
       for (const candidate of candidates) {
+        if (!canUseDestination(candidate)) {
+          continue;
+        }
+
         const path = this.findPath(start, candidate, radius);
         if (!path) {
           continue;

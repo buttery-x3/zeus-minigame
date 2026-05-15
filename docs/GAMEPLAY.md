@@ -9,6 +9,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Hold or click left mouse to move.
 - Quick Cast is on by default: hold `Q` or `W` to target, then release the key to cast.
 - When Quick Cast is off in the pause menu, press `Q` or `W`, then left-click a target area to cast.
+- Allow Max Range Target Snap is on by default: out-of-range spell aims cast at the spell's max range.
 - Press `Esc` or right-click to cancel targeting. `Esc` also pauses or resumes depending on the current state.
 - Press backtick or `F3` to toggle diagnostics.
 - Press `V` to toggle enemy health bars between smart and always visible.
@@ -22,13 +23,14 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Mana regenerates over time and gains a small bump from kills.
 - Movement is click/hold-to-move on the `X/Z` ground plane.
 - Movement commands require known terrain: Zeus can move to previously discovered walkable ground even when it is no longer currently visible.
-- Vitals, position, status, abilities, and diagnostics are DOM windows that can be moved when unlocked.
+- Vitals, game, status, abilities, and diagnostics are DOM windows. The pause menu's Unlock UI toggle enables their lock controls and movement; it defaults off so transparent HUD panels stay quiet and click-through.
 
 ## Spells
 
 - Chain Lightning targets an enemy near the clicked area, then jumps to nearby enemies with decaying damage.
 - Lightning Bolt strikes near the clicked area, deals high single-target damage, and splashes nearby enemies.
-- Spells require current visibility and light at the target point. Casts into blocker shadows, undiscovered terrain, or remembered darkness are rejected before spending mana or cooldown.
+- Spells require current visibility and light at the resolved target point. Casts into blocker shadows, undiscovered terrain, or remembered darkness are rejected before spending mana or cooldown.
+- When Allow Max Range Target Snap is off, raw out-of-range spell targets are rejected instead of snapping to max range.
 - Spells use explicit mana costs, cooldowns, and targeting ranges from `src/config.ts`.
 
 ## Enemies

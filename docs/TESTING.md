@@ -28,16 +28,18 @@ npm run verify
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Checks gameplay visibility diagnostics, 2x visibility overlay diagnostics, blocker shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark blockers, and blocker-occluded memory after exploration.
-- Clicks a visible blocker and checks that navigation resolves to reachable edge space.
+- Checks that hidden spell targets do not spend cooldown, default out-of-range spell targets snap to max range, and strict mode rejects out-of-range raw targets.
+- Checks that click and held movement commands reject undiscovered terrain.
+- Clicks a visible blocker and checks that navigation resolves to reachable discovered edge space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
-- Checks the pause menu enemy health bar visibility options and Quick Cast toggle.
+- Checks the pause menu enemy health bar visibility options, Quick Cast toggle, and Allow Max Range Target Snap toggle.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
 - Checks that diagnostics exposes enemy flow-field metrics and that the smoke path does not create a pathfinding call spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
 - Checks that the WebGL canvas is not blank or visually flat.
-- Checks that core HUD text and ability buttons exist.
+- Checks that core HUD text and ability buttons exist, including the Unlock UI toggle, locked transparent HUD panels, click-through behavior, gated hover reveal, and radial spell cooldown button state.
 - Saves screenshots into `verify/`.
 
 `verify/` is ignored by git.

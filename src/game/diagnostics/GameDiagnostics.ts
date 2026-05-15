@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PLAYER_COLLISION_RADIUS, VISIBILITY_LIGHT_EPSILON } from "../../config";
+import { PLAYER_COLLISION_RADIUS, SPELLS, TILE_SIZE, VISIBILITY_LIGHT_EPSILON } from "../../config";
 import type { GameRuntimeState } from "../../types";
 import type { GridWorld } from "../../world/GridWorld";
 import type { CollisionSystem } from "../collision/CollisionSystem";
@@ -36,6 +36,7 @@ export class GameDiagnostics {
         navigation: {
           ...this.player.getNavigationDiagnostics(),
           destinationBlocked: !this.collision.canOccupy(this.player.moveTarget.x, this.player.moveTarget.z, PLAYER_COLLISION_RADIUS),
+          destinationDiscovered: this.visibility.isDiscoveredWorld(this.player.moveTarget.x, this.player.moveTarget.z),
           occupiesBlocked: !this.collision.canOccupy(
             this.player.object.position.x,
             this.player.object.position.z,
@@ -61,6 +62,18 @@ export class GameDiagnostics {
           this.player.object.position,
           28,
           (x, z) => !this.visibility.isDiscoveredCell(x, z),
+        ),
+        visibleOutOfChainRangeCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          this.visibility.outerRadiusCells,
+          (x, z) => {
+            const world = this.gridWorld.cellToWorld(x, z);
+            return (
+              this.isDirectVisibleMoveCell(x, z) &&
+              Math.hypot(world.x - this.player.object.position.x, world.z - this.player.object.position.z) > SPELLS.chain.range + TILE_SIZE
+            );
+          },
+          Math.ceil(SPELLS.chain.range / TILE_SIZE) + 1,
         ),
         farUndiscoveredCell: this.findNearestVisibilityCell(
           this.player.object.position,

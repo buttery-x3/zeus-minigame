@@ -8,6 +8,11 @@ import { createPlayerModel } from "../../render/meshes";
 import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { GridWorld } from "../../world/GridWorld";
 
+type MoveTargetOptions = {
+  force?: boolean;
+  canUseDestination?: (destination: THREE.Vector3) => boolean;
+};
+
 export class PlayerController {
   readonly model: ReturnType<typeof createPlayerModel>;
   readonly object: THREE.Group;
@@ -34,11 +39,7 @@ export class PlayerController {
     this.moveMarker.position.set(0, 0.08, 0);
   }
 
-  update(dt: number, shouldFollowPointer: boolean, pointerWorld: THREE.Vector3) {
-    if (shouldFollowPointer) {
-      this.setMoveTarget(pointerWorld.x, pointerWorld.z, false);
-    }
-
+  update(dt: number) {
     const waypoint = this.currentWaypoint();
     if (!waypoint) {
       this.model.aura.rotation.z += dt * 1.6;
@@ -81,7 +82,8 @@ export class PlayerController {
     this.model.aura.rotation.z += dt * 1.6;
   }
 
-  setMoveTarget(x: number, z: number, force = true) {
+  setMoveTarget(x: number, z: number, options: MoveTargetOptions = {}) {
+    const force = options.force ?? true;
     const requestedTarget = new THREE.Vector3(clamp(x, -WORLD_HALF + 2, WORLD_HALF - 2), 0, clamp(z, -WORLD_HALF + 2, WORLD_HALF - 2));
     const requestedCell = this.gridWorld.worldToCell(requestedTarget.x, requestedTarget.z);
     const requestedCellKey = `${requestedCell.x},${requestedCell.z}`;
@@ -90,7 +92,9 @@ export class PlayerController {
       return;
     }
 
-    const resolved = this.collision.resolvePathToTarget(this.object.position, requestedTarget, PLAYER_COLLISION_RADIUS);
+    const resolved = this.collision.resolvePathToTarget(this.object.position, requestedTarget, PLAYER_COLLISION_RADIUS, {
+      canUseDestination: options.canUseDestination,
+    });
     this.lastRequestedCellKey = requestedCellKey;
     this.lastRequestedBlocked = this.gridWorld.isBlockedWorld(requestedTarget.x, requestedTarget.z);
 

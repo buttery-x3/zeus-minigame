@@ -8,6 +8,10 @@ const parsedUrl = new URL(url);
 const port = process.env.VERIFY_PORT ?? (parsedUrl.port || "5173");
 const outputDir = path.resolve(process.env.VERIFY_OUTPUT_DIR ?? "verify");
 const browserPath = await resolveBrowserPath();
+const spellManaCosts = {
+  chain: 22,
+  bolt: 34,
+};
 const viewports = [
   { name: "desktop", width: 1280, height: 720 },
   { name: "mobile", width: 390, height: 844 },
@@ -57,6 +61,7 @@ async function verifyInBrowser() {
       await page.waitForSelector(".hud__stats");
       await page.waitForSelector(".ui-toolbar");
 
+      await verifyHudTransparency(page, viewport);
       await verifyHeldClickTracksCamera(page, viewport);
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
@@ -136,6 +141,7 @@ async function verifyVisibilitySystem(page, viewport) {
   }
 
   await verifyHiddenCastRejected(page, viewport, start);
+  await verifyOutOfRangeCastSnaps(page, viewport);
   await verifyUndiscoveredMoveRejected(page, viewport, start);
 
   const beforeMove = await readDiagnostics(page);
@@ -196,6 +202,7 @@ async function verifyHiddenCastRejected(page, viewport, diagnostics) {
   await waitForSpellReady(page, "chain");
   const before = await readDiagnostics(page);
   await page.mouse.move(shadowed.screen.x, shadowed.screen.y);
+  await releaseSpellKeys(page);
   await page.keyboard.down("KeyQ");
   await waitForCastMode(page, "chain");
   await page.keyboard.up("KeyQ");
@@ -223,6 +230,67 @@ async function verifyUndiscoveredMoveRejected(page, viewport, diagnostics) {
   if (groundDistance(after.player.navigation.moveTarget, before.player.navigation.moveTarget) > 0.25) {
     throw new Error(`${viewport.name} undiscovered terrain accepted a movement command`);
   }
+
+  const beforeHold = await readDiagnostics(page);
+  await page.mouse.move(undiscovered.screen.x, undiscovered.screen.y);
+  await page.mouse.down();
+  await page.waitForTimeout(320);
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const afterHold = await readDiagnostics(page);
+
+  if (groundDistance(afterHold.player.navigation.moveTarget, beforeHold.player.navigation.moveTarget) > 0.25) {
+    throw new Error(`${viewport.name} undiscovered terrain accepted a held movement command`);
+  }
+}
+
+async function verifyOutOfRangeCastSnaps(page, viewport) {
+  if (!(await aimAtOutOfRangeChainTarget(page))) {
+    return;
+  }
+
+  await waitForSpellReady(page, "chain");
+  await releaseSpellKeys(page);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.up("KeyQ");
+  await waitForSpellCooldown(page, "chain");
+}
+
+async function verifyOutOfRangeCastRejected(page, viewport) {
+  if (!(await aimAtOutOfRangeChainTarget(page))) {
+    return;
+  }
+
+  await waitForSpellReady(page, "chain");
+  const before = await readDiagnostics(page);
+  await releaseSpellKeys(page);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.up("KeyQ");
+  await waitForNoCastMode(page);
+  await page.waitForTimeout(120);
+
+  const after = await readDiagnostics(page);
+  if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
+    throw new Error(`${viewport.name} out-of-range raw cast target was not rejected when target snap was disabled`);
+  }
+}
+
+async function aimAtOutOfRangeChainTarget(page) {
+  let diagnostics = await readDiagnostics(page);
+  const outOfRange = diagnostics.visibilitySamples.visibleOutOfChainRangeCell;
+  if (!outOfRange?.screen?.visible) {
+    return false;
+  }
+
+  await page.mouse.move(outOfRange.screen.x, outOfRange.screen.y);
+  await page.waitForTimeout(40);
+  diagnostics = await readDiagnostics(page);
+  if (groundDistance(diagnostics.input.pointerWorld, diagnostics.player.position) <= 44.5) {
+    return false;
+  }
+  return true;
 }
 
 async function verifyHeldClickTracksCamera(page, viewport) {
@@ -255,6 +323,7 @@ async function verifyHeldClickTracksCamera(page, viewport) {
 async function verifyWindowUi(page, viewport) {
   await page.click('[data-ui-action="pause"]');
   await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  await verifyPauseMenuCentered(page, viewport);
 
   let diagnostics = await readDiagnostics(page);
   if (!diagnostics.paused) {
@@ -263,6 +332,7 @@ async function verifyWindowUi(page, viewport) {
 
   await verifyEnemyHealthBarOptions(page);
   await verifyQuickCastOption(page);
+  await verifyMaxRangeTargetSnapOption(page);
 
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
@@ -281,14 +351,202 @@ async function verifyWindowUi(page, viewport) {
   }
   verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, "diagnostics window");
 
+  await setUnlockUi(page, true);
+  let locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
+  if (!locked) {
+    throw new Error("Diagnostics window should stay locked until Unlock UI controls are used");
+  }
+
   await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
-  const locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
+  locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
+  if (locked) {
+    throw new Error("Diagnostics lock button did not unlock the window when Unlock UI was on");
+  }
+
+  await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
+  locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
   if (!locked) {
     throw new Error("Diagnostics lock button did not lock the window");
   }
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
+  await setUnlockUi(page, false);
+}
+
+async function verifyPauseMenuCentered(page, viewport) {
+  const metrics = await page.$eval('[data-window-id="pause-menu"]', (element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+
+  const xDrift = Math.abs(metrics.centerX - viewport.width / 2);
+  const yDrift = Math.abs(metrics.centerY - (viewport.height / 2 - 20));
+  if (xDrift > 2 || yDrift > 2) {
+    throw new Error(`${viewport.name} pause menu was not centered: ${JSON.stringify(metrics)}`);
+  }
+}
+
+async function verifyHudTransparency(page, viewport) {
+  const initial = await readHudPanelMetrics(page);
+  if (!initial.vitals || !initial.status || !initial.game || !initial.abilities) {
+    throw new Error(`${viewport.name} missing HUD panel metrics: ${JSON.stringify(initial)}`);
+  }
+
+  const minimalPanelIds = ["hud-vitals", "hud-status", "hud-position", "hud-abilities"];
+  const panels = minimalPanelIds.map((id) => getHudPanelMetric(initial, id));
+
+  await verifyUnlockUiDefault(page);
+
+  if (!initial.vitals.text.includes("HP") || !initial.vitals.text.includes("Power")) {
+    throw new Error(`${viewport.name} vitals panel did not expose HP and Power labels: ${JSON.stringify(initial.vitals)}`);
+  }
+  if (initial.vitals.text.includes("Kills") || initial.vitals.text.includes("Wave")) {
+    throw new Error(`${viewport.name} vitals panel still contained game progression text: ${JSON.stringify(initial.vitals)}`);
+  }
+  if (!initial.game.text.includes("Cell") || !initial.game.text.includes("Kills") || !initial.game.text.includes("Wave")) {
+    throw new Error(`${viewport.name} game panel did not contain cell, kills, and wave text: ${JSON.stringify(initial.game)}`);
+  }
+  if (Math.abs(initial.vitals.centerXRatio - 0.5) > 0.08 || Math.abs(initial.abilities.centerXRatio - 0.5) > 0.08) {
+    throw new Error(`${viewport.name} central HUD panels were not horizontally centered: ${JSON.stringify(initial)}`);
+  }
+  if (initial.vitals.centerYRatio < 0.56 || initial.vitals.centerYRatio > 0.7 || initial.abilities.centerYRatio < 0.66 || initial.abilities.centerYRatio > 0.8) {
+    throw new Error(`${viewport.name} central HUD panels were not placed around the lower middle of the viewport: ${JSON.stringify(initial)}`);
+  }
+
+  for (const panel of panels) {
+    if (!panel.locked || !panel.lockControlHidden || panel.titleOpacity > 0.05 || panel.backgroundAlpha > 0.05 || panel.backgroundImage !== "none") {
+      throw new Error(`${viewport.name} locked ${panel.id} panel chrome was not transparent: ${JSON.stringify(panel)}`);
+    }
+  }
+
+  for (const id of minimalPanelIds) {
+    await verifyHudPanelDoesNotHoverReveal(page, viewport, id);
+    await verifyHudPanelClickThrough(page, viewport, id);
+  }
+
+  await setUnlockUi(page, true);
+  for (const id of minimalPanelIds) {
+    await verifyHudPanelHoverReveal(page, viewport, id);
+  }
+
+  const unlockEnabled = await readHudPanelMetrics(page);
+  if (minimalPanelIds.some((id) => getHudPanelMetric(unlockEnabled, id).lockControlHidden)) {
+    throw new Error(`${viewport.name} Unlock UI did not expose HUD lock controls: ${JSON.stringify(unlockEnabled)}`);
+  }
+
+  await revealHudPanel(page, viewport, "hud-vitals");
+  await page.click('[data-window-id="hud-vitals"] .game-window__action--lock');
+  await page.waitForFunction(() => !document.querySelector('[data-window-id="hud-vitals"]')?.classList.contains("game-window--locked"));
+
+  await setUnlockUi(page, false);
+  const disabledAgain = await readHudPanelMetrics(page);
+  if (minimalPanelIds.some((id) => !getHudPanelMetric(disabledAgain, id).locked || !getHudPanelMetric(disabledAgain, id).lockControlHidden)) {
+    throw new Error(`${viewport.name} disabling Unlock UI did not force HUD panels locked: ${JSON.stringify(disabledAgain)}`);
+  }
+
+  for (const id of minimalPanelIds) {
+    await verifyHudPanelDoesNotHoverReveal(page, viewport, id);
+  }
+}
+
+async function verifyHudPanelHoverReveal(page, viewport, id) {
+  await revealHudPanel(page, viewport, id);
+
+  const hovered = await readHudPanelMetrics(page);
+  const panel = getHudPanelMetric(hovered, id);
+  if (panel.titleOpacity < 0.5 || panel.backgroundImage === "none") {
+    throw new Error(`${viewport.name} ${id} did not reveal chrome on hover: ${JSON.stringify(panel)}`);
+  }
+
+  await page.mouse.move(viewport.width - 4, viewport.height - 4);
+  await page.waitForFunction((windowId) => {
+    const element = document.querySelector(`[data-window-id="${windowId}"]`);
+    const titlebar = element?.querySelector(".game-window__titlebar");
+    return !!titlebar && Number(getComputedStyle(titlebar).opacity) < 0.1;
+  }, id);
+}
+
+async function revealHudPanel(page, viewport, id) {
+  const content = page.locator(`[data-window-id="${id}"] .game-window__content`);
+  const box = await content.boundingBox();
+  if (!box) {
+    throw new Error(`${viewport.name} missing ${id} content box`);
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction((windowId) => {
+    const element = document.querySelector(`[data-window-id="${windowId}"]`);
+    const titlebar = element?.querySelector(".game-window__titlebar");
+    const lockButton = element?.querySelector(".game-window__action--lock");
+    if (!element || !titlebar) {
+      return false;
+    }
+
+    const lockRect = lockButton?.getBoundingClientRect();
+    const lockButtonInViewport =
+      !lockRect ||
+      (lockRect.top >= 0 && lockRect.left >= 0 && lockRect.bottom <= window.innerHeight && lockRect.right <= window.innerWidth);
+
+    return Number(getComputedStyle(titlebar).opacity) > 0.5 && getComputedStyle(element).backgroundImage !== "none" && lockButtonInViewport;
+  }, id);
+}
+
+async function verifyHudPanelDoesNotHoverReveal(page, viewport, id) {
+  const content = page.locator(`[data-window-id="${id}"] .game-window__content`);
+  const box = await content.boundingBox();
+  if (!box) {
+    throw new Error(`${viewport.name} missing ${id} content box`);
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(220);
+
+  const hovered = await readHudPanelMetrics(page);
+  const panel = getHudPanelMetric(hovered, id);
+  if (panel.titleOpacity > 0.1 || panel.backgroundImage !== "none") {
+    throw new Error(`${viewport.name} ${id} revealed chrome while Unlock UI was off: ${JSON.stringify(panel)}`);
+  }
+}
+
+function getHudPanelMetric(metrics, id) {
+  const keyById = {
+    "hud-vitals": "vitals",
+    "hud-status": "status",
+    "hud-position": "game",
+    "hud-abilities": "abilities",
+  };
+  return metrics[keyById[id]];
+}
+
+async function verifyHudPanelClickThrough(page, viewport, id) {
+  const content = page.locator(`[data-window-id="${id}"] .game-window__content`);
+  const box = await content.boundingBox();
+  if (!box) {
+    throw new Error(`${viewport.name} missing ${id} content box`);
+  }
+
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const hitTarget = await page.evaluate(
+    ({ x, y, windowId }) => {
+      const target = document.elementFromPoint(x, y);
+      return {
+        tag: target?.tagName ?? null,
+        className: target instanceof HTMLElement ? target.className : "",
+        insidePanel: !!target?.closest(`[data-window-id="${windowId}"]`),
+      };
+    },
+    { ...point, windowId: id },
+  );
+
+  if (hitTarget.insidePanel) {
+    throw new Error(`${viewport.name} ${id} was not click-through while Unlock UI was off: ${JSON.stringify(hitTarget)}`);
+  }
 }
 
 async function verifyEnemyPathfindingBudget(page, viewport, phase) {
@@ -310,6 +568,32 @@ async function verifyEnemyHealthBarOptions(page) {
     if (diagnostics.enemyHealthBars.mode !== mode) {
       throw new Error(`Enemy health bar mode button did not select ${mode}`);
     }
+  }
+}
+
+async function verifyUnlockUiDefault(page) {
+  let diagnostics = await readDiagnostics(page);
+  if (diagnostics.input.unlockUiEnabled) {
+    throw new Error("Unlock UI should be disabled by default");
+  }
+
+  if (!diagnostics.paused) {
+    await page.click('[data-ui-action="pause"]');
+    await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  }
+
+  const checked = await page.$eval("[data-unlock-ui]", (input) => input.checked);
+  if (checked) {
+    throw new Error("Unlock UI toggle did not render disabled by default");
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+
+  diagnostics = await readDiagnostics(page);
+  if (diagnostics.input.unlockUiEnabled) {
+    throw new Error("Unlock UI changed while checking default state");
   }
 }
 
@@ -336,6 +620,32 @@ async function verifyQuickCastOption(page) {
   diagnostics = await readDiagnostics(page);
   if (!diagnostics.input.quickCastEnabled) {
     throw new Error("Quick Cast toggle did not turn back on");
+  }
+}
+
+async function verifyMaxRangeTargetSnapOption(page) {
+  let diagnostics = await readDiagnostics(page);
+  if (!diagnostics.input.allowMaxRangeTargetSnap) {
+    throw new Error("Allow Max Range Target Snap should be enabled by default");
+  }
+
+  let checked = await page.$eval("[data-max-range-target-snap]", (input) => input.checked);
+  if (!checked) {
+    throw new Error("Allow Max Range Target Snap toggle did not render enabled by default");
+  }
+
+  await page.click("[data-max-range-target-snap-toggle]");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.allowMaxRangeTargetSnap === false);
+  checked = await page.$eval("[data-max-range-target-snap]", (input) => input.checked);
+  if (checked) {
+    throw new Error("Allow Max Range Target Snap toggle did not turn off");
+  }
+
+  await page.click("[data-max-range-target-snap-toggle]");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.allowMaxRangeTargetSnap === true);
+  diagnostics = await readDiagnostics(page);
+  if (!diagnostics.input.allowMaxRangeTargetSnap) {
+    throw new Error("Allow Max Range Target Snap toggle did not turn back on");
   }
 }
 
@@ -389,6 +699,9 @@ async function verifyBlockerNavigation(page, viewport) {
   }
   if (navigation.destinationBlocked || navigation.occupiesBlocked) {
     throw new Error(`${viewport.name} blocker navigation resolved into blocked space: ${JSON.stringify(navigation)}`);
+  }
+  if (!navigation.destinationDiscovered) {
+    throw new Error(`${viewport.name} blocker navigation resolved into undiscovered space: ${JSON.stringify(navigation)}`);
   }
 
   const moveTarget = navigation.moveTarget;
@@ -452,6 +765,8 @@ async function verifyEnemyAvoidance(page, viewport) {
 }
 
 async function exerciseCoreInteractions(page, viewport) {
+  await reloadGame(page);
+
   const movePoint = await getVisibleInteractionPoint(page, viewport, 0.62, 0.58);
   await page.mouse.move(movePoint.x, movePoint.y);
   await page.mouse.down();
@@ -468,6 +783,12 @@ async function exerciseCoreInteractions(page, viewport) {
   await verifyQuickCastRelease(page, viewport, "bolt", "KeyW", 0.45, 0.55);
 
   await reloadGame(page);
+  await setMaxRangeTargetSnap(page, false);
+  await verifyOutOfRangeCastRejected(page, viewport);
+  await setMaxRangeTargetSnap(page, true);
+  await verifyOutOfRangeCastSnaps(page, viewport);
+
+  await reloadGame(page);
   await setQuickCast(page, false);
   await verifyLegacyRightClickCancel(page, viewport);
   await verifyLegacyClickCast(page, viewport);
@@ -481,6 +802,7 @@ async function verifyQuickCastCancel(page, viewport) {
   const before = await readDiagnostics(page);
 
   await page.mouse.move(viewport.width * 0.57, viewport.height * 0.5);
+  await releaseSpellKeys(page);
   await page.keyboard.down("KeyQ");
   await waitForCastMode(page, "chain");
   await page.keyboard.down("KeyW");
@@ -510,16 +832,125 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
   await waitForSpellReady(page, spellId);
   const target = await getVisibleInteractionPoint(page, viewport, xRatio, yRatio);
   await page.mouse.move(target.x, target.y);
+  await releaseSpellKeys(page);
   await page.keyboard.down(key);
   await waitForCastMode(page, spellId);
   await page.keyboard.up(key);
   await waitForSpellCooldown(page, spellId);
+  await verifyAbilityCooldownUi(page, viewport, spellId);
+}
+
+async function verifyAbilityCooldownUi(page, viewport, spellId) {
+  await page.waitForFunction((id) => {
+    const button = document.querySelector(`[data-ability="${id}"]`);
+    const fill = button?.querySelector(".ability__cooldown-fill");
+    const hand = button?.querySelector(".ability__cooldown-hand");
+    if (!(button instanceof HTMLElement) || !(fill instanceof HTMLElement) || !(hand instanceof HTMLElement)) {
+      return false;
+    }
+
+    return (
+      button.classList.contains("ability--cooling") &&
+      Number(getComputedStyle(fill).opacity) > 0.7 &&
+      Number(getComputedStyle(hand).opacity) > 0.7
+    );
+  }, spellId);
+
+  const metrics = await page.$eval(`[data-ability="${spellId}"]`, (button) => {
+    const readRect = (selector) => {
+      const element = button.querySelector(selector);
+      if (!(element instanceof HTMLElement)) {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+        text: element.textContent?.trim() ?? "",
+      };
+    };
+
+    const rect = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    const fill = button.querySelector(".ability__cooldown-fill");
+    const hand = button.querySelector(".ability__cooldown-hand");
+    const handStyle = hand instanceof HTMLElement ? getComputedStyle(hand) : null;
+    const handLineStyle = hand instanceof HTMLElement ? getComputedStyle(hand, "::before") : null;
+    return {
+      button: {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+      },
+      classes: [...button.classList],
+      cooldownAngle: style.getPropertyValue("--cooldown-angle").trim(),
+      cooldownProgress: Number(style.getPropertyValue("--cooldown-progress")),
+      cooldownHandOffset: style.getPropertyValue("--cooldown-hand-offset").trim(),
+      cooldownStartAngle: style.getPropertyValue("--cooldown-start-angle").trim(),
+      fillBackground: fill instanceof HTMLElement ? getComputedStyle(fill).backgroundImage : "",
+      fillOpacity: fill instanceof HTMLElement ? Number(getComputedStyle(fill).opacity) : 0,
+      handOpacity: handStyle ? Number(handStyle.opacity) : 0,
+      handTransform: handStyle?.transform ?? "",
+      handLineBackground: handLineStyle?.backgroundImage ?? "",
+      handLineBoxShadow: handLineStyle?.boxShadow ?? "",
+      handLineHeight: handLineStyle?.height ?? "",
+      handLineWidth: handLineStyle?.width ?? "",
+      key: readRect(".ability__key"),
+      icon: readRect(".ability__icon"),
+      name: readRect(".ability__name"),
+      cooldown: readRect(".ability__cooldown"),
+    };
+  });
+
+  if (!metrics.classes.includes("ability--cooling") || !(metrics.cooldownProgress > 0) || metrics.cooldownAngle === "0deg") {
+    throw new Error(`${viewport.name} ${spellId} ability did not expose active cooldown state: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.fillBackground.includes("conic-gradient")) {
+    throw new Error(`${viewport.name} ${spellId} ability did not render radial cooldown fill: ${JSON.stringify(metrics)}`);
+  }
+  if (metrics.cooldownStartAngle !== "0deg" || metrics.cooldownHandOffset !== "0deg") {
+    throw new Error(`${viewport.name} ${spellId} ability cooldown fill/hand did not start at 12 o'clock: ${JSON.stringify(metrics)}`);
+  }
+  if (
+    metrics.fillOpacity < 0.7 ||
+    metrics.handOpacity < 0.7 ||
+    metrics.handTransform === "none" ||
+    metrics.handLineBackground === "none" ||
+    metrics.handLineBoxShadow === "none" ||
+    Number.parseFloat(metrics.handLineHeight) < 20 ||
+    Number.parseFloat(metrics.handLineWidth) < 2
+  ) {
+    throw new Error(`${viewport.name} ${spellId} ability cooldown visual was too subtle or missing leading hand: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.key?.text || metrics.key.left - metrics.button.left > 12 || metrics.key.top - metrics.button.top > 12) {
+    throw new Error(`${viewport.name} ${spellId} ability key was not anchored top-left: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.cooldown?.text || metrics.button.right - metrics.cooldown.right > 14 || metrics.cooldown.top - metrics.button.top > 12) {
+    throw new Error(`${viewport.name} ${spellId} cooldown number was not anchored top-right: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.name?.text || Math.abs((metrics.name.left + metrics.name.width / 2) - metrics.button.centerX) > 3 || metrics.button.bottom - metrics.name.bottom > 9) {
+    throw new Error(`${viewport.name} ${spellId} ability name was not centered at the bottom: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.icon || Math.abs((metrics.icon.left + metrics.icon.width / 2) - metrics.button.centerX) > 3 || Math.abs((metrics.icon.top + metrics.icon.height / 2) - metrics.button.centerY) > 3) {
+    throw new Error(`${viewport.name} ${spellId} ability icon was not centered: ${JSON.stringify(metrics)}`);
+  }
 }
 
 async function verifyLegacyRightClickCancel(page, viewport) {
   await waitForSpellReady(page, "bolt");
   const before = await readDiagnostics(page);
 
+  await releaseSpellKeys(page);
   await page.keyboard.press("KeyW");
   await waitForCastMode(page, "bolt");
   await page.mouse.click(viewport.width * 0.46, viewport.height * 0.54, { button: "right" });
@@ -535,6 +966,7 @@ async function verifyLegacyRightClickCancel(page, viewport) {
 async function verifyLegacyClickCast(page, viewport) {
   await waitForSpellReady(page, "chain");
   const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
+  await releaseSpellKeys(page);
   await page.keyboard.press("KeyQ");
   await waitForCastMode(page, "chain");
   await page.mouse.click(target.x, target.y);
@@ -558,15 +990,57 @@ async function setQuickCast(page, enabled) {
   await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
 }
 
+async function setMaxRangeTargetSnap(page, enabled) {
+  const diagnostics = await readDiagnostics(page);
+  if (!diagnostics.paused) {
+    await page.click('[data-ui-action="pause"]');
+    await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  }
+
+  if (diagnostics.input.allowMaxRangeTargetSnap !== enabled) {
+    await page.click("[data-max-range-target-snap-toggle]");
+    await page.waitForFunction(
+      (expected) => window.__ZEUS_GAME__?.getDiagnostics().input.allowMaxRangeTargetSnap === expected,
+      enabled,
+    );
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+}
+
+async function setUnlockUi(page, enabled) {
+  const diagnostics = await readDiagnostics(page);
+  if (!diagnostics.paused) {
+    await page.click('[data-ui-action="pause"]');
+    await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  }
+
+  if (diagnostics.input.unlockUiEnabled !== enabled) {
+    await page.click("[data-unlock-ui-toggle]");
+    await page.waitForFunction((expected) => window.__ZEUS_GAME__?.getDiagnostics().input.unlockUiEnabled === expected, enabled);
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+}
+
 async function waitForSpellReady(page, spellId) {
   await page.waitForFunction(
-    (id) => {
+    ({ id, manaCost }) => {
       const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
-      return diagnostics && !diagnostics.paused && diagnostics.spells.cooldowns[id] <= 0.05;
+      return diagnostics && !diagnostics.paused && diagnostics.spells.cooldowns[id] <= 0.05 && diagnostics.spells.mana >= manaCost;
     },
-    spellId,
+    { id: spellId, manaCost: spellManaCosts[spellId] },
     { timeout: 6000 },
   );
+}
+
+async function releaseSpellKeys(page) {
+  await page.keyboard.up("KeyQ");
+  await page.keyboard.up("KeyW");
 }
 
 async function waitForSpellCooldown(page, spellId) {
@@ -704,6 +1178,56 @@ async function collectHudMetrics(page) {
       hasChain: abilities.some((text) => text.includes("Q") && text.includes("Chain")),
       hasBolt: abilities.some((text) => text.includes("W") && text.includes("Bolt")),
       statusVisible,
+    };
+  });
+}
+
+async function readHudPanelMetrics(page) {
+  return page.evaluate(() => {
+    const readAlpha = (value) => {
+      const match = value.match(/rgba?\(([^)]+)\)/);
+      if (!match) {
+        return 1;
+      }
+
+      const parts = match[1].split(",").map((part) => Number(part.trim()));
+      return parts.length >= 4 ? parts[3] : 1;
+    };
+
+    const readPanel = (id) => {
+      const element = document.querySelector(`[data-window-id="${id}"]`);
+      const titlebar = element?.querySelector(".game-window__titlebar");
+      const lockButton = element?.querySelector(".game-window__action--lock");
+      if (!(element instanceof HTMLElement) || !(titlebar instanceof HTMLElement)) {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const lockButtonStyle = lockButton instanceof HTMLElement ? getComputedStyle(lockButton) : null;
+      return {
+        id,
+        text: element.innerText,
+        locked: element.classList.contains("game-window--locked"),
+        lockControlHidden:
+          !(lockButton instanceof HTMLButtonElement) ||
+          lockButton.hidden ||
+          lockButton.disabled ||
+          lockButtonStyle?.display === "none" ||
+          lockButtonStyle?.visibility === "hidden",
+        titleOpacity: Number(getComputedStyle(titlebar).opacity),
+        backgroundAlpha: readAlpha(style.backgroundColor),
+        backgroundImage: style.backgroundImage,
+        centerXRatio: (rect.left + rect.width / 2) / window.innerWidth,
+        centerYRatio: (rect.top + rect.height / 2) / window.innerHeight,
+      };
+    };
+
+    return {
+      vitals: readPanel("hud-vitals"),
+      status: readPanel("hud-status"),
+      game: readPanel("hud-position"),
+      abilities: readPanel("hud-abilities"),
     };
   });
 }

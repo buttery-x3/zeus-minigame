@@ -58,6 +58,8 @@ export class ZeusGame {
   private readonly cameraRig = new CameraRig(this.scene.camera, this.scene.renderer);
   private enemyHealthBarMode: EnemyHealthBarVisibilityMode = DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE;
   private quickCastEnabled = true;
+  private allowMaxRangeTargetSnap = true;
+  private unlockUiEnabled = false;
   private readonly ui = new GameUi({
     resume: () => this.setPaused(false),
     togglePause: () => this.setPaused(!this.state.paused),
@@ -65,6 +67,10 @@ export class ZeusGame {
     setEnemyHealthBarMode: (mode) => this.setEnemyHealthBarMode(mode),
     quickCastEnabled: this.quickCastEnabled,
     setQuickCastEnabled: (enabled) => this.setQuickCastEnabled(enabled),
+    allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
+    setAllowMaxRangeTargetSnap: (enabled) => this.setAllowMaxRangeTargetSnap(enabled),
+    unlockUiEnabled: this.unlockUiEnabled,
+    setUnlockUiEnabled: (enabled) => this.setUnlockUiEnabled(enabled),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(
@@ -93,7 +99,10 @@ export class ZeusGame {
     getCastMode: () => this.spells.castMode,
     beginTargeting: (spellId) => this.spells.beginTargeting(spellId, this.state),
     cancelTargeting: () => this.spells.cancelTargeting(),
-    castAt: (target) => this.spells.castAt(target, this.player.object.position, this.state),
+    castAt: (target) =>
+      this.spells.castAt(target, this.player.object.position, this.state, {
+        allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
+      }),
     setMoveTarget: (x, z) => this.requestMoveTarget(x, z),
     restart: () => this.restart(),
     handleEscape: () => this.handleEscape(),
@@ -144,10 +153,14 @@ export class ZeusGame {
       ...this.diagnostics.get(this.state),
       input: {
         quickCastEnabled: this.quickCastEnabled,
+        allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
+        unlockUiEnabled: this.unlockUiEnabled,
+        pointerWorld: this.input.pointerWorld.toArray(),
       },
       spells: {
         castMode: this.spells.castMode,
         cooldowns: { ...this.spells.cooldowns },
+        mana: this.state.mana,
       },
       enemyHealthBars: {
         mode: this.enemyHealthBarMode,
@@ -180,7 +193,12 @@ export class ZeusGame {
     if (!this.state.gameOver && !this.state.paused) {
       this.state.mana = Math.min(PLAYER_MAX_MANA, this.state.mana + dt * 8.5);
       this.profiler.measure("spells", () => this.spells.update(dt));
-      this.profiler.measure("player", () => this.player.update(dt, this.input.consumeMoveRequest(), this.input.pointerWorld));
+      this.profiler.measure("player", () => {
+        if (this.input.consumeMoveRequest()) {
+          this.requestMoveTarget(this.input.pointerWorld.x, this.input.pointerWorld.z, false);
+        }
+        this.player.update(dt);
+      });
     }
 
     this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
@@ -191,6 +209,7 @@ export class ZeusGame {
       spells: this.spells.spells,
       pointerWorld: this.input.pointerWorld,
       playerPosition,
+      allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
       canCastAt: (target) => this.canCastAt(target),
     }));
     this.profiler.measure("hud", () => this.hudPresenter.update({
@@ -250,13 +269,16 @@ export class ZeusGame {
     }
   }
 
-  private requestMoveTarget(x: number, z: number) {
+  private requestMoveTarget(x: number, z: number, force = true) {
     if (!this.visibility.isDiscoveredWorld(x, z)) {
       this.player.flash(0x657172);
       return;
     }
 
-    this.player.setMoveTarget(x, z);
+    this.player.setMoveTarget(x, z, {
+      force,
+      canUseDestination: (destination) => this.visibility.isDiscoveredWorld(destination.x, destination.z),
+    });
   }
 
   private canCastAt(target: THREE.Vector3) {
@@ -303,6 +325,16 @@ export class ZeusGame {
   private setQuickCastEnabled(enabled: boolean) {
     this.quickCastEnabled = enabled;
     this.ui.setQuickCastEnabled(enabled);
+  }
+
+  private setAllowMaxRangeTargetSnap(enabled: boolean) {
+    this.allowMaxRangeTargetSnap = enabled;
+    this.ui.setAllowMaxRangeTargetSnap(enabled);
+  }
+
+  private setUnlockUiEnabled(enabled: boolean) {
+    this.unlockUiEnabled = enabled;
+    this.ui.setUnlockUiEnabled(enabled);
   }
 
   private toggleEnemyHealthBarMode() {
