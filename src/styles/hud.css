@@ -226,7 +226,7 @@
     0 0 7px #fff7b0,
     0 0 13px rgb(255 226 122 / 92%),
     0 0 18px rgb(105 227 255 / 72%);
-  transform: translate(-50%, -50%) rotate(var(--cooldown-angle)) translateY(-25px);
+  transform: translate(-50%, -50%) rotate(calc(var(--cooldown-angle) + 90deg)) translateY(-25px);
   transition:
     opacity 120ms ease,
     transform 120ms linear;
