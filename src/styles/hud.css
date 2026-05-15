@@ -155,6 +155,8 @@
 .ability {
   --cooldown-angle: 0deg;
   --cooldown-progress: 0;
+  --cooldown-spark-offset: 0deg;
+  --cooldown-start-angle: 0deg;
 
   position: relative;
   display: grid;
@@ -199,7 +201,7 @@
   display: block;
   opacity: 0;
   background:
-    conic-gradient(from -90deg, rgb(105 227 255 / 54%) 0 var(--cooldown-angle), rgb(255 255 255 / 8%) var(--cooldown-angle) 360deg),
+    conic-gradient(from var(--cooldown-start-angle), rgb(105 227 255 / 54%) 0 var(--cooldown-angle), rgb(255 255 255 / 8%) var(--cooldown-angle) 360deg),
     radial-gradient(circle at 50% 50%, rgb(255 255 255 / 16%), transparent 58%),
     rgb(0 0 0 / 22%);
   box-shadow:
@@ -226,7 +228,7 @@
     0 0 7px #fff7b0,
     0 0 13px rgb(255 226 122 / 92%),
     0 0 18px rgb(105 227 255 / 72%);
-  transform: translate(-50%, -50%) rotate(calc(var(--cooldown-angle) + 90deg)) translateY(-25px);
+  transform: translate(-50%, -50%) rotate(calc(var(--cooldown-angle) + var(--cooldown-spark-offset))) translateY(-25px);
   transition:
     opacity 120ms ease,
     transform 120ms linear;

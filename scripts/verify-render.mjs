@@ -875,6 +875,8 @@ async function verifyAbilityCooldownUi(page, viewport, spellId) {
       classes: [...button.classList],
       cooldownAngle: style.getPropertyValue("--cooldown-angle").trim(),
       cooldownProgress: Number(style.getPropertyValue("--cooldown-progress")),
+      cooldownSparkOffset: style.getPropertyValue("--cooldown-spark-offset").trim(),
+      cooldownStartAngle: style.getPropertyValue("--cooldown-start-angle").trim(),
       fillBackground: fill instanceof HTMLElement ? getComputedStyle(fill).backgroundImage : "",
       fillOpacity: fill instanceof HTMLElement ? Number(getComputedStyle(fill).opacity) : 0,
       sparkOpacity: sparkStyle ? Number(sparkStyle.opacity) : 0,
@@ -892,6 +894,9 @@ async function verifyAbilityCooldownUi(page, viewport, spellId) {
   }
   if (!metrics.fillBackground.includes("conic-gradient")) {
     throw new Error(`${viewport.name} ${spellId} ability did not render radial cooldown fill: ${JSON.stringify(metrics)}`);
+  }
+  if (metrics.cooldownStartAngle !== "0deg" || metrics.cooldownSparkOffset !== "0deg") {
+    throw new Error(`${viewport.name} ${spellId} ability cooldown fill/spark did not start at 12 o'clock: ${JSON.stringify(metrics)}`);
   }
   if (metrics.fillOpacity < 0.7 || metrics.sparkOpacity < 0.7 || metrics.sparkTransform === "none" || metrics.sparkBoxShadow === "none") {
     throw new Error(`${viewport.name} ${spellId} ability cooldown visual was too subtle or missing spark: ${JSON.stringify(metrics)}`);
