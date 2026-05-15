@@ -1,4 +1,4 @@
-export type WindowAnchor = "top-left" | "top-right" | "top-center" | "bottom-center" | "center";
+export type WindowAnchor = "top-left" | "top-right" | "top-center" | "bottom-center" | "center" | "viewport";
 
 export type WindowPlacement = {
   anchor: WindowAnchor;
@@ -6,6 +6,8 @@ export type WindowPlacement = {
   height?: number;
   offsetX?: number;
   offsetY?: number;
+  viewportX?: number;
+  viewportY?: number;
   mobile?: Omit<WindowPlacement, "mobile">;
 };
 

@@ -2,16 +2,90 @@
   padding: 11px;
 }
 
+.hud-window--minimal.game-window--locked {
+  overflow: visible;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  pointer-events: none;
+  backdrop-filter: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    backdrop-filter 160ms ease;
+}
+
+.hud-window--minimal.game-window--locked::before {
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.hud-window--minimal.game-window--locked:is(.hud-window--hovering, :hover, :focus-within) {
+  border-color: rgb(154 203 202 / 24%);
+  background:
+    linear-gradient(180deg, rgb(18 30 31 / 92%), rgb(6 10 10 / 86%)),
+    #09100f;
+  box-shadow:
+    0 18px 46px rgb(0 0 0 / 42%),
+    inset 0 1px 0 rgb(255 255 255 / 8%);
+  backdrop-filter: blur(10px);
+}
+
+.hud-window--minimal.game-window--locked:is(.hud-window--hovering, :hover, :focus-within)::before {
+  opacity: 0.8;
+}
+
+.hud-window--minimal.game-window--locked .game-window__titlebar {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(5px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.hud-window--minimal.game-window--locked:is(.hud-window--hovering, :hover, :focus-within) .game-window__titlebar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.hud-window--minimal.game-window--locked .game-window__content {
+  pointer-events: none;
+}
+
+.hud__stats {
+  display: grid;
+  gap: 8px;
+}
+
+.hud__meter {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.hud__bar-label {
+  color: #e3f4f1;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-shadow: 0 2px 9px rgb(0 0 0 / 85%);
+}
+
 .hud__bar {
   height: 16px;
   overflow: hidden;
   border-radius: 5px;
   background: #20282a;
   outline: 1px solid rgb(223 238 232 / 18%);
-}
-
-.hud__bar + .hud__bar {
-  margin-top: 8px;
 }
 
 .hud__bar span {

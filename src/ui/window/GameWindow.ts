@@ -65,8 +65,8 @@ export class GameWindow {
     const placement = this.resolvePlacement();
     const width = placement.width;
     const height = placement.height ?? this.element.offsetHeight;
-    const offsetX = placement.offsetX ?? 18;
-    const offsetY = placement.offsetY ?? 18;
+    const offsetX = placement.offsetX ?? (placement.anchor === "viewport" ? 0 : 18);
+    const offsetY = placement.offsetY ?? (placement.anchor === "viewport" ? 0 : 18);
 
     this.width = width;
     this.element.style.width = `${width}px`;
@@ -83,6 +83,9 @@ export class GameWindow {
     } else if (placement.anchor === "bottom-center") {
       this.x = (window.innerWidth - width) / 2 + (placement.offsetX ?? 0);
       this.y = window.innerHeight - height - offsetY;
+    } else if (placement.anchor === "viewport") {
+      this.x = window.innerWidth * (placement.viewportX ?? 0.5) - width / 2 + offsetX;
+      this.y = window.innerHeight * (placement.viewportY ?? 0.5) - height / 2 + offsetY;
     } else {
       this.x = (window.innerWidth - width) / 2 + (placement.offsetX ?? 0);
       this.y = (window.innerHeight - height) / 2 + (placement.offsetY ?? 0);

@@ -21,6 +21,7 @@ type HudState = {
 
 export class Hud {
   private readonly windows: GameWindow[] = [];
+  private readonly hoverRevealWindows: GameWindow[] = [];
   private healthFill: HTMLElement;
   private manaFill: HTMLElement;
   private kills: HTMLElement;
@@ -33,14 +34,24 @@ export class Hud {
   constructor(windowManager: WindowManager) {
     const stats = this.createContent(`
       <div class="hud__stats">
-        <div class="hud__bar hud__bar--health"><span></span></div>
-        <div class="hud__bar hud__bar--mana"><span></span></div>
-        <div class="hud__line"><strong data-kills>0</strong><span>Kills</span></div>
-        <div class="hud__line"><strong data-wave>1</strong><span>Wave</span></div>
+        <div class="hud__meter">
+          <span class="hud__bar-label">HP</span>
+          <div class="hud__bar hud__bar--health"><span data-health-fill></span></div>
+        </div>
+        <div class="hud__meter">
+          <span class="hud__bar-label">Power</span>
+          <div class="hud__bar hud__bar--mana"><span data-mana-fill></span></div>
+        </div>
       </div>
     `);
     const status = this.createContent(`<div class="hud__status" data-status></div>`);
-    const cell = this.createContent(`<div class="hud__cell"><i></i><span data-cell>Cell 90, 90</span></div>`);
+    const game = this.createContent(`
+      <div class="hud__game">
+        <div class="hud__cell"><i></i><span data-cell>Cell 90, 90</span></div>
+        <div class="hud__line"><strong data-wave>1</strong><span>Wave</span></div>
+        <div class="hud__line"><strong data-kills>0</strong><span>Kills</span></div>
+      </div>
+    `);
     const abilities = this.createContent(`
       <div class="hud__abilities">
         <button class="ability" data-ability="chain" type="button" aria-label="Chain Lightning">
@@ -52,50 +63,64 @@ export class Hud {
       </div>
     `);
 
-    this.windows.push(
-      windowManager.createWindow({
-        id: "hud-vitals",
-        title: "Vitals",
-        content: stats,
-        placement: { anchor: "top-left", width: 230, offsetX: 18, offsetY: 18, mobile: { anchor: "top-left", width: 178, offsetX: 14, offsetY: 14 } },
-        className: "hud-window hud-window--vitals",
-        lockable: true,
-        locked: true,
-      }),
-      windowManager.createWindow({
-        id: "hud-status",
-        title: "Status",
-        content: status,
-        placement: { anchor: "top-center", width: 360, offsetY: 18, mobile: { anchor: "top-center", width: 360, offsetY: 188 } },
-        className: "hud-window hud-window--status",
-        lockable: true,
-        locked: true,
-      }),
-      windowManager.createWindow({
-        id: "hud-position",
-        title: "Position",
-        content: cell,
-        placement: { anchor: "top-right", width: 170, offsetX: 18, offsetY: 72, mobile: { anchor: "top-right", width: 170, offsetX: 14, offsetY: 72 } },
-        className: "hud-window hud-window--position",
-        lockable: true,
-        locked: true,
-      }),
-      windowManager.createWindow({
-        id: "hud-abilities",
-        title: "Abilities",
-        content: abilities,
-        placement: { anchor: "bottom-center", width: 190, offsetY: 18 },
-        className: "hud-window hud-window--abilities",
-        lockable: true,
-        locked: true,
-      }),
-    );
+    const vitalsWindow = windowManager.createWindow({
+      id: "hud-vitals",
+      title: "Vitals",
+      content: stats,
+      placement: {
+        anchor: "viewport",
+        width: 240,
+        viewportX: 0.5,
+        viewportY: 0.64,
+        mobile: { anchor: "viewport", width: 230, viewportX: 0.5, viewportY: 0.64 },
+      },
+      className: "hud-window hud-window--vitals hud-window--minimal",
+      lockable: true,
+      locked: true,
+    });
+    const statusWindow = windowManager.createWindow({
+      id: "hud-status",
+      title: "Status",
+      content: status,
+      placement: { anchor: "top-center", width: 360, offsetY: 18, mobile: { anchor: "top-center", width: 360, offsetY: 188 } },
+      className: "hud-window hud-window--status",
+      lockable: true,
+      locked: true,
+    });
+    const gameWindow = windowManager.createWindow({
+      id: "hud-position",
+      title: "Game",
+      content: game,
+      placement: { anchor: "top-right", width: 180, offsetX: 18, offsetY: 72, mobile: { anchor: "top-right", width: 180, offsetX: 14, offsetY: 72 } },
+      className: "hud-window hud-window--game",
+      lockable: true,
+      locked: true,
+    });
+    const abilitiesWindow = windowManager.createWindow({
+      id: "hud-abilities",
+      title: "Abilities",
+      content: abilities,
+      placement: {
+        anchor: "viewport",
+        width: 190,
+        viewportX: 0.5,
+        viewportY: 0.73,
+        mobile: { anchor: "viewport", width: 190, viewportX: 0.5, viewportY: 0.73 },
+      },
+      className: "hud-window hud-window--abilities hud-window--minimal",
+      lockable: true,
+      locked: true,
+    });
 
-    this.healthFill = mustQuery(stats, ".hud__bar--health span");
-    this.manaFill = mustQuery(stats, ".hud__bar--mana span");
-    this.kills = mustQuery(stats, "[data-kills]");
-    this.wave = mustQuery(stats, "[data-wave]");
-    this.cell = mustQuery(cell, "[data-cell]");
+    this.windows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow);
+    this.hoverRevealWindows.push(vitalsWindow, abilitiesWindow);
+    window.addEventListener("pointermove", this.handleHoverRevealPointerMove);
+
+    this.healthFill = mustQuery(stats, "[data-health-fill]");
+    this.manaFill = mustQuery(stats, "[data-mana-fill]");
+    this.kills = mustQuery(game, "[data-kills]");
+    this.wave = mustQuery(game, "[data-wave]");
+    this.cell = mustQuery(game, "[data-cell]");
     this.status = status;
     this.chainButton = mustQuery(abilities, '[data-ability="chain"]');
     this.boltButton = mustQuery(abilities, '[data-ability="bolt"]');
@@ -123,6 +148,7 @@ export class Hud {
   }
 
   remove() {
+    window.removeEventListener("pointermove", this.handleHoverRevealPointerMove);
     for (const gameWindow of this.windows) {
       gameWindow.dispose();
     }
@@ -143,5 +169,28 @@ export class Hud {
     const content = document.createElement("div");
     content.innerHTML = html.trim();
     return content.firstElementChild as HTMLElement;
+  }
+
+  private readonly handleHoverRevealPointerMove = (event: PointerEvent) => {
+    for (const gameWindow of this.hoverRevealWindows) {
+      const titlebar = gameWindow.element.querySelector(".game-window__titlebar");
+      const hovering =
+        gameWindow.isVisible() &&
+        (this.rectContainsPoint(gameWindow.content.getBoundingClientRect(), event.clientX, event.clientY, 6) ||
+          (titlebar instanceof HTMLElement && this.rectContainsPoint(titlebar.getBoundingClientRect(), event.clientX, event.clientY, 6)));
+
+      gameWindow.element.classList.toggle("hud-window--hovering", hovering);
+    }
+  };
+
+  private rectContainsPoint(rect: DOMRect, x: number, y: number, padding = 0) {
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      x >= rect.left - padding &&
+      x <= rect.right + padding &&
+      y >= rect.top - padding &&
+      y <= rect.bottom + padding
+    );
   }
 }

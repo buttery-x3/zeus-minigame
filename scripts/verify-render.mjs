@@ -61,6 +61,7 @@ async function verifyInBrowser() {
       await page.waitForSelector(".hud__stats");
       await page.waitForSelector(".ui-toolbar");
 
+      await verifyHudTransparency(page, viewport);
       await verifyHeldClickTracksCamera(page, viewport);
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
@@ -357,6 +358,72 @@ async function verifyWindowUi(page, viewport) {
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
+}
+
+async function verifyHudTransparency(page, viewport) {
+  const initial = await readHudPanelMetrics(page);
+  if (!initial.vitals || !initial.game || !initial.abilities) {
+    throw new Error(`${viewport.name} missing HUD panel metrics: ${JSON.stringify(initial)}`);
+  }
+
+  const panels = [initial.vitals, initial.abilities];
+
+  if (!initial.vitals.text.includes("HP") || !initial.vitals.text.includes("Power")) {
+    throw new Error(`${viewport.name} vitals panel did not expose HP and Power labels: ${JSON.stringify(initial.vitals)}`);
+  }
+  if (initial.vitals.text.includes("Kills") || initial.vitals.text.includes("Wave")) {
+    throw new Error(`${viewport.name} vitals panel still contained game progression text: ${JSON.stringify(initial.vitals)}`);
+  }
+  if (!initial.game.text.includes("Cell") || !initial.game.text.includes("Kills") || !initial.game.text.includes("Wave")) {
+    throw new Error(`${viewport.name} game panel did not contain cell, kills, and wave text: ${JSON.stringify(initial.game)}`);
+  }
+  if (Math.abs(initial.vitals.centerXRatio - 0.5) > 0.08 || Math.abs(initial.abilities.centerXRatio - 0.5) > 0.08) {
+    throw new Error(`${viewport.name} central HUD panels were not horizontally centered: ${JSON.stringify(initial)}`);
+  }
+  if (initial.vitals.centerYRatio < 0.56 || initial.vitals.centerYRatio > 0.7 || initial.abilities.centerYRatio < 0.66 || initial.abilities.centerYRatio > 0.8) {
+    throw new Error(`${viewport.name} central HUD panels were not placed around the lower middle of the viewport: ${JSON.stringify(initial)}`);
+  }
+
+  for (const panel of panels) {
+    if (!panel.locked || panel.titleOpacity > 0.05 || panel.backgroundAlpha > 0.05 || panel.backgroundImage !== "none") {
+      throw new Error(`${viewport.name} locked ${panel.id} panel chrome was not transparent: ${JSON.stringify(panel)}`);
+    }
+  }
+
+  await verifyHudPanelHoverReveal(page, viewport, "hud-vitals");
+  await verifyHudPanelHoverReveal(page, viewport, "hud-abilities");
+}
+
+async function verifyHudPanelHoverReveal(page, viewport, id) {
+  const content = page.locator(`[data-window-id="${id}"] .game-window__content`);
+  const box = await content.boundingBox();
+  if (!box) {
+    throw new Error(`${viewport.name} missing ${id} content box`);
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForFunction((windowId) => {
+    const element = document.querySelector(`[data-window-id="${windowId}"]`);
+    const titlebar = element?.querySelector(".game-window__titlebar");
+    if (!element || !titlebar) {
+      return false;
+    }
+
+    return Number(getComputedStyle(titlebar).opacity) > 0.5 && getComputedStyle(element).backgroundImage !== "none";
+  }, id);
+
+  const hovered = await readHudPanelMetrics(page);
+  const panel = id === "hud-vitals" ? hovered.vitals : hovered.abilities;
+  if (panel.titleOpacity < 0.5 || panel.backgroundImage === "none") {
+    throw new Error(`${viewport.name} ${id} did not reveal chrome on hover: ${JSON.stringify(panel)}`);
+  }
+
+  await page.mouse.move(viewport.width - 4, viewport.height - 4);
+  await page.waitForFunction((windowId) => {
+    const element = document.querySelector(`[data-window-id="${windowId}"]`);
+    const titlebar = element?.querySelector(".game-window__titlebar");
+    return !!titlebar && Number(getComputedStyle(titlebar).opacity) < 0.1;
+  }, id);
 }
 
 async function verifyEnemyPathfindingBudget(page, viewport, phase) {
@@ -838,6 +905,47 @@ async function collectHudMetrics(page) {
       hasChain: abilities.some((text) => text.includes("Q") && text.includes("Chain")),
       hasBolt: abilities.some((text) => text.includes("W") && text.includes("Bolt")),
       statusVisible,
+    };
+  });
+}
+
+async function readHudPanelMetrics(page) {
+  return page.evaluate(() => {
+    const readAlpha = (value) => {
+      const match = value.match(/rgba?\(([^)]+)\)/);
+      if (!match) {
+        return 1;
+      }
+
+      const parts = match[1].split(",").map((part) => Number(part.trim()));
+      return parts.length >= 4 ? parts[3] : 1;
+    };
+
+    const readPanel = (id) => {
+      const element = document.querySelector(`[data-window-id="${id}"]`);
+      const titlebar = element?.querySelector(".game-window__titlebar");
+      if (!(element instanceof HTMLElement) || !(titlebar instanceof HTMLElement)) {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        id,
+        text: element.innerText,
+        locked: element.classList.contains("game-window--locked"),
+        titleOpacity: Number(getComputedStyle(titlebar).opacity),
+        backgroundAlpha: readAlpha(style.backgroundColor),
+        backgroundImage: style.backgroundImage,
+        centerXRatio: (rect.left + rect.width / 2) / window.innerWidth,
+        centerYRatio: (rect.top + rect.height / 2) / window.innerHeight,
+      };
+    };
+
+    return {
+      vitals: readPanel("hud-vitals"),
+      game: readPanel("hud-position"),
+      abilities: readPanel("hud-abilities"),
     };
   });
 }
