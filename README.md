@@ -22,9 +22,10 @@ This runs the production build and a headless browser smoke test for rendering, 
 ## Prototype Controls
 
 - Hold or click the left mouse button to move.
-- Press `Q`, then left-click a target area to cast Chain Lightning.
-- Press `W`, then left-click a target area to cast Lightning Bolt.
-- Press `Esc` to cancel targeting.
+- Quick Cast is on by default: hold `Q` or `W` to aim, then release to cast.
+- When Quick Cast is off in the pause menu, press `Q` or `W`, then left-click to cast.
+- Allow Max Range Target Snap is on by default: out-of-range spell aims cast at max range.
+- Press `Esc` or right-click to cancel targeting.
 - Press `R` after defeat to restart.
 
 ## Current Shape

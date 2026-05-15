@@ -19,12 +19,15 @@ npm run verify
 
 The dev server normally runs at `http://127.0.0.1:5173/`.
 
+In Codex on Windows, `npm run build` and `npm run verify` fail in the sandbox with Vite `[commonjs--resolver] spawn EPERM`. Run these commands with escalation in the first instance instead of trying a sandboxed run first.
+
 Run `npm run verify` after changing gameplay, HUD, camera, input, scene setup, rendering, or core styles. If behavior changes intentionally, update `scripts/verify-render.mjs` and `docs/TESTING.md` in the same patch.
 
 ## Git Workflow
 
 - Start any code or docs change by checking `git status -sb` so the current branch and uncommitted work are understood.
 - Treat pre-existing uncommitted changes as user-owned unless the user clearly says otherwise. Do not revert, overwrite, or tidy them as part of unrelated work.
+- `docs/DEPLOYMENT.md` is intentionally ignored and local-only. Do not flag that ignore rule or the untracked deployment runbook as a review issue.
 - Never run destructive git operations such as `git reset --hard`, branch deletion, force-push, rebase, or checkout/restore of user changes without explicit user approval.
 - Keep `main` clean and releasable. Use feature branches to isolate non-trivial work before editing.
 - Default branch name format for agent-created branches is `codex/<short-task-slug>`.

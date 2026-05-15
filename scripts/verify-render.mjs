@@ -8,6 +8,10 @@ const parsedUrl = new URL(url);
 const port = process.env.VERIFY_PORT ?? (parsedUrl.port || "5173");
 const outputDir = path.resolve(process.env.VERIFY_OUTPUT_DIR ?? "verify");
 const browserPath = await resolveBrowserPath();
+const spellManaCosts = {
+  chain: 22,
+  bolt: 34,
+};
 const viewports = [
   { name: "desktop", width: 1280, height: 720 },
   { name: "mobile", width: 390, height: 844 },
@@ -136,6 +140,7 @@ async function verifyVisibilitySystem(page, viewport) {
   }
 
   await verifyHiddenCastRejected(page, viewport, start);
+  await verifyOutOfRangeCastSnaps(page, viewport);
   await verifyUndiscoveredMoveRejected(page, viewport, start);
 
   const beforeMove = await readDiagnostics(page);
@@ -196,6 +201,7 @@ async function verifyHiddenCastRejected(page, viewport, diagnostics) {
   await waitForSpellReady(page, "chain");
   const before = await readDiagnostics(page);
   await page.mouse.move(shadowed.screen.x, shadowed.screen.y);
+  await releaseSpellKeys(page);
   await page.keyboard.down("KeyQ");
   await waitForCastMode(page, "chain");
   await page.keyboard.up("KeyQ");
@@ -223,6 +229,67 @@ async function verifyUndiscoveredMoveRejected(page, viewport, diagnostics) {
   if (groundDistance(after.player.navigation.moveTarget, before.player.navigation.moveTarget) > 0.25) {
     throw new Error(`${viewport.name} undiscovered terrain accepted a movement command`);
   }
+
+  const beforeHold = await readDiagnostics(page);
+  await page.mouse.move(undiscovered.screen.x, undiscovered.screen.y);
+  await page.mouse.down();
+  await page.waitForTimeout(320);
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const afterHold = await readDiagnostics(page);
+
+  if (groundDistance(afterHold.player.navigation.moveTarget, beforeHold.player.navigation.moveTarget) > 0.25) {
+    throw new Error(`${viewport.name} undiscovered terrain accepted a held movement command`);
+  }
+}
+
+async function verifyOutOfRangeCastSnaps(page, viewport) {
+  if (!(await aimAtOutOfRangeChainTarget(page))) {
+    return;
+  }
+
+  await waitForSpellReady(page, "chain");
+  await releaseSpellKeys(page);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.up("KeyQ");
+  await waitForSpellCooldown(page, "chain");
+}
+
+async function verifyOutOfRangeCastRejected(page, viewport) {
+  if (!(await aimAtOutOfRangeChainTarget(page))) {
+    return;
+  }
+
+  await waitForSpellReady(page, "chain");
+  const before = await readDiagnostics(page);
+  await releaseSpellKeys(page);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.up("KeyQ");
+  await waitForNoCastMode(page);
+  await page.waitForTimeout(120);
+
+  const after = await readDiagnostics(page);
+  if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
+    throw new Error(`${viewport.name} out-of-range raw cast target was not rejected when target snap was disabled`);
+  }
+}
+
+async function aimAtOutOfRangeChainTarget(page) {
+  let diagnostics = await readDiagnostics(page);
+  const outOfRange = diagnostics.visibilitySamples.visibleOutOfChainRangeCell;
+  if (!outOfRange?.screen?.visible) {
+    return false;
+  }
+
+  await page.mouse.move(outOfRange.screen.x, outOfRange.screen.y);
+  await page.waitForTimeout(40);
+  diagnostics = await readDiagnostics(page);
+  if (groundDistance(diagnostics.input.pointerWorld, diagnostics.player.position) <= 44.5) {
+    return false;
+  }
+  return true;
 }
 
 async function verifyHeldClickTracksCamera(page, viewport) {
@@ -263,6 +330,7 @@ async function verifyWindowUi(page, viewport) {
 
   await verifyEnemyHealthBarOptions(page);
   await verifyQuickCastOption(page);
+  await verifyMaxRangeTargetSnapOption(page);
 
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
@@ -339,6 +407,32 @@ async function verifyQuickCastOption(page) {
   }
 }
 
+async function verifyMaxRangeTargetSnapOption(page) {
+  let diagnostics = await readDiagnostics(page);
+  if (!diagnostics.input.allowMaxRangeTargetSnap) {
+    throw new Error("Allow Max Range Target Snap should be enabled by default");
+  }
+
+  let checked = await page.$eval("[data-max-range-target-snap]", (input) => input.checked);
+  if (!checked) {
+    throw new Error("Allow Max Range Target Snap toggle did not render enabled by default");
+  }
+
+  await page.click("[data-max-range-target-snap-toggle]");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.allowMaxRangeTargetSnap === false);
+  checked = await page.$eval("[data-max-range-target-snap]", (input) => input.checked);
+  if (checked) {
+    throw new Error("Allow Max Range Target Snap toggle did not turn off");
+  }
+
+  await page.click("[data-max-range-target-snap-toggle]");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.allowMaxRangeTargetSnap === true);
+  diagnostics = await readDiagnostics(page);
+  if (!diagnostics.input.allowMaxRangeTargetSnap) {
+    throw new Error("Allow Max Range Target Snap toggle did not turn back on");
+  }
+}
+
 async function verifyCameraRigStability(page, viewport) {
   const start = await readDiagnostics(page);
 
@@ -389,6 +483,9 @@ async function verifyBlockerNavigation(page, viewport) {
   }
   if (navigation.destinationBlocked || navigation.occupiesBlocked) {
     throw new Error(`${viewport.name} blocker navigation resolved into blocked space: ${JSON.stringify(navigation)}`);
+  }
+  if (!navigation.destinationDiscovered) {
+    throw new Error(`${viewport.name} blocker navigation resolved into undiscovered space: ${JSON.stringify(navigation)}`);
   }
 
   const moveTarget = navigation.moveTarget;
@@ -452,6 +549,8 @@ async function verifyEnemyAvoidance(page, viewport) {
 }
 
 async function exerciseCoreInteractions(page, viewport) {
+  await reloadGame(page);
+
   const movePoint = await getVisibleInteractionPoint(page, viewport, 0.62, 0.58);
   await page.mouse.move(movePoint.x, movePoint.y);
   await page.mouse.down();
@@ -468,6 +567,12 @@ async function exerciseCoreInteractions(page, viewport) {
   await verifyQuickCastRelease(page, viewport, "bolt", "KeyW", 0.45, 0.55);
 
   await reloadGame(page);
+  await setMaxRangeTargetSnap(page, false);
+  await verifyOutOfRangeCastRejected(page, viewport);
+  await setMaxRangeTargetSnap(page, true);
+  await verifyOutOfRangeCastSnaps(page, viewport);
+
+  await reloadGame(page);
   await setQuickCast(page, false);
   await verifyLegacyRightClickCancel(page, viewport);
   await verifyLegacyClickCast(page, viewport);
@@ -481,6 +586,7 @@ async function verifyQuickCastCancel(page, viewport) {
   const before = await readDiagnostics(page);
 
   await page.mouse.move(viewport.width * 0.57, viewport.height * 0.5);
+  await releaseSpellKeys(page);
   await page.keyboard.down("KeyQ");
   await waitForCastMode(page, "chain");
   await page.keyboard.down("KeyW");
@@ -510,6 +616,7 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
   await waitForSpellReady(page, spellId);
   const target = await getVisibleInteractionPoint(page, viewport, xRatio, yRatio);
   await page.mouse.move(target.x, target.y);
+  await releaseSpellKeys(page);
   await page.keyboard.down(key);
   await waitForCastMode(page, spellId);
   await page.keyboard.up(key);
@@ -520,6 +627,7 @@ async function verifyLegacyRightClickCancel(page, viewport) {
   await waitForSpellReady(page, "bolt");
   const before = await readDiagnostics(page);
 
+  await releaseSpellKeys(page);
   await page.keyboard.press("KeyW");
   await waitForCastMode(page, "bolt");
   await page.mouse.click(viewport.width * 0.46, viewport.height * 0.54, { button: "right" });
@@ -535,6 +643,7 @@ async function verifyLegacyRightClickCancel(page, viewport) {
 async function verifyLegacyClickCast(page, viewport) {
   await waitForSpellReady(page, "chain");
   const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
+  await releaseSpellKeys(page);
   await page.keyboard.press("KeyQ");
   await waitForCastMode(page, "chain");
   await page.mouse.click(target.x, target.y);
@@ -558,15 +667,40 @@ async function setQuickCast(page, enabled) {
   await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
 }
 
+async function setMaxRangeTargetSnap(page, enabled) {
+  const diagnostics = await readDiagnostics(page);
+  if (!diagnostics.paused) {
+    await page.click('[data-ui-action="pause"]');
+    await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  }
+
+  if (diagnostics.input.allowMaxRangeTargetSnap !== enabled) {
+    await page.click("[data-max-range-target-snap-toggle]");
+    await page.waitForFunction(
+      (expected) => window.__ZEUS_GAME__?.getDiagnostics().input.allowMaxRangeTargetSnap === expected,
+      enabled,
+    );
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+}
+
 async function waitForSpellReady(page, spellId) {
   await page.waitForFunction(
-    (id) => {
+    ({ id, manaCost }) => {
       const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
-      return diagnostics && !diagnostics.paused && diagnostics.spells.cooldowns[id] <= 0.05;
+      return diagnostics && !diagnostics.paused && diagnostics.spells.cooldowns[id] <= 0.05 && diagnostics.spells.mana >= manaCost;
     },
-    spellId,
+    { id: spellId, manaCost: spellManaCosts[spellId] },
     { timeout: 6000 },
   );
+}
+
+async function releaseSpellKeys(page) {
+  await page.keyboard.up("KeyQ");
+  await page.keyboard.up("KeyW");
 }
 
 async function waitForSpellCooldown(page, spellId) {

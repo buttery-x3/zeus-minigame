@@ -98,7 +98,7 @@
   grid-template-columns: 1fr auto;
   align-items: center;
   justify-items: stretch;
-  width: min(100%, 198px);
+  width: min(100%, 260px);
   padding: 9px 10px;
   border: 1px solid rgb(116 218 237 / 34%);
   border-radius: 7px;
@@ -107,6 +107,7 @@
 }
 
 .pause-menu__switch > span {
+  line-height: 1.15;
   text-align: left;
 }
 

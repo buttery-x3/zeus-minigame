@@ -8,18 +8,21 @@ type PauseMenuCallbacks = {
   toggleDiagnostics: () => void;
   setEnemyHealthBarMode: (mode: EnemyHealthBarVisibilityMode) => void;
   setQuickCastEnabled: (enabled: boolean) => void;
+  setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
 };
 
 export class PauseMenu {
   private readonly window: GameWindow;
   private readonly healthModeButtons: HTMLButtonElement[];
   private readonly quickCastToggle: HTMLInputElement;
+  private readonly maxRangeTargetSnapToggle: HTMLInputElement;
 
   constructor(
     windowManager: WindowManager,
     callbacks: PauseMenuCallbacks,
     enemyHealthBarMode: EnemyHealthBarVisibilityMode,
     quickCastEnabled: boolean,
+    allowMaxRangeTargetSnap: boolean,
   ) {
     const content = document.createElement("div");
     content.className = "pause-menu";
@@ -36,6 +39,11 @@ export class PauseMenu {
       <label class="pause-menu__setting pause-menu__switch" data-quick-cast-toggle>
         <span>Quick Cast</span>
         <input type="checkbox" data-quick-cast aria-label="Quick cast" />
+        <i aria-hidden="true"></i>
+      </label>
+      <label class="pause-menu__setting pause-menu__switch" data-max-range-target-snap-toggle>
+        <span>Allow Max Range Target Snap</span>
+        <input type="checkbox" data-max-range-target-snap aria-label="Allow max range target snap" />
         <i aria-hidden="true"></i>
       </label>
       <div class="pause-menu__actions">
@@ -62,6 +70,13 @@ export class PauseMenu {
       callbacks.setQuickCastEnabled(this.quickCastToggle.checked);
     });
     this.setQuickCastEnabled(quickCastEnabled);
+
+    this.maxRangeTargetSnapToggle = mustQuery<HTMLInputElement>(content, "[data-max-range-target-snap]");
+    this.maxRangeTargetSnapToggle.addEventListener("change", () => {
+      this.setAllowMaxRangeTargetSnap(this.maxRangeTargetSnapToggle.checked);
+      callbacks.setAllowMaxRangeTargetSnap(this.maxRangeTargetSnapToggle.checked);
+    });
+    this.setAllowMaxRangeTargetSnap(allowMaxRangeTargetSnap);
 
     this.window = windowManager.createWindow({
       id: "pause-menu",
@@ -92,5 +107,10 @@ export class PauseMenu {
   setQuickCastEnabled(enabled: boolean) {
     this.quickCastToggle.checked = enabled;
     this.quickCastToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
+  }
+
+  setAllowMaxRangeTargetSnap(enabled: boolean) {
+    this.maxRangeTargetSnapToggle.checked = enabled;
+    this.maxRangeTargetSnapToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
   }
 }

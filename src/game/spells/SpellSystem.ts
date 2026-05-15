@@ -11,6 +11,10 @@ type SpellSystemCallbacks = {
   canAffectEnemy: (enemy: EnemyState) => boolean;
 };
 
+type CastOptions = {
+  allowMaxRangeTargetSnap: boolean;
+};
+
 export class SpellSystem {
   readonly spells: Record<SpellId, SpellConfig> = SPELLS;
   readonly cooldowns: Record<SpellId, number> = {
@@ -55,7 +59,7 @@ export class SpellSystem {
     this.castMode = null;
   }
 
-  castAt(rawTarget: THREE.Vector3, playerPosition: THREE.Vector3, state: GameRuntimeState) {
+  castAt(rawTarget: THREE.Vector3, playerPosition: THREE.Vector3, state: GameRuntimeState, options: CastOptions) {
     if (!this.castMode) {
       return;
     }
@@ -69,8 +73,11 @@ export class SpellSystem {
       return;
     }
 
-    const target = clampToSpellRange(rawTarget, playerPosition, spell.range);
-    if (!this.callbacks.canCastAt(target)) {
+    const rawDistance = distance2D(playerPosition.x, playerPosition.z, rawTarget.x, rawTarget.z);
+    const target = options.allowMaxRangeTargetSnap
+      ? clampToSpellRange(rawTarget, playerPosition, spell.range)
+      : new THREE.Vector3(rawTarget.x, 0, rawTarget.z);
+    if ((!options.allowMaxRangeTargetSnap && rawDistance > spell.range) || !this.callbacks.canCastAt(target)) {
       this.callbacks.invalidCast();
       return;
     }
