@@ -394,11 +394,12 @@ async function verifyPauseMenuCentered(page, viewport) {
 
 async function verifyHudTransparency(page, viewport) {
   const initial = await readHudPanelMetrics(page);
-  if (!initial.vitals || !initial.game || !initial.abilities) {
+  if (!initial.vitals || !initial.status || !initial.game || !initial.abilities) {
     throw new Error(`${viewport.name} missing HUD panel metrics: ${JSON.stringify(initial)}`);
   }
 
-  const panels = [initial.vitals, initial.abilities];
+  const minimalPanelIds = ["hud-vitals", "hud-status", "hud-position", "hud-abilities"];
+  const panels = minimalPanelIds.map((id) => getHudPanelMetric(initial, id));
 
   await verifyUnlockUiDefault(page);
 
@@ -424,17 +425,18 @@ async function verifyHudTransparency(page, viewport) {
     }
   }
 
-  await verifyHudPanelDoesNotHoverReveal(page, viewport, "hud-vitals");
-  await verifyHudPanelDoesNotHoverReveal(page, viewport, "hud-abilities");
-  await verifyHudPanelClickThrough(page, viewport, "hud-vitals");
-  await verifyHudPanelClickThrough(page, viewport, "hud-abilities");
+  for (const id of minimalPanelIds) {
+    await verifyHudPanelDoesNotHoverReveal(page, viewport, id);
+    await verifyHudPanelClickThrough(page, viewport, id);
+  }
 
   await setUnlockUi(page, true);
-  await verifyHudPanelHoverReveal(page, viewport, "hud-vitals");
-  await verifyHudPanelHoverReveal(page, viewport, "hud-abilities");
+  for (const id of minimalPanelIds) {
+    await verifyHudPanelHoverReveal(page, viewport, id);
+  }
 
   const unlockEnabled = await readHudPanelMetrics(page);
-  if (unlockEnabled.vitals.lockControlHidden || unlockEnabled.abilities.lockControlHidden) {
+  if (minimalPanelIds.some((id) => getHudPanelMetric(unlockEnabled, id).lockControlHidden)) {
     throw new Error(`${viewport.name} Unlock UI did not expose HUD lock controls: ${JSON.stringify(unlockEnabled)}`);
   }
 
@@ -444,19 +446,20 @@ async function verifyHudTransparency(page, viewport) {
 
   await setUnlockUi(page, false);
   const disabledAgain = await readHudPanelMetrics(page);
-  if (!disabledAgain.vitals.locked || !disabledAgain.vitals.lockControlHidden || !disabledAgain.abilities.lockControlHidden) {
+  if (minimalPanelIds.some((id) => !getHudPanelMetric(disabledAgain, id).locked || !getHudPanelMetric(disabledAgain, id).lockControlHidden)) {
     throw new Error(`${viewport.name} disabling Unlock UI did not force HUD panels locked: ${JSON.stringify(disabledAgain)}`);
   }
 
-  await verifyHudPanelDoesNotHoverReveal(page, viewport, "hud-vitals");
-  await verifyHudPanelDoesNotHoverReveal(page, viewport, "hud-abilities");
+  for (const id of minimalPanelIds) {
+    await verifyHudPanelDoesNotHoverReveal(page, viewport, id);
+  }
 }
 
 async function verifyHudPanelHoverReveal(page, viewport, id) {
   await revealHudPanel(page, viewport, id);
 
   const hovered = await readHudPanelMetrics(page);
-  const panel = id === "hud-vitals" ? hovered.vitals : hovered.abilities;
+  const panel = getHudPanelMetric(hovered, id);
   if (panel.titleOpacity < 0.5 || panel.backgroundImage === "none") {
     throw new Error(`${viewport.name} ${id} did not reveal chrome on hover: ${JSON.stringify(panel)}`);
   }
@@ -480,11 +483,17 @@ async function revealHudPanel(page, viewport, id) {
   await page.waitForFunction((windowId) => {
     const element = document.querySelector(`[data-window-id="${windowId}"]`);
     const titlebar = element?.querySelector(".game-window__titlebar");
+    const lockButton = element?.querySelector(".game-window__action--lock");
     if (!element || !titlebar) {
       return false;
     }
 
-    return Number(getComputedStyle(titlebar).opacity) > 0.5 && getComputedStyle(element).backgroundImage !== "none";
+    const lockRect = lockButton?.getBoundingClientRect();
+    const lockButtonInViewport =
+      !lockRect ||
+      (lockRect.top >= 0 && lockRect.left >= 0 && lockRect.bottom <= window.innerHeight && lockRect.right <= window.innerWidth);
+
+    return Number(getComputedStyle(titlebar).opacity) > 0.5 && getComputedStyle(element).backgroundImage !== "none" && lockButtonInViewport;
   }, id);
 }
 
@@ -499,10 +508,20 @@ async function verifyHudPanelDoesNotHoverReveal(page, viewport, id) {
   await page.waitForTimeout(220);
 
   const hovered = await readHudPanelMetrics(page);
-  const panel = id === "hud-vitals" ? hovered.vitals : hovered.abilities;
+  const panel = getHudPanelMetric(hovered, id);
   if (panel.titleOpacity > 0.1 || panel.backgroundImage !== "none") {
     throw new Error(`${viewport.name} ${id} revealed chrome while Unlock UI was off: ${JSON.stringify(panel)}`);
   }
+}
+
+function getHudPanelMetric(metrics, id) {
+  const keyById = {
+    "hud-vitals": "vitals",
+    "hud-status": "status",
+    "hud-position": "game",
+    "hud-abilities": "abilities",
+  };
+  return metrics[keyById[id]];
 }
 
 async function verifyHudPanelClickThrough(page, viewport, id) {
@@ -1206,6 +1225,7 @@ async function readHudPanelMetrics(page) {
 
     return {
       vitals: readPanel("hud-vitals"),
+      status: readPanel("hud-status"),
       game: readPanel("hud-position"),
       abilities: readPanel("hud-abilities"),
     };

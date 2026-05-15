@@ -23,7 +23,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Mana regenerates over time and gains a small bump from kills.
 - Movement is click/hold-to-move on the `X/Z` ground plane.
 - Movement commands require known terrain: Zeus can move to previously discovered walkable ground even when it is no longer currently visible.
-- Vitals, game, status, abilities, and diagnostics are DOM windows. The pause menu's Unlock UI toggle enables their lock controls and movement; it defaults off so transparent combat HUD panels stay quiet and click-through.
+- Vitals, game, status, abilities, and diagnostics are DOM windows. The pause menu's Unlock UI toggle enables their lock controls and movement; it defaults off so transparent HUD panels stay quiet and click-through.
 
 ## Spells
 

@@ -93,8 +93,8 @@ export class Hud {
       id: "hud-status",
       title: "Status",
       content: status,
-      placement: { anchor: "top-center", width: 360, offsetY: 18, mobile: { anchor: "top-center", width: 360, offsetY: 188 } },
-      className: "hud-window hud-window--status",
+      placement: { anchor: "top-center", width: 360, offsetY: 52, mobile: { anchor: "top-center", width: 360, offsetY: 188 } },
+      className: "hud-window hud-window--status hud-window--minimal",
       lockable: true,
       locked: true,
     });
@@ -103,7 +103,7 @@ export class Hud {
       title: "Game",
       content: game,
       placement: { anchor: "top-right", width: 180, offsetX: 18, offsetY: 72, mobile: { anchor: "top-right", width: 180, offsetX: 14, offsetY: 72 } },
-      className: "hud-window hud-window--game",
+      className: "hud-window hud-window--game hud-window--minimal",
       lockable: true,
       locked: true,
     });
@@ -124,7 +124,7 @@ export class Hud {
     });
 
     this.windows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow);
-    this.hoverRevealWindows.push(vitalsWindow, abilitiesWindow);
+    this.hoverRevealWindows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow);
     window.addEventListener("pointermove", this.handleHoverRevealPointerMove);
 
     this.healthFill = mustQuery(stats, "[data-health-fill]");
