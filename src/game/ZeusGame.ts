@@ -59,6 +59,7 @@ export class ZeusGame {
   private enemyHealthBarMode: EnemyHealthBarVisibilityMode = DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE;
   private quickCastEnabled = true;
   private allowMaxRangeTargetSnap = true;
+  private unlockUiEnabled = false;
   private readonly ui = new GameUi({
     resume: () => this.setPaused(false),
     togglePause: () => this.setPaused(!this.state.paused),
@@ -68,6 +69,8 @@ export class ZeusGame {
     setQuickCastEnabled: (enabled) => this.setQuickCastEnabled(enabled),
     allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
     setAllowMaxRangeTargetSnap: (enabled) => this.setAllowMaxRangeTargetSnap(enabled),
+    unlockUiEnabled: this.unlockUiEnabled,
+    setUnlockUiEnabled: (enabled) => this.setUnlockUiEnabled(enabled),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(
@@ -151,6 +154,7 @@ export class ZeusGame {
       input: {
         quickCastEnabled: this.quickCastEnabled,
         allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
+        unlockUiEnabled: this.unlockUiEnabled,
         pointerWorld: this.input.pointerWorld.toArray(),
       },
       spells: {
@@ -326,6 +330,11 @@ export class ZeusGame {
   private setAllowMaxRangeTargetSnap(enabled: boolean) {
     this.allowMaxRangeTargetSnap = enabled;
     this.ui.setAllowMaxRangeTargetSnap(enabled);
+  }
+
+  private setUnlockUiEnabled(enabled: boolean) {
+    this.unlockUiEnabled = enabled;
+    this.ui.setUnlockUiEnabled(enabled);
   }
 
   private toggleEnemyHealthBarMode() {

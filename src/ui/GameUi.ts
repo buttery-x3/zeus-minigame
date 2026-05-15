@@ -15,6 +15,8 @@ type GameUiCallbacks = {
   setQuickCastEnabled: (enabled: boolean) => void;
   allowMaxRangeTargetSnap: boolean;
   setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
+  unlockUiEnabled: boolean;
+  setUnlockUiEnabled: (enabled: boolean) => void;
 };
 
 export class GameUi {
@@ -41,11 +43,14 @@ export class GameUi {
         setEnemyHealthBarMode: callbacks.setEnemyHealthBarMode,
         setQuickCastEnabled: callbacks.setQuickCastEnabled,
         setAllowMaxRangeTargetSnap: callbacks.setAllowMaxRangeTargetSnap,
+        setUnlockUiEnabled: callbacks.setUnlockUiEnabled,
       },
       callbacks.enemyHealthBarMode,
       callbacks.quickCastEnabled,
       callbacks.allowMaxRangeTargetSnap,
+      callbacks.unlockUiEnabled,
     );
+    this.setUnlockUiEnabled(callbacks.unlockUiEnabled);
   }
 
   setPaused(paused: boolean) {
@@ -63,6 +68,11 @@ export class GameUi {
 
   setAllowMaxRangeTargetSnap(enabled: boolean) {
     this.pauseMenu.setAllowMaxRangeTargetSnap(enabled);
+  }
+
+  setUnlockUiEnabled(enabled: boolean) {
+    this.hud.setUnlockUiEnabled(enabled);
+    this.pauseMenu.setUnlockUiEnabled(enabled);
   }
 
   toggleDiagnostics() {

@@ -6,6 +6,7 @@ export class WindowManager {
 
   private readonly modalBackdrop: HTMLElement;
   private readonly windows = new Map<string, GameWindow>();
+  private unlockUiEnabled = false;
   private zIndex = 30;
 
   constructor() {
@@ -28,6 +29,7 @@ export class WindowManager {
     }
 
     const gameWindow = new GameWindow(this, options);
+    gameWindow.setUnlockUiEnabled(this.unlockUiEnabled);
     this.windows.set(options.id, gameWindow);
     this.root.append(gameWindow.element);
     gameWindow.place();
@@ -39,6 +41,19 @@ export class WindowManager {
   bringToFront(gameWindow: GameWindow) {
     gameWindow.element.style.zIndex = `${this.zIndex}`;
     this.zIndex += 1;
+  }
+
+  setUnlockUiEnabled(enabled: boolean) {
+    this.unlockUiEnabled = enabled;
+    this.root.classList.toggle("ui-layer--unlock-ui-enabled", enabled);
+
+    for (const gameWindow of this.windows.values()) {
+      gameWindow.setUnlockUiEnabled(enabled);
+    }
+  }
+
+  isUnlockUiEnabled() {
+    return this.unlockUiEnabled;
   }
 
   syncModalState() {

@@ -14,6 +14,7 @@ export class GameWindow {
   private y = 0;
   private width = 0;
   private locked: boolean;
+  private unlockUiEnabled = true;
   private visible: boolean;
 
   constructor(
@@ -65,8 +66,8 @@ export class GameWindow {
     const placement = this.resolvePlacement();
     const width = placement.width;
     const height = placement.height ?? this.element.offsetHeight;
-    const offsetX = placement.offsetX ?? 18;
-    const offsetY = placement.offsetY ?? 18;
+    const offsetX = placement.offsetX ?? (placement.anchor === "viewport" ? 0 : 18);
+    const offsetY = placement.offsetY ?? (placement.anchor === "viewport" ? 0 : 18);
 
     this.width = width;
     this.element.style.width = `${width}px`;
@@ -83,6 +84,9 @@ export class GameWindow {
     } else if (placement.anchor === "bottom-center") {
       this.x = (window.innerWidth - width) / 2 + (placement.offsetX ?? 0);
       this.y = window.innerHeight - height - offsetY;
+    } else if (placement.anchor === "viewport") {
+      this.x = window.innerWidth * (placement.viewportX ?? 0.5) - width / 2 + offsetX;
+      this.y = window.innerHeight * (placement.viewportY ?? 0.5) - height / 2 + offsetY;
     } else {
       this.x = (window.innerWidth - width) / 2 + (placement.offsetX ?? 0);
       this.y = (window.innerHeight - height) / 2 + (placement.offsetY ?? 0);
@@ -105,10 +109,36 @@ export class GameWindow {
     return this.visible;
   }
 
+  isLocked() {
+    return this.locked;
+  }
+
+  isLockable() {
+    return this.lockButton !== null;
+  }
+
+  setUnlockUiEnabled(enabled: boolean) {
+    this.unlockUiEnabled = enabled;
+    this.element.classList.toggle("game-window--unlock-ui-disabled", !enabled && this.isLockable());
+
+    if (!enabled && this.isLockable()) {
+      this.setLocked(true);
+    }
+
+    if (this.lockButton) {
+      this.lockButton.hidden = !enabled;
+      this.lockButton.disabled = !enabled;
+      this.lockButton.setAttribute("aria-hidden", String(!enabled));
+    }
+  }
+
   setVisible(visible: boolean) {
     this.visible = visible;
     this.element.hidden = !visible;
     if (visible) {
+      if (this.resolvePlacement().anchor === "center") {
+        this.place();
+      }
       this.manager.bringToFront(this);
     }
     this.manager.syncModalState();
@@ -124,10 +154,14 @@ export class GameWindow {
   }
 
   private toggleLocked = () => {
+    if (!this.unlockUiEnabled) {
+      return;
+    }
+
     this.setLocked(!this.locked);
   };
 
-  private setLocked(locked: boolean) {
+  setLocked(locked: boolean) {
     this.locked = locked;
     this.element.classList.toggle("game-window--locked", locked);
     this.lockButton?.setAttribute("aria-label", locked ? "Unlock window" : "Lock window");
@@ -150,7 +184,7 @@ export class GameWindow {
 
   private readonly handleTitlePointerDown = (event: PointerEvent) => {
     const target = event.target instanceof Element ? event.target : null;
-    if (event.button !== 0 || this.locked || !(this.options.movable ?? true) || target?.closest("button")) {
+    if (event.button !== 0 || !this.unlockUiEnabled || this.locked || !(this.options.movable ?? true) || target?.closest("button")) {
       return;
     }
 
