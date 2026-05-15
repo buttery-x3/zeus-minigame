@@ -136,6 +136,9 @@ export class GameWindow {
     this.visible = visible;
     this.element.hidden = !visible;
     if (visible) {
+      if (this.resolvePlacement().anchor === "center") {
+        this.place();
+      }
       this.manager.bringToFront(this);
     }
     this.manager.syncModalState();

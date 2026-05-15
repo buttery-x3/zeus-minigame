@@ -323,6 +323,7 @@ async function verifyHeldClickTracksCamera(page, viewport) {
 async function verifyWindowUi(page, viewport) {
   await page.click('[data-ui-action="pause"]');
   await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  await verifyPauseMenuCentered(page, viewport);
 
   let diagnostics = await readDiagnostics(page);
   if (!diagnostics.paused) {
@@ -371,6 +372,24 @@ async function verifyWindowUi(page, viewport) {
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
   await setUnlockUi(page, false);
+}
+
+async function verifyPauseMenuCentered(page, viewport) {
+  const metrics = await page.$eval('[data-window-id="pause-menu"]', (element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+
+  const xDrift = Math.abs(metrics.centerX - viewport.width / 2);
+  const yDrift = Math.abs(metrics.centerY - (viewport.height / 2 - 20));
+  if (xDrift > 2 || yDrift > 2) {
+    throw new Error(`${viewport.name} pause menu was not centered: ${JSON.stringify(metrics)}`);
+  }
 }
 
 async function verifyHudTransparency(page, viewport) {
