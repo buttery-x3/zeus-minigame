@@ -57,6 +57,7 @@ export class Hud {
       <div class="hud__abilities">
         <button class="ability" data-ability="chain" type="button" aria-label="Chain Lightning">
           <i class="ability__cooldown-fill" aria-hidden="true"></i>
+          <i class="ability__cooldown-spark" aria-hidden="true"></i>
           <b class="ability__key">Q</b>
           <i class="ability__icon ability__icon--chain"></i>
           <span class="ability__name">Chain</span>
@@ -64,6 +65,7 @@ export class Hud {
         </button>
         <button class="ability" data-ability="bolt" type="button" aria-label="Lightning Bolt">
           <i class="ability__cooldown-fill" aria-hidden="true"></i>
+          <i class="ability__cooldown-spark" aria-hidden="true"></i>
           <b class="ability__key">W</b>
           <i class="ability__icon ability__icon--bolt"></i>
           <span class="ability__name">Bolt</span>

@@ -822,6 +822,21 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
 }
 
 async function verifyAbilityCooldownUi(page, viewport, spellId) {
+  await page.waitForFunction((id) => {
+    const button = document.querySelector(`[data-ability="${id}"]`);
+    const fill = button?.querySelector(".ability__cooldown-fill");
+    const spark = button?.querySelector(".ability__cooldown-spark");
+    if (!(button instanceof HTMLElement) || !(fill instanceof HTMLElement) || !(spark instanceof HTMLElement)) {
+      return false;
+    }
+
+    return (
+      button.classList.contains("ability--cooling") &&
+      Number(getComputedStyle(fill).opacity) > 0.7 &&
+      Number(getComputedStyle(spark).opacity) > 0.7
+    );
+  }, spellId);
+
   const metrics = await page.$eval(`[data-ability="${spellId}"]`, (button) => {
     const readRect = (selector) => {
       const element = button.querySelector(selector);
@@ -844,6 +859,8 @@ async function verifyAbilityCooldownUi(page, viewport, spellId) {
     const rect = button.getBoundingClientRect();
     const style = getComputedStyle(button);
     const fill = button.querySelector(".ability__cooldown-fill");
+    const spark = button.querySelector(".ability__cooldown-spark");
+    const sparkStyle = spark instanceof HTMLElement ? getComputedStyle(spark) : null;
     return {
       button: {
         left: rect.left,
@@ -859,6 +876,10 @@ async function verifyAbilityCooldownUi(page, viewport, spellId) {
       cooldownAngle: style.getPropertyValue("--cooldown-angle").trim(),
       cooldownProgress: Number(style.getPropertyValue("--cooldown-progress")),
       fillBackground: fill instanceof HTMLElement ? getComputedStyle(fill).backgroundImage : "",
+      fillOpacity: fill instanceof HTMLElement ? Number(getComputedStyle(fill).opacity) : 0,
+      sparkOpacity: sparkStyle ? Number(sparkStyle.opacity) : 0,
+      sparkTransform: sparkStyle?.transform ?? "",
+      sparkBoxShadow: sparkStyle?.boxShadow ?? "",
       key: readRect(".ability__key"),
       icon: readRect(".ability__icon"),
       name: readRect(".ability__name"),
@@ -871,6 +892,9 @@ async function verifyAbilityCooldownUi(page, viewport, spellId) {
   }
   if (!metrics.fillBackground.includes("conic-gradient")) {
     throw new Error(`${viewport.name} ${spellId} ability did not render radial cooldown fill: ${JSON.stringify(metrics)}`);
+  }
+  if (metrics.fillOpacity < 0.7 || metrics.sparkOpacity < 0.7 || metrics.sparkTransform === "none" || metrics.sparkBoxShadow === "none") {
+    throw new Error(`${viewport.name} ${spellId} ability cooldown visual was too subtle or missing spark: ${JSON.stringify(metrics)}`);
   }
   if (!metrics.key?.text || metrics.key.left - metrics.button.left > 12 || metrics.key.top - metrics.button.top > 12) {
     throw new Error(`${viewport.name} ${spellId} ability key was not anchored top-left: ${JSON.stringify(metrics)}`);
