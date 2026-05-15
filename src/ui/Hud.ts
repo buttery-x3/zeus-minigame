@@ -56,10 +56,18 @@ export class Hud {
     const abilities = this.createContent(`
       <div class="hud__abilities">
         <button class="ability" data-ability="chain" type="button" aria-label="Chain Lightning">
-          <b>Q</b><i class="ability__icon ability__icon--chain"></i><span>Chain</span><em></em>
+          <i class="ability__cooldown-fill" aria-hidden="true"></i>
+          <b class="ability__key">Q</b>
+          <i class="ability__icon ability__icon--chain"></i>
+          <span class="ability__name">Chain</span>
+          <em class="ability__cooldown"></em>
         </button>
         <button class="ability" data-ability="bolt" type="button" aria-label="Lightning Bolt">
-          <b>W</b><i class="ability__icon ability__icon--bolt"></i><span>Bolt</span><em></em>
+          <i class="ability__cooldown-fill" aria-hidden="true"></i>
+          <b class="ability__key">W</b>
+          <i class="ability__icon ability__icon--bolt"></i>
+          <span class="ability__name">Bolt</span>
+          <em class="ability__cooldown"></em>
         </button>
       </div>
     `);
@@ -168,10 +176,14 @@ export class Hud {
     const spell = state.spells[spellId];
     const cooldown = state.cooldowns[spellId];
     const ready = cooldown <= 0 && state.mana >= spell.manaCost;
-    const cooldownLabel = mustQuery(button, "em");
+    const cooldownRatio = clamp(cooldown / spell.cooldown, 0, 1);
+    const cooldownLabel = mustQuery(button, ".ability__cooldown");
 
+    button.style.setProperty("--cooldown-angle", `${cooldownRatio * 360}deg`);
+    button.style.setProperty("--cooldown-progress", `${cooldownRatio}`);
     button.classList.toggle("ability--ready", ready);
     button.classList.toggle("ability--active", state.castMode === spellId);
+    button.classList.toggle("ability--cooling", cooldown > 0);
     cooldownLabel.textContent = cooldown > 0 ? `${Math.ceil(cooldown)}` : "";
   }
 

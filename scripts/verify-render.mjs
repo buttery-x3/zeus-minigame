@@ -818,6 +818,72 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
   await waitForCastMode(page, spellId);
   await page.keyboard.up(key);
   await waitForSpellCooldown(page, spellId);
+  await verifyAbilityCooldownUi(page, viewport, spellId);
+}
+
+async function verifyAbilityCooldownUi(page, viewport, spellId) {
+  const metrics = await page.$eval(`[data-ability="${spellId}"]`, (button) => {
+    const readRect = (selector) => {
+      const element = button.querySelector(selector);
+      if (!(element instanceof HTMLElement)) {
+        return null;
+      }
+
+      const rect = element.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+        text: element.textContent?.trim() ?? "",
+      };
+    };
+
+    const rect = button.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    const fill = button.querySelector(".ability__cooldown-fill");
+    return {
+      button: {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+      },
+      classes: [...button.classList],
+      cooldownAngle: style.getPropertyValue("--cooldown-angle").trim(),
+      cooldownProgress: Number(style.getPropertyValue("--cooldown-progress")),
+      fillBackground: fill instanceof HTMLElement ? getComputedStyle(fill).backgroundImage : "",
+      key: readRect(".ability__key"),
+      icon: readRect(".ability__icon"),
+      name: readRect(".ability__name"),
+      cooldown: readRect(".ability__cooldown"),
+    };
+  });
+
+  if (!metrics.classes.includes("ability--cooling") || !(metrics.cooldownProgress > 0) || metrics.cooldownAngle === "0deg") {
+    throw new Error(`${viewport.name} ${spellId} ability did not expose active cooldown state: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.fillBackground.includes("conic-gradient")) {
+    throw new Error(`${viewport.name} ${spellId} ability did not render radial cooldown fill: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.key?.text || metrics.key.left - metrics.button.left > 12 || metrics.key.top - metrics.button.top > 12) {
+    throw new Error(`${viewport.name} ${spellId} ability key was not anchored top-left: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.cooldown?.text || metrics.button.right - metrics.cooldown.right > 14 || metrics.cooldown.top - metrics.button.top > 12) {
+    throw new Error(`${viewport.name} ${spellId} cooldown number was not anchored top-right: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.name?.text || Math.abs((metrics.name.left + metrics.name.width / 2) - metrics.button.centerX) > 3 || metrics.button.bottom - metrics.name.bottom > 9) {
+    throw new Error(`${viewport.name} ${spellId} ability name was not centered at the bottom: ${JSON.stringify(metrics)}`);
+  }
+  if (!metrics.icon || Math.abs((metrics.icon.left + metrics.icon.width / 2) - metrics.button.centerX) > 3 || Math.abs((metrics.icon.top + metrics.icon.height / 2) - metrics.button.centerY) > 3) {
+    throw new Error(`${viewport.name} ${spellId} ability icon was not centered: ${JSON.stringify(metrics)}`);
+  }
 }
 
 async function verifyLegacyRightClickCancel(page, viewport) {
