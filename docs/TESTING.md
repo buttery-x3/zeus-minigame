@@ -26,13 +26,14 @@ npm run verify
 - Loads desktop and mobile viewports.
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
-- Holds left-click at a fixed screen point and checks that movement retargets as the follow camera moves.
+- Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
+- Checks gameplay visibility diagnostics, 2x visibility overlay diagnostics, blocker shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark blockers, and blocker-occluded memory after exploration.
 - Clicks a visible blocker and checks that navigation resolves to reachable edge space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
 - Checks the pause menu enemy health bar visibility options and Quick Cast toggle.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
 - Checks that diagnostics exposes enemy flow-field metrics and that the smoke path does not create a pathfinding call spike.
-- Presses `V` to verify enemy health bars toggle between smart and always visible modes without smart revealing every enemy.
+- Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
 - Checks that the WebGL canvas is not blank or visually flat.

@@ -57,9 +57,10 @@ async function verifyInBrowser() {
       await page.waitForSelector(".hud__stats");
       await page.waitForSelector(".ui-toolbar");
 
+      await verifyHeldClickTracksCamera(page, viewport);
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
-      await verifyHeldClickTracksCamera(page, viewport);
+      await verifyVisibilitySystem(page, viewport);
       await verifyBlockerNavigation(page, viewport);
       await verifyEnemyHealthBars(page, viewport);
       await verifyEnemyAvoidance(page, viewport);
@@ -91,7 +92,7 @@ async function verifyShadowRigTracking(page, viewport) {
     throw new Error(`${viewport.name} missing lighting diagnostics`);
   }
 
-  await page.mouse.click(viewport.width * 0.82, viewport.height * 0.62);
+  await clickVisibleMoveCell(page, viewport, 0.82, 0.62);
   await page.waitForTimeout(1200);
   const after = await readDiagnostics(page);
 
@@ -110,8 +111,123 @@ async function verifyShadowRigTracking(page, viewport) {
   }
 }
 
+async function verifyVisibilitySystem(page, viewport) {
+  const start = await readDiagnostics(page);
+  if (!start.visibility) {
+    throw new Error(`${viewport.name} missing visibility diagnostics`);
+  }
+  if (!start.visibilityOverlay || start.visibilityOverlay.resolutionScale !== 2) {
+    throw new Error(`${viewport.name} visibility overlay did not report 2x resolution: ${JSON.stringify(start.visibilityOverlay)}`);
+  }
+  if (start.visibility.visibleCells < 80) {
+    throw new Error(`${viewport.name} visibility revealed too few cells: ${JSON.stringify(start.visibility)}`);
+  }
+  if (start.visibility.discoveredCells < start.visibility.visibleCells) {
+    throw new Error(`${viewport.name} discovered cells should include current visible cells: ${JSON.stringify(start.visibility)}`);
+  }
+  if (start.visibility.lightReachCells < start.visibility.visibleCells) {
+    throw new Error(`${viewport.name} light reach should include current visible cells: ${JSON.stringify(start.visibility)}`);
+  }
+  if (start.visibility.outerRadiusCells <= start.visibility.innerRadiusCells) {
+    throw new Error(`${viewport.name} invalid visibility radii: ${JSON.stringify(start.visibility)}`);
+  }
+  if (!start.visibility.shadowSample) {
+    throw new Error(`${viewport.name} expected blocker visibility to create a shadow sample`);
+  }
+
+  await verifyHiddenCastRejected(page, viewport, start);
+  await verifyUndiscoveredMoveRejected(page, viewport, start);
+
+  const beforeMove = await readDiagnostics(page);
+  let afterMove = beforeMove;
+  for (let step = 0; step < 5; step += 1) {
+    await clickVisibleMoveCell(page, viewport, 0.74, 0.62);
+    await page.waitForTimeout(850);
+    afterMove = await readDiagnostics(page);
+    if (afterMove.visibilitySamples.discoveredUnlitCell) {
+      break;
+    }
+  }
+
+  if (
+    afterMove.visibility.discoveredCells <= beforeMove.visibility.discoveredCells &&
+    !afterMove.visibilitySamples.discoveredUnlitCell
+  ) {
+    throw new Error(
+      `${viewport.name} discovered cell count did not grow after exploration: before=${beforeMove.visibility.discoveredCells}, after=${afterMove.visibility.discoveredCells}`,
+    );
+  }
+  if (!afterMove.visibilitySamples.discoveredUnlitCell || afterMove.visibility.discoveredUnlitCells < 1) {
+    throw new Error(`${viewport.name} expected movement to leave discovered terrain outside current light`);
+  }
+
+  const blockers = afterMove.terrain?.blockers;
+  if (!blockers || blockers.total < 1 || blockers.visible + blockers.hidden !== blockers.total) {
+    throw new Error(`${viewport.name} invalid blocker visibility diagnostics: ${JSON.stringify(blockers)}`);
+  }
+  if (blockers.hidden < 1) {
+    throw new Error(`${viewport.name} expected at least one active blocker to be hidden in darkness: ${JSON.stringify(blockers)}`);
+  }
+
+  const unlit = afterMove.visibilitySamples.discoveredUnlitCell.visibility;
+  if (!unlit.discovered || unlit.visible || unlit.lightReach > 0.001) {
+    throw new Error(`${viewport.name} discovered-unlit sample had wrong visibility state: ${JSON.stringify(unlit)}`);
+  }
+
+  const blockedMemory = afterMove.visibilitySamples.blockedMemoryCell;
+  if (afterMove.visibility.occludedMemoryCells > 0 && !blockedMemory) {
+    throw new Error(`${viewport.name} visibility diagnostics counted blocked memory without exposing a sample`);
+  }
+  if (blockedMemory) {
+    const memory = blockedMemory.visibility;
+    if (!memory.discovered || memory.visible || memory.lightReach <= 0.001) {
+      throw new Error(`${viewport.name} blocked-memory sample had wrong visibility state: ${JSON.stringify(memory)}`);
+    }
+  }
+}
+
+async function verifyHiddenCastRejected(page, viewport, diagnostics) {
+  diagnostics = await readDiagnostics(page);
+  const shadowed = diagnostics.visibilitySamples.shadowedCell;
+  if (!shadowed?.screen?.visible || groundDistance(diagnostics.player.position, shadowed.world) > 43.5) {
+    return;
+  }
+
+  await waitForSpellReady(page, "chain");
+  const before = await readDiagnostics(page);
+  await page.mouse.move(shadowed.screen.x, shadowed.screen.y);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.up("KeyQ");
+  await waitForNoCastMode(page);
+  await page.waitForTimeout(120);
+
+  const after = await readDiagnostics(page);
+  if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
+    throw new Error(`${viewport.name} cast into hidden blocker shadow was not rejected`);
+  }
+}
+
+async function verifyUndiscoveredMoveRejected(page, viewport, diagnostics) {
+  diagnostics = await readDiagnostics(page);
+  const undiscovered = diagnostics.visibilitySamples.farUndiscoveredCell ?? diagnostics.visibilitySamples.nearestUndiscoveredCell;
+  if (!undiscovered?.screen?.visible) {
+    return;
+  }
+
+  const before = await readDiagnostics(page);
+  await page.mouse.click(undiscovered.screen.x, undiscovered.screen.y);
+  await page.waitForTimeout(180);
+  const after = await readDiagnostics(page);
+
+  if (groundDistance(after.player.navigation.moveTarget, before.player.navigation.moveTarget) > 0.25) {
+    throw new Error(`${viewport.name} undiscovered terrain accepted a movement command`);
+  }
+}
+
 async function verifyHeldClickTracksCamera(page, viewport) {
-  await page.mouse.move(viewport.width * 0.72, viewport.height * 0.58);
+  const holdPoint = await getVisibleInteractionPoint(page, viewport, 0.72, 0.58);
+  await page.mouse.move(holdPoint.x, holdPoint.y);
   const before = await readDiagnostics(page);
 
   await page.mouse.down();
@@ -226,11 +342,11 @@ async function verifyQuickCastOption(page) {
 async function verifyCameraRigStability(page, viewport) {
   const start = await readDiagnostics(page);
 
-  await page.mouse.click(viewport.width * 0.68, viewport.height * 0.56);
+  await clickVisibilitySample(page, viewport, start.visibilitySamples?.visibleEastCell, 0.68, 0.56);
   await page.waitForTimeout(260);
   const firstMove = await readDiagnostics(page);
 
-  await page.mouse.click(viewport.width * 0.32, viewport.height * 0.48);
+  await clickVisibilitySample(page, viewport, firstMove.visibilitySamples?.visibleWestCell, 0.32, 0.48);
   await page.waitForTimeout(260);
   const secondMove = await readDiagnostics(page);
 
@@ -240,8 +356,11 @@ async function verifyCameraRigStability(page, viewport) {
     quaternionDistance(firstMove.camera.quaternion, secondMove.camera.quaternion),
   );
 
-  const playerTurned = Math.abs(firstMove.player.rotationY - secondMove.player.rotationY) > 0.4;
-  if (!playerTurned) {
+  const firstIntentX = firstMove.player.navigation.moveTarget[0] - firstMove.player.position[0];
+  const secondIntentX = secondMove.player.navigation.moveTarget[0] - secondMove.player.position[0];
+  const exercisedOpposingDirection =
+    Math.abs(firstMove.player.rotationY - secondMove.player.rotationY) > 0.4 || (firstIntentX > 2 && secondIntentX < -2);
+  if (!exercisedOpposingDirection) {
     throw new Error(`${viewport.name} camera check did not exercise opposing movement directions`);
   }
   if (cameraDrift > 0.001) {
@@ -292,17 +411,22 @@ async function verifyEnemyHealthBars(page, viewport) {
   if (before.enemyHealthBars.total < 1) {
     throw new Error(`${viewport.name} expected spawned enemy health bars`);
   }
+  if (before.enemyVisibility.visible < 1) {
+    throw new Error(`${viewport.name} expected at least one enemy inside current visibility`);
+  }
 
   await page.keyboard.press("KeyV");
   await page.waitForFunction(() => {
-    const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
-    return bars?.mode === "always" && bars.total > 0 && bars.visible === bars.total;
+    const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+    const bars = diagnostics?.enemyHealthBars;
+    return bars?.mode === "always" && bars.total > 0 && bars.visible === diagnostics.enemyVisibility.visible;
   });
 
   await page.keyboard.press("KeyV");
   await page.waitForFunction(() => {
-    const bars = window.__ZEUS_GAME__?.getDiagnostics().enemyHealthBars;
-    return bars?.mode === "smart" && bars.total > 0 && bars.visible < bars.total;
+    const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+    const bars = diagnostics?.enemyHealthBars;
+    return bars?.mode === "smart" && bars.total > 0 && bars.visible <= diagnostics.enemyVisibility.visible;
   });
 }
 
@@ -328,7 +452,8 @@ async function verifyEnemyAvoidance(page, viewport) {
 }
 
 async function exerciseCoreInteractions(page, viewport) {
-  await page.mouse.move(viewport.width * 0.62, viewport.height * 0.58);
+  const movePoint = await getVisibleInteractionPoint(page, viewport, 0.62, 0.58);
+  await page.mouse.move(movePoint.x, movePoint.y);
   await page.mouse.down();
   await page.waitForTimeout(250);
   await page.mouse.up();
@@ -383,7 +508,8 @@ async function verifyQuickCastCancel(page, viewport) {
 
 async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRatio) {
   await waitForSpellReady(page, spellId);
-  await page.mouse.move(viewport.width * xRatio, viewport.height * yRatio);
+  const target = await getVisibleInteractionPoint(page, viewport, xRatio, yRatio);
+  await page.mouse.move(target.x, target.y);
   await page.keyboard.down(key);
   await waitForCastMode(page, spellId);
   await page.keyboard.up(key);
@@ -408,9 +534,10 @@ async function verifyLegacyRightClickCancel(page, viewport) {
 
 async function verifyLegacyClickCast(page, viewport) {
   await waitForSpellReady(page, "chain");
+  const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
   await page.keyboard.press("KeyQ");
   await waitForCastMode(page, "chain");
-  await page.mouse.click(viewport.width * 0.55, viewport.height * 0.48);
+  await page.mouse.click(target.x, target.y);
   await waitForSpellCooldown(page, "chain");
 }
 
@@ -474,6 +601,39 @@ async function readDiagnostics(page) {
 
     return game.getDiagnostics();
   });
+}
+
+async function getVisibleInteractionPoint(page, viewport, fallbackXRatio, fallbackYRatio) {
+  const diagnostics = await readDiagnostics(page);
+  const candidates = [
+    diagnostics.visibilitySamples?.visibleMoveCell,
+    diagnostics.visibilitySamples?.visibleEastCell,
+    diagnostics.visibilitySamples?.visibleWestCell,
+  ];
+  for (const sample of candidates) {
+    if (sample?.screen?.visible) {
+      return { x: sample.screen.x, y: sample.screen.y };
+    }
+  }
+
+  return { x: viewport.width * fallbackXRatio, y: viewport.height * fallbackYRatio };
+}
+
+async function clickVisibleMoveCell(page, viewport, fallbackXRatio, fallbackYRatio) {
+  const point = await getVisibleInteractionPoint(page, viewport, fallbackXRatio, fallbackYRatio);
+  await page.mouse.click(point.x, point.y);
+  return point;
+}
+
+async function clickVisibilitySample(page, viewport, sample, fallbackXRatio, fallbackYRatio) {
+  if (sample?.screen?.visible) {
+    await page.mouse.click(sample.screen.x, sample.screen.y);
+    return { x: sample.screen.x, y: sample.screen.y };
+  }
+
+  const point = { x: viewport.width * fallbackXRatio, y: viewport.height * fallbackYRatio };
+  await page.mouse.click(point.x, point.y);
+  return point;
 }
 
 function quaternionDistance(a, b) {

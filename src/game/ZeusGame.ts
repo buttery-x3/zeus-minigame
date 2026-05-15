@@ -5,6 +5,7 @@ import {
   INITIAL_SPAWN_INTERVAL,
   PLAYER_MAX_HEALTH,
   PLAYER_MAX_MANA,
+  VISIBILITY_LIGHT_EPSILON,
 } from "../config";
 import { CameraRig } from "./camera/CameraRig";
 import { CollisionSystem } from "./collision/CollisionSystem";
@@ -18,8 +19,10 @@ import { GameScene } from "./scene/GameScene";
 import { SpellSystem } from "./spells/SpellSystem";
 import { TargetingRenderer } from "./spells/TargetingRenderer";
 import { TerrainSystem } from "./terrain/TerrainSystem";
-import type { EnemyHealthBarVisibilityMode, GameRuntimeState } from "../types";
+import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from "../types";
+import { VisibilitySystem } from "./visibility/VisibilitySystem";
 import { GameEffects } from "../render/GameEffects";
+import { VisibilityOverlay } from "../render/VisibilityOverlay";
 import { createGameMaterials } from "../render/materials";
 import { GameUi } from "../ui/GameUi";
 import { GridWorld } from "../world/GridWorld";
@@ -29,6 +32,7 @@ export class ZeusGame {
   private readonly profiler = new Profiler();
   private readonly gridWorld = new GridWorld();
   private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
+  private readonly visibility = new VisibilitySystem(this.gridWorld);
   private readonly materials = createGameMaterials();
   private readonly groups = {
     terrain: new THREE.Group(),
@@ -40,9 +44,17 @@ export class ZeusGame {
   };
 
   private readonly scene = new GameScene();
+  private readonly visibilityOverlay = new VisibilityOverlay();
   private readonly effects = new GameEffects(this.groups.effects);
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
-  private readonly diagnostics = new GameDiagnostics(this.scene, this.gridWorld, this.collision, this.player, this.profiler);
+  private readonly diagnostics = new GameDiagnostics(
+    this.scene,
+    this.gridWorld,
+    this.collision,
+    this.player,
+    this.visibility,
+    this.profiler,
+  );
   private readonly cameraRig = new CameraRig(this.scene.camera, this.scene.renderer);
   private enemyHealthBarMode: EnemyHealthBarVisibilityMode = DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE;
   private quickCastEnabled = true;
@@ -69,6 +81,8 @@ export class ZeusGame {
   );
   private readonly spells = new SpellSystem(this.effects, this.enemies, {
     invalidCast: () => this.player.flash(0x657172),
+    canCastAt: (target) => this.canCastAt(target),
+    canAffectEnemy: (enemy) => this.isEnemyVisible(enemy),
   });
   private readonly targeting = new TargetingRenderer(this.groups.targeting);
   private readonly terrain = new TerrainSystem(this.gridWorld, this.groups.terrain, this.groups.blockers, this.materials);
@@ -80,7 +94,7 @@ export class ZeusGame {
     beginTargeting: (spellId) => this.spells.beginTargeting(spellId, this.state),
     cancelTargeting: () => this.spells.cancelTargeting(),
     castAt: (target) => this.spells.castAt(target, this.player.object.position, this.state),
-    setMoveTarget: (x, z) => this.player.setMoveTarget(x, z),
+    setMoveTarget: (x, z) => this.requestMoveTarget(x, z),
     restart: () => this.restart(),
     handleEscape: () => this.handleEscape(),
     toggleDiagnostics: () => this.ui.toggleDiagnostics(),
@@ -95,6 +109,7 @@ export class ZeusGame {
     this.scene.mount({
       terrain: this.groups.terrain,
       blockers: this.groups.blockers,
+      visibility: this.visibilityOverlay.object,
       enemies: this.groups.enemies,
       enemyHealthBars: this.groups.enemyHealthBars,
       effects: this.groups.effects,
@@ -106,6 +121,7 @@ export class ZeusGame {
     const stormLight = new THREE.PointLight(0x61cfff, 16, 22);
     stormLight.position.set(0, 9, 0);
     this.player.object.add(stormLight);
+    this.visibility.update(this.player.object.position, 0);
 
     window.addEventListener("resize", this.cameraRig.resize);
     this.cameraRig.resize();
@@ -119,6 +135,7 @@ export class ZeusGame {
     window.removeEventListener("resize", this.cameraRig.resize);
     this.input.dispose();
     this.ui.remove();
+    this.visibilityOverlay.dispose();
     this.scene.dispose();
   }
 
@@ -136,7 +153,10 @@ export class ZeusGame {
         mode: this.enemyHealthBarMode,
         ...this.enemies.getHealthBarDiagnostics(),
       },
+      enemyVisibility: this.enemies.getVisibilityDiagnostics(),
       enemyAvoidance: this.enemies.getAvoidanceDiagnostics(),
+      terrain: this.terrain.getDiagnostics(),
+      visibilityOverlay: this.visibilityOverlay.getDiagnostics(),
     };
   }
 
@@ -157,12 +177,21 @@ export class ZeusGame {
 
     this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
     this.profiler.measure("input", () => this.input.update(dt));
-    this.profiler.measure("terrain", () => this.terrain.update(playerPosition));
+    if (!this.state.gameOver && !this.state.paused) {
+      this.state.mana = Math.min(PLAYER_MAX_MANA, this.state.mana + dt * 8.5);
+      this.profiler.measure("spells", () => this.spells.update(dt));
+      this.profiler.measure("player", () => this.player.update(dt, this.input.consumeMoveRequest(), this.input.pointerWorld));
+    }
+
+    this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
+    this.profiler.measure("terrain", () => this.terrain.update(playerPosition, this.visibility));
+    this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, dt));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,
       spells: this.spells.spells,
       pointerWorld: this.input.pointerWorld,
       playerPosition,
+      canCastAt: (target) => this.canCastAt(target),
     }));
     this.profiler.measure("hud", () => this.hudPresenter.update({
       state: this.state,
@@ -174,8 +203,16 @@ export class ZeusGame {
     }));
 
     if (this.state.gameOver || this.state.paused) {
+      this.profiler.measure("enemyVisibility", () => this.enemies.updateVisibility((enemy) => this.isEnemyVisible(enemy)));
       this.profiler.measure("enemyHealthBars", () =>
-        this.enemies.updateHealthBars(0, this.scene.camera, this.enemyHealthBarMode, playerPosition, this.input.pointerWorld),
+        this.enemies.updateHealthBars(
+          0,
+          this.scene.camera,
+          this.enemyHealthBarMode,
+          playerPosition,
+          this.input.pointerWorld,
+          (enemy) => this.isEnemyVisible(enemy),
+        ),
       );
       this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
       if (this.state.gameOver) {
@@ -184,13 +221,18 @@ export class ZeusGame {
       return;
     }
 
-    this.state.mana = Math.min(PLAYER_MAX_MANA, this.state.mana + dt * 8.5);
-    this.profiler.measure("spells", () => this.spells.update(dt));
-    this.profiler.measure("player", () => this.player.update(dt, this.input.consumeMoveRequest(), this.input.pointerWorld));
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
+    this.profiler.measure("enemyVisibility", () => this.enemies.updateVisibility((enemy) => this.isEnemyVisible(enemy)));
     this.profiler.measure("enemyHealthBars", () =>
-      this.enemies.updateHealthBars(dt, this.scene.camera, this.enemyHealthBarMode, playerPosition, this.input.pointerWorld),
+      this.enemies.updateHealthBars(
+        dt,
+        this.scene.camera,
+        this.enemyHealthBarMode,
+        playerPosition,
+        this.input.pointerWorld,
+        (enemy) => this.isEnemyVisible(enemy),
+      ),
     );
     this.profiler.measure("effects", () => this.effects.update(dt));
     this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
@@ -208,11 +250,30 @@ export class ZeusGame {
     }
   }
 
+  private requestMoveTarget(x: number, z: number) {
+    if (!this.visibility.isDiscoveredWorld(x, z)) {
+      this.player.flash(0x657172);
+      return;
+    }
+
+    this.player.setMoveTarget(x, z);
+  }
+
+  private canCastAt(target: THREE.Vector3) {
+    return this.visibility.isVisibleWorld(target.x, target.z) && this.visibility.getLightWorld(target.x, target.z) > VISIBILITY_LIGHT_EPSILON;
+  }
+
+  private isEnemyVisible(enemy: EnemyState) {
+    return this.visibility.isVisibleWorld(enemy.group.position.x, enemy.group.position.z);
+  }
+
   private restart() {
     this.state = createInitialState();
     this.ui.setPaused(false);
     this.spells.reset();
     this.player.reset();
+    this.visibility.reset();
+    this.visibility.update(this.player.object.position);
     this.enemies.reset(this.state, this.player.object.position);
   }
 

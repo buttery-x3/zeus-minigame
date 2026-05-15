@@ -8,6 +8,7 @@ type EnemyHealthBarsUpdate = {
   mode: EnemyHealthBarVisibilityMode;
   playerPosition: THREE.Vector3;
   pointerWorld: THREE.Vector3;
+  isWorldVisible: (enemy: EnemyState) => boolean;
 };
 
 export class EnemyHealthBars {
