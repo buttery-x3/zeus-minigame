@@ -9,19 +9,22 @@ const VISIBLE_MIN_ALPHA = 0.03;
 const VISIBLE_MAX_ALPHA = 0.62;
 const REVEAL_SPEED = 12;
 const HIDE_SPEED = 5.5;
+const RESOLUTION_SCALE = 2;
+const TEXTURE_CELLS = WORLD_CELLS * RESOLUTION_SCALE;
 
 export class VisibilityOverlay {
   readonly object: THREE.Mesh;
 
-  private readonly data = new Uint8Array(WORLD_CELLS * WORLD_CELLS * 4);
-  private readonly targetAlpha = new Float32Array(WORLD_CELLS * WORLD_CELLS);
-  private readonly displayedAlpha = new Float32Array(WORLD_CELLS * WORLD_CELLS);
+  private readonly data = new Uint8Array(TEXTURE_CELLS * TEXTURE_CELLS * 4);
+  private readonly cellAlpha = new Float32Array(WORLD_CELLS * WORLD_CELLS);
+  private readonly targetAlpha = new Float32Array(TEXTURE_CELLS * TEXTURE_CELLS);
+  private readonly displayedAlpha = new Float32Array(TEXTURE_CELLS * TEXTURE_CELLS);
   private readonly texture: THREE.DataTexture;
   private visibilityVersion = -1;
   private settling = true;
 
   constructor() {
-    for (let i = 0; i < WORLD_CELLS * WORLD_CELLS; i += 1) {
+    for (let i = 0; i < TEXTURE_CELLS * TEXTURE_CELLS; i += 1) {
       const offset = i * 4;
       this.data[offset] = 0;
       this.data[offset + 1] = 0;
@@ -31,7 +34,7 @@ export class VisibilityOverlay {
       this.displayedAlpha[i] = UNDISCOVERED_ALPHA;
     }
 
-    this.texture = new THREE.DataTexture(this.data, WORLD_CELLS, WORLD_CELLS, THREE.RGBAFormat);
+    this.texture = new THREE.DataTexture(this.data, TEXTURE_CELLS, TEXTURE_CELLS, THREE.RGBAFormat);
     this.texture.magFilter = THREE.LinearFilter;
     this.texture.minFilter = THREE.LinearFilter;
     this.texture.wrapS = THREE.ClampToEdgeWrapping;
@@ -91,13 +94,49 @@ export class VisibilityOverlay {
     this.texture.dispose();
   }
 
+  getDiagnostics() {
+    return {
+      resolutionScale: RESOLUTION_SCALE,
+      textureWidth: TEXTURE_CELLS,
+      textureHeight: TEXTURE_CELLS,
+      texturePixels: TEXTURE_CELLS * TEXTURE_CELLS,
+      settling: this.settling,
+    };
+  }
+
   private updateTargets(visibility: VisibilitySystem) {
     for (let z = 0; z < WORLD_CELLS; z += 1) {
       for (let x = 0; x < WORLD_CELLS; x += 1) {
-        const index = (WORLD_CELLS - 1 - z) * WORLD_CELLS + x;
-        this.targetAlpha[index] = this.alphaForCell(visibility, x, z);
+        this.cellAlpha[z * WORLD_CELLS + x] = this.alphaForCell(visibility, x, z);
       }
     }
+
+    for (let textureZ = 0; textureZ < TEXTURE_CELLS; textureZ += 1) {
+      const sourceZ = (TEXTURE_CELLS - textureZ - 0.5) / RESOLUTION_SCALE - 0.5;
+
+      for (let textureX = 0; textureX < TEXTURE_CELLS; textureX += 1) {
+        const sourceX = (textureX + 0.5) / RESOLUTION_SCALE - 0.5;
+        this.targetAlpha[textureZ * TEXTURE_CELLS + textureX] = this.sampleCellAlpha(sourceX, sourceZ);
+      }
+    }
+  }
+
+  private sampleCellAlpha(sourceX: number, sourceZ: number) {
+    const x = clamp(sourceX, 0, WORLD_CELLS - 1);
+    const z = clamp(sourceZ, 0, WORLD_CELLS - 1);
+    const x0 = Math.floor(x);
+    const z0 = Math.floor(z);
+    const x1 = Math.min(x0 + 1, WORLD_CELLS - 1);
+    const z1 = Math.min(z0 + 1, WORLD_CELLS - 1);
+    const tx = x - x0;
+    const tz = z - z0;
+    const top = this.mix(this.cellAlpha[z0 * WORLD_CELLS + x0], this.cellAlpha[z0 * WORLD_CELLS + x1], tx);
+    const bottom = this.mix(this.cellAlpha[z1 * WORLD_CELLS + x0], this.cellAlpha[z1 * WORLD_CELLS + x1], tx);
+    return this.mix(top, bottom, tz);
+  }
+
+  private mix(a: number, b: number, amount: number) {
+    return a + (b - a) * amount;
   }
 
   private alphaForCell(visibility: VisibilitySystem, x: number, z: number) {

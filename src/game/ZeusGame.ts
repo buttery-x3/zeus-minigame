@@ -155,6 +155,8 @@ export class ZeusGame {
       },
       enemyVisibility: this.enemies.getVisibilityDiagnostics(),
       enemyAvoidance: this.enemies.getAvoidanceDiagnostics(),
+      terrain: this.terrain.getDiagnostics(),
+      visibilityOverlay: this.visibilityOverlay.getDiagnostics(),
     };
   }
 
@@ -182,7 +184,7 @@ export class ZeusGame {
     }
 
     this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
-    this.profiler.measure("terrain", () => this.terrain.update(playerPosition));
+    this.profiler.measure("terrain", () => this.terrain.update(playerPosition, this.visibility));
     this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, dt));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,

@@ -48,3 +48,4 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Reserved blockers block movement and are used by player/enemy pathfinding.
 - Gameplay visibility is tracked separately from Three.js render lighting. Zeus has a world light radius with blocker-aware field of view, per-cell light falloff, permanent discovered navigation memory, and void treatment for unlit cells.
 - Discovered terrain outside all current light goes dark again. Discovered terrain only remains dimly readable when it is inside the current light radius but hidden by blocker line of sight; active details and actors require direct current visibility.
+- Blocker objects are hidden when their cells are undiscovered or outside the current light reach, so floating props do not remain readable in complete darkness.

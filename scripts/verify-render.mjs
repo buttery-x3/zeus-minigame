@@ -116,6 +116,9 @@ async function verifyVisibilitySystem(page, viewport) {
   if (!start.visibility) {
     throw new Error(`${viewport.name} missing visibility diagnostics`);
   }
+  if (!start.visibilityOverlay || start.visibilityOverlay.resolutionScale !== 2) {
+    throw new Error(`${viewport.name} visibility overlay did not report 2x resolution: ${JSON.stringify(start.visibilityOverlay)}`);
+  }
   if (start.visibility.visibleCells < 80) {
     throw new Error(`${viewport.name} visibility revealed too few cells: ${JSON.stringify(start.visibility)}`);
   }
@@ -156,6 +159,14 @@ async function verifyVisibilitySystem(page, viewport) {
   }
   if (!afterMove.visibilitySamples.discoveredUnlitCell || afterMove.visibility.discoveredUnlitCells < 1) {
     throw new Error(`${viewport.name} expected movement to leave discovered terrain outside current light`);
+  }
+
+  const blockers = afterMove.terrain?.blockers;
+  if (!blockers || blockers.total < 1 || blockers.visible + blockers.hidden !== blockers.total) {
+    throw new Error(`${viewport.name} invalid blocker visibility diagnostics: ${JSON.stringify(blockers)}`);
+  }
+  if (blockers.hidden < 1) {
+    throw new Error(`${viewport.name} expected at least one active blocker to be hidden in darkness: ${JSON.stringify(blockers)}`);
   }
 
   const unlit = afterMove.visibilitySamples.discoveredUnlitCell.visibility;
