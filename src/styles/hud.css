@@ -21,7 +21,7 @@
   transition: opacity 160ms ease;
 }
 
-.hud-window--minimal.game-window--locked:is(.hud-window--hovering, :hover, :focus-within) {
+.ui-layer--unlock-ui-enabled .hud-window--minimal.game-window--locked:is(.hud-window--hovering, :focus-within) {
   border-color: rgb(154 203 202 / 24%);
   background:
     linear-gradient(180deg, rgb(18 30 31 / 92%), rgb(6 10 10 / 86%)),
@@ -32,7 +32,7 @@
   backdrop-filter: blur(10px);
 }
 
-.hud-window--minimal.game-window--locked:is(.hud-window--hovering, :hover, :focus-within)::before {
+.ui-layer--unlock-ui-enabled .hud-window--minimal.game-window--locked:is(.hud-window--hovering, :focus-within)::before {
   opacity: 0.8;
 }
 
@@ -50,7 +50,7 @@
     transform 160ms ease;
 }
 
-.hud-window--minimal.game-window--locked:is(.hud-window--hovering, :hover, :focus-within) .game-window__titlebar {
+.ui-layer--unlock-ui-enabled .hud-window--minimal.game-window--locked:is(.hud-window--hovering, :focus-within) .game-window__titlebar {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);

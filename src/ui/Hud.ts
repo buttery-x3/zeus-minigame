@@ -22,6 +22,7 @@ type HudState = {
 export class Hud {
   private readonly windows: GameWindow[] = [];
   private readonly hoverRevealWindows: GameWindow[] = [];
+  private unlockUiEnabled = false;
   private healthFill: HTMLElement;
   private manaFill: HTMLElement;
   private kills: HTMLElement;
@@ -31,7 +32,7 @@ export class Hud {
   private chainButton: HTMLElement;
   private boltButton: HTMLElement;
 
-  constructor(windowManager: WindowManager) {
+  constructor(private readonly windowManager: WindowManager) {
     const stats = this.createContent(`
       <div class="hud__stats">
         <div class="hud__meter">
@@ -154,6 +155,15 @@ export class Hud {
     }
   }
 
+  setUnlockUiEnabled(enabled: boolean) {
+    this.unlockUiEnabled = enabled;
+    this.windowManager.setUnlockUiEnabled(enabled);
+
+    if (!enabled) {
+      this.clearHoverReveal();
+    }
+  }
+
   private updateAbility(button: HTMLElement, spellId: SpellId, state: HudState) {
     const spell = state.spells[spellId];
     const cooldown = state.cooldowns[spellId];
@@ -172,6 +182,11 @@ export class Hud {
   }
 
   private readonly handleHoverRevealPointerMove = (event: PointerEvent) => {
+    if (!this.unlockUiEnabled) {
+      this.clearHoverReveal();
+      return;
+    }
+
     for (const gameWindow of this.hoverRevealWindows) {
       const titlebar = gameWindow.element.querySelector(".game-window__titlebar");
       const hovering =
@@ -182,6 +197,12 @@ export class Hud {
       gameWindow.element.classList.toggle("hud-window--hovering", hovering);
     }
   };
+
+  private clearHoverReveal() {
+    for (const gameWindow of this.hoverRevealWindows) {
+      gameWindow.element.classList.remove("hud-window--hovering");
+    }
+  }
 
   private rectContainsPoint(rect: DOMRect, x: number, y: number, padding = 0) {
     return (

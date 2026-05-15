@@ -9,6 +9,7 @@ type PauseMenuCallbacks = {
   setEnemyHealthBarMode: (mode: EnemyHealthBarVisibilityMode) => void;
   setQuickCastEnabled: (enabled: boolean) => void;
   setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
+  setUnlockUiEnabled: (enabled: boolean) => void;
 };
 
 export class PauseMenu {
@@ -16,6 +17,7 @@ export class PauseMenu {
   private readonly healthModeButtons: HTMLButtonElement[];
   private readonly quickCastToggle: HTMLInputElement;
   private readonly maxRangeTargetSnapToggle: HTMLInputElement;
+  private readonly unlockUiToggle: HTMLInputElement;
 
   constructor(
     windowManager: WindowManager,
@@ -23,6 +25,7 @@ export class PauseMenu {
     enemyHealthBarMode: EnemyHealthBarVisibilityMode,
     quickCastEnabled: boolean,
     allowMaxRangeTargetSnap: boolean,
+    unlockUiEnabled: boolean,
   ) {
     const content = document.createElement("div");
     content.className = "pause-menu";
@@ -44,6 +47,11 @@ export class PauseMenu {
       <label class="pause-menu__setting pause-menu__switch" data-max-range-target-snap-toggle>
         <span>Allow Max Range Target Snap</span>
         <input type="checkbox" data-max-range-target-snap aria-label="Allow max range target snap" />
+        <i aria-hidden="true"></i>
+      </label>
+      <label class="pause-menu__setting pause-menu__switch" data-unlock-ui-toggle>
+        <span>Unlock UI</span>
+        <input type="checkbox" data-unlock-ui aria-label="Unlock UI" />
         <i aria-hidden="true"></i>
       </label>
       <div class="pause-menu__actions">
@@ -77,6 +85,13 @@ export class PauseMenu {
       callbacks.setAllowMaxRangeTargetSnap(this.maxRangeTargetSnapToggle.checked);
     });
     this.setAllowMaxRangeTargetSnap(allowMaxRangeTargetSnap);
+
+    this.unlockUiToggle = mustQuery<HTMLInputElement>(content, "[data-unlock-ui]");
+    this.unlockUiToggle.addEventListener("change", () => {
+      this.setUnlockUiEnabled(this.unlockUiToggle.checked);
+      callbacks.setUnlockUiEnabled(this.unlockUiToggle.checked);
+    });
+    this.setUnlockUiEnabled(unlockUiEnabled);
 
     this.window = windowManager.createWindow({
       id: "pause-menu",
@@ -112,5 +127,10 @@ export class PauseMenu {
   setAllowMaxRangeTargetSnap(enabled: boolean) {
     this.maxRangeTargetSnapToggle.checked = enabled;
     this.maxRangeTargetSnapToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
+  }
+
+  setUnlockUiEnabled(enabled: boolean) {
+    this.unlockUiToggle.checked = enabled;
+    this.unlockUiToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
   }
 }

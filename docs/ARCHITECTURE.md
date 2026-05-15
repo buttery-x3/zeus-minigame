@@ -45,7 +45,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 - `GridWorld` should not know about meshes, HUD, enemies, or spells.
 - `Hud` should not mutate gameplay state; it only renders state passed into `update`.
-- UI windows should consume their own pointer events so game movement clicks do not leak through.
+- UI windows should consume their own pointer events so game movement clicks do not leak through, except locked transparent combat HUD panels while Unlock UI is off; those are intentionally click-through.
 - Rendering helpers should create reusable `THREE.Object3D` instances and avoid owning gameplay state.
 - `ZeusGame` can coordinate systems, but new large systems should become their own modules.
 - Navigation and future vision checks should share the grid linecast helper so blocker semantics stay consistent.

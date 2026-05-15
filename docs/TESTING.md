@@ -39,7 +39,7 @@ npm run verify
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
 - Checks that the WebGL canvas is not blank or visually flat.
-- Checks that core HUD text and ability buttons exist, including the locked transparent vitals/abilities panels and their hover reveal.
+- Checks that core HUD text and ability buttons exist, including the Unlock UI toggle, locked transparent vitals/abilities panels, click-through behavior, and gated hover reveal.
 - Saves screenshots into `verify/`.
 
 `verify/` is ignored by git.

@@ -14,6 +14,7 @@ export class GameWindow {
   private y = 0;
   private width = 0;
   private locked: boolean;
+  private unlockUiEnabled = true;
   private visible: boolean;
 
   constructor(
@@ -108,6 +109,29 @@ export class GameWindow {
     return this.visible;
   }
 
+  isLocked() {
+    return this.locked;
+  }
+
+  isLockable() {
+    return this.lockButton !== null;
+  }
+
+  setUnlockUiEnabled(enabled: boolean) {
+    this.unlockUiEnabled = enabled;
+    this.element.classList.toggle("game-window--unlock-ui-disabled", !enabled && this.isLockable());
+
+    if (!enabled && this.isLockable()) {
+      this.setLocked(true);
+    }
+
+    if (this.lockButton) {
+      this.lockButton.hidden = !enabled;
+      this.lockButton.disabled = !enabled;
+      this.lockButton.setAttribute("aria-hidden", String(!enabled));
+    }
+  }
+
   setVisible(visible: boolean) {
     this.visible = visible;
     this.element.hidden = !visible;
@@ -127,10 +151,14 @@ export class GameWindow {
   }
 
   private toggleLocked = () => {
+    if (!this.unlockUiEnabled) {
+      return;
+    }
+
     this.setLocked(!this.locked);
   };
 
-  private setLocked(locked: boolean) {
+  setLocked(locked: boolean) {
     this.locked = locked;
     this.element.classList.toggle("game-window--locked", locked);
     this.lockButton?.setAttribute("aria-label", locked ? "Unlock window" : "Lock window");
@@ -153,7 +181,7 @@ export class GameWindow {
 
   private readonly handleTitlePointerDown = (event: PointerEvent) => {
     const target = event.target instanceof Element ? event.target : null;
-    if (event.button !== 0 || this.locked || !(this.options.movable ?? true) || target?.closest("button")) {
+    if (event.button !== 0 || !this.unlockUiEnabled || this.locked || !(this.options.movable ?? true) || target?.closest("button")) {
       return;
     }
 

@@ -350,14 +350,27 @@ async function verifyWindowUi(page, viewport) {
   }
   verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, "diagnostics window");
 
+  await setUnlockUi(page, true);
+  let locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
+  if (!locked) {
+    throw new Error("Diagnostics window should stay locked until Unlock UI controls are used");
+  }
+
   await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
-  const locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
+  locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
+  if (locked) {
+    throw new Error("Diagnostics lock button did not unlock the window when Unlock UI was on");
+  }
+
+  await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
+  locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
   if (!locked) {
     throw new Error("Diagnostics lock button did not lock the window");
   }
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
+  await setUnlockUi(page, false);
 }
 
 async function verifyHudTransparency(page, viewport) {
@@ -367,6 +380,8 @@ async function verifyHudTransparency(page, viewport) {
   }
 
   const panels = [initial.vitals, initial.abilities];
+
+  await verifyUnlockUiDefault(page);
 
   if (!initial.vitals.text.includes("HP") || !initial.vitals.text.includes("Power")) {
     throw new Error(`${viewport.name} vitals panel did not expose HP and Power labels: ${JSON.stringify(initial.vitals)}`);
@@ -385,16 +400,57 @@ async function verifyHudTransparency(page, viewport) {
   }
 
   for (const panel of panels) {
-    if (!panel.locked || panel.titleOpacity > 0.05 || panel.backgroundAlpha > 0.05 || panel.backgroundImage !== "none") {
+    if (!panel.locked || !panel.lockControlHidden || panel.titleOpacity > 0.05 || panel.backgroundAlpha > 0.05 || panel.backgroundImage !== "none") {
       throw new Error(`${viewport.name} locked ${panel.id} panel chrome was not transparent: ${JSON.stringify(panel)}`);
     }
   }
 
+  await verifyHudPanelDoesNotHoverReveal(page, viewport, "hud-vitals");
+  await verifyHudPanelDoesNotHoverReveal(page, viewport, "hud-abilities");
+  await verifyHudPanelClickThrough(page, viewport, "hud-vitals");
+  await verifyHudPanelClickThrough(page, viewport, "hud-abilities");
+
+  await setUnlockUi(page, true);
   await verifyHudPanelHoverReveal(page, viewport, "hud-vitals");
   await verifyHudPanelHoverReveal(page, viewport, "hud-abilities");
+
+  const unlockEnabled = await readHudPanelMetrics(page);
+  if (unlockEnabled.vitals.lockControlHidden || unlockEnabled.abilities.lockControlHidden) {
+    throw new Error(`${viewport.name} Unlock UI did not expose HUD lock controls: ${JSON.stringify(unlockEnabled)}`);
+  }
+
+  await revealHudPanel(page, viewport, "hud-vitals");
+  await page.click('[data-window-id="hud-vitals"] .game-window__action--lock');
+  await page.waitForFunction(() => !document.querySelector('[data-window-id="hud-vitals"]')?.classList.contains("game-window--locked"));
+
+  await setUnlockUi(page, false);
+  const disabledAgain = await readHudPanelMetrics(page);
+  if (!disabledAgain.vitals.locked || !disabledAgain.vitals.lockControlHidden || !disabledAgain.abilities.lockControlHidden) {
+    throw new Error(`${viewport.name} disabling Unlock UI did not force HUD panels locked: ${JSON.stringify(disabledAgain)}`);
+  }
+
+  await verifyHudPanelDoesNotHoverReveal(page, viewport, "hud-vitals");
+  await verifyHudPanelDoesNotHoverReveal(page, viewport, "hud-abilities");
 }
 
 async function verifyHudPanelHoverReveal(page, viewport, id) {
+  await revealHudPanel(page, viewport, id);
+
+  const hovered = await readHudPanelMetrics(page);
+  const panel = id === "hud-vitals" ? hovered.vitals : hovered.abilities;
+  if (panel.titleOpacity < 0.5 || panel.backgroundImage === "none") {
+    throw new Error(`${viewport.name} ${id} did not reveal chrome on hover: ${JSON.stringify(panel)}`);
+  }
+
+  await page.mouse.move(viewport.width - 4, viewport.height - 4);
+  await page.waitForFunction((windowId) => {
+    const element = document.querySelector(`[data-window-id="${windowId}"]`);
+    const titlebar = element?.querySelector(".game-window__titlebar");
+    return !!titlebar && Number(getComputedStyle(titlebar).opacity) < 0.1;
+  }, id);
+}
+
+async function revealHudPanel(page, viewport, id) {
   const content = page.locator(`[data-window-id="${id}"] .game-window__content`);
   const box = await content.boundingBox();
   if (!box) {
@@ -411,19 +467,48 @@ async function verifyHudPanelHoverReveal(page, viewport, id) {
 
     return Number(getComputedStyle(titlebar).opacity) > 0.5 && getComputedStyle(element).backgroundImage !== "none";
   }, id);
+}
+
+async function verifyHudPanelDoesNotHoverReveal(page, viewport, id) {
+  const content = page.locator(`[data-window-id="${id}"] .game-window__content`);
+  const box = await content.boundingBox();
+  if (!box) {
+    throw new Error(`${viewport.name} missing ${id} content box`);
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(220);
 
   const hovered = await readHudPanelMetrics(page);
   const panel = id === "hud-vitals" ? hovered.vitals : hovered.abilities;
-  if (panel.titleOpacity < 0.5 || panel.backgroundImage === "none") {
-    throw new Error(`${viewport.name} ${id} did not reveal chrome on hover: ${JSON.stringify(panel)}`);
+  if (panel.titleOpacity > 0.1 || panel.backgroundImage !== "none") {
+    throw new Error(`${viewport.name} ${id} revealed chrome while Unlock UI was off: ${JSON.stringify(panel)}`);
+  }
+}
+
+async function verifyHudPanelClickThrough(page, viewport, id) {
+  const content = page.locator(`[data-window-id="${id}"] .game-window__content`);
+  const box = await content.boundingBox();
+  if (!box) {
+    throw new Error(`${viewport.name} missing ${id} content box`);
   }
 
-  await page.mouse.move(viewport.width - 4, viewport.height - 4);
-  await page.waitForFunction((windowId) => {
-    const element = document.querySelector(`[data-window-id="${windowId}"]`);
-    const titlebar = element?.querySelector(".game-window__titlebar");
-    return !!titlebar && Number(getComputedStyle(titlebar).opacity) < 0.1;
-  }, id);
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const hitTarget = await page.evaluate(
+    ({ x, y, windowId }) => {
+      const target = document.elementFromPoint(x, y);
+      return {
+        tag: target?.tagName ?? null,
+        className: target instanceof HTMLElement ? target.className : "",
+        insidePanel: !!target?.closest(`[data-window-id="${windowId}"]`),
+      };
+    },
+    { ...point, windowId: id },
+  );
+
+  if (hitTarget.insidePanel) {
+    throw new Error(`${viewport.name} ${id} was not click-through while Unlock UI was off: ${JSON.stringify(hitTarget)}`);
+  }
 }
 
 async function verifyEnemyPathfindingBudget(page, viewport, phase) {
@@ -445,6 +530,32 @@ async function verifyEnemyHealthBarOptions(page) {
     if (diagnostics.enemyHealthBars.mode !== mode) {
       throw new Error(`Enemy health bar mode button did not select ${mode}`);
     }
+  }
+}
+
+async function verifyUnlockUiDefault(page) {
+  let diagnostics = await readDiagnostics(page);
+  if (diagnostics.input.unlockUiEnabled) {
+    throw new Error("Unlock UI should be disabled by default");
+  }
+
+  if (!diagnostics.paused) {
+    await page.click('[data-ui-action="pause"]');
+    await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  }
+
+  const checked = await page.$eval("[data-unlock-ui]", (input) => input.checked);
+  if (checked) {
+    throw new Error("Unlock UI toggle did not render disabled by default");
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+
+  diagnostics = await readDiagnostics(page);
+  if (diagnostics.input.unlockUiEnabled) {
+    throw new Error("Unlock UI changed while checking default state");
   }
 }
 
@@ -754,6 +865,23 @@ async function setMaxRangeTargetSnap(page, enabled) {
   await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
 }
 
+async function setUnlockUi(page, enabled) {
+  const diagnostics = await readDiagnostics(page);
+  if (!diagnostics.paused) {
+    await page.click('[data-ui-action="pause"]');
+    await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  }
+
+  if (diagnostics.input.unlockUiEnabled !== enabled) {
+    await page.click("[data-unlock-ui-toggle]");
+    await page.waitForFunction((expected) => window.__ZEUS_GAME__?.getDiagnostics().input.unlockUiEnabled === expected, enabled);
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+}
+
 async function waitForSpellReady(page, spellId) {
   await page.waitForFunction(
     ({ id, manaCost }) => {
@@ -924,16 +1052,24 @@ async function readHudPanelMetrics(page) {
     const readPanel = (id) => {
       const element = document.querySelector(`[data-window-id="${id}"]`);
       const titlebar = element?.querySelector(".game-window__titlebar");
+      const lockButton = element?.querySelector(".game-window__action--lock");
       if (!(element instanceof HTMLElement) || !(titlebar instanceof HTMLElement)) {
         return null;
       }
 
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
+      const lockButtonStyle = lockButton instanceof HTMLElement ? getComputedStyle(lockButton) : null;
       return {
         id,
         text: element.innerText,
         locked: element.classList.contains("game-window--locked"),
+        lockControlHidden:
+          !(lockButton instanceof HTMLButtonElement) ||
+          lockButton.hidden ||
+          lockButton.disabled ||
+          lockButtonStyle?.display === "none" ||
+          lockButtonStyle?.visibility === "hidden",
         titleOpacity: Number(getComputedStyle(titlebar).opacity),
         backgroundAlpha: readAlpha(style.backgroundColor),
         backgroundImage: style.backgroundImage,
