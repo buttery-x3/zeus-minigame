@@ -93,6 +93,8 @@ export class GameDiagnostics {
             this.visibility.isDiscoveredCell(q, r) &&
             !this.visibility.isVisibleCell(q, r) &&
             this.visibility.getLightReachCell(q, r) > VISIBILITY_LIGHT_EPSILON,
+          1,
+          false,
         ),
         discoveredUnlitCell: this.findNearestVisibilityCell(
           this.player.object.position,
@@ -100,6 +102,7 @@ export class GameDiagnostics {
           (q, r) => this.visibility.isDiscoveredCell(q, r) && this.visibility.getLightReachCell(q, r) <= VISIBILITY_LIGHT_EPSILON,
         ),
       },
+      terrainGrammar: this.gridWorld.getTerrainDiagnostics(),
       paused: state.paused,
       profiler: this.profiler.snapshot(),
     };
@@ -205,6 +208,7 @@ export class GameDiagnostics {
     maxRadius: number,
     predicate: (q: number, r: number) => boolean,
     minRadius = 1,
+    requireScreenVisible = true,
   ) {
     const center = this.gridWorld.worldToCell(position.x, position.z);
 
@@ -216,7 +220,7 @@ export class GameDiagnostics {
 
         const world = this.gridWorld.cellToWorld(cell.q, cell.r);
         const screen = this.projectGroundToScreen(world.x, world.z);
-        if (!screen.visible) {
+        if (requireScreenVisible && !screen.visible) {
           continue;
         }
 

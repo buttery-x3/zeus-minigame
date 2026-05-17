@@ -32,6 +32,6 @@ This runs the production build and a headless browser smoke test for rendering, 
 
 - Orthographic isometric camera following the player in a larger axial hex world.
 - Three.js mesh player, enemies, hex terrain cells, wall blockers, water tiles, and lightning effects.
-- Procedural hex terrain with structural cells (`open`, `wall`, `bank`, `lake`, `river`) and derived surfaces prepared for future WFC generation.
+- Local-pattern procedural hex terrain with structural cells (`open`, `wall`, `bank`, `lake`, `river`) and derived surfaces prepared for future WFC generation.
 - Simple melee chaser enemies that spawn around the player.
 - HTML/CSS health, mana, cooldowns, wave counter, kill counter, and hex coordinate readout.

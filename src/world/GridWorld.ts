@@ -1,27 +1,18 @@
 import * as THREE from "three";
 import { TILE_SIZE, WORLD_CELLS, WORLD_HALF, WORLD_HEX_RADIUS, WORLD_SIZE } from "../config";
 import { clamp } from "../lib/math";
-import type { HexEdgeKind, HexTileSignature, TerrainCell, TerrainStructure, TerrainSurface } from "../types";
+import type { HexEdgeKind, HexTileSignature, TerrainCell, TerrainStructure } from "../types";
+import { HexTerrainGrammar } from "./HexTerrainGrammar";
+import {
+  HEX_DIRECTIONS,
+  HEX_DIRECTION_ORDER,
+  HEX_RING_ORDER,
+  hexCellKey,
+  hexDistance,
+  type HexCoord,
+} from "./hexCoordinates";
 
-export type HexCoord = {
-  q: number;
-  r: number;
-};
-
-export type HexDirection = keyof HexTileSignature;
-
-export const HEX_DIRECTIONS: Record<HexDirection, HexCoord> = {
-  ne: { q: 1, r: -1 },
-  e: { q: 1, r: 0 },
-  se: { q: 0, r: 1 },
-  sw: { q: -1, r: 1 },
-  w: { q: -1, r: 0 },
-  nw: { q: 0, r: -1 },
-};
-
-const HEX_DIRECTION_ORDER: HexDirection[] = ["ne", "e", "se", "sw", "w", "nw"];
-const HEX_RING_ORDER: HexDirection[] = ["e", "ne", "nw", "w", "sw", "se"];
-const WATER_STRUCTURES = new Set<TerrainStructure>(["lake", "river"]);
+export type { HexCoord };
 
 export class GridWorld {
   readonly tileSize = TILE_SIZE;
@@ -34,6 +25,7 @@ export class GridWorld {
   readonly half = WORLD_HALF;
 
   private cells = new Map<string, TerrainCell>();
+  private readonly terrainGrammar = new HexTerrainGrammar(this.worldRadius);
 
   worldToCell(worldX: number, worldZ: number): HexCoord {
     const r = worldZ / this.hexVerticalSpacing;
@@ -59,8 +51,8 @@ export class GridWorld {
       return existing;
     }
 
-    const structure = this.resolveStructure(q, r);
-    const surface = this.resolveSurface(q, r, structure);
+    const structure = this.terrainGrammar.getStructure(q, r);
+    const surface = this.terrainGrammar.deriveSurface(q, r);
     const cell: TerrainCell = {
       q,
       r,
@@ -102,7 +94,7 @@ export class GridWorld {
   }
 
   cellKey(q: number, r: number) {
-    return `${q},${r}`;
+    return hexCellKey(q, r);
   }
 
   isInBounds(q: number, r: number) {
@@ -166,7 +158,11 @@ export class GridWorld {
   }
 
   hexDistance(a: HexCoord, b: HexCoord) {
-    return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(-a.q - a.r + b.q + b.r));
+    return hexDistance(a, b);
+  }
+
+  getTerrainDiagnostics() {
+    return this.terrainGrammar.getDiagnostics();
   }
 
   getHexCorners(q: number, r: number, inset = 1) {
@@ -238,60 +234,6 @@ export class GridWorld {
     return { q: x, r: z };
   }
 
-  private resolveStructure(q: number, r: number): TerrainStructure {
-    if (this.hexDistance({ q, r }, { q: 0, r: 0 }) <= 4) {
-      return "open";
-    }
-
-    if (this.isLakeSeed(q, r)) {
-      return "lake";
-    }
-
-    if (this.isRiverSeed(q, r)) {
-      return "river";
-    }
-
-    if (this.isAdjacentToWaterSeed(q, r)) {
-      return "bank";
-    }
-
-    if (this.isWallSeed(q, r)) {
-      return "wall";
-    }
-
-    return "open";
-  }
-
-  private resolveSurface(q: number, r: number, structure: TerrainStructure): TerrainSurface {
-    if (structure === "wall") {
-      return "stone";
-    }
-    if (structure === "lake") {
-      return "sand";
-    }
-    if (structure === "river") {
-      return "mud";
-    }
-    if (structure === "bank") {
-      return this.isAdjacentToRiverSeed(q, r) ? "mud" : "sand";
-    }
-
-    const h = this.hash(q + 31, r - 17);
-    if (h > 0.962) {
-      return "charged";
-    }
-    if (h < 0.07) {
-      return "scarred";
-    }
-    if (this.isAdjacentToWallSeed(q, r)) {
-      return "stone";
-    }
-    if (h > 0.58) {
-      return "dirt";
-    }
-    return "grass";
-  }
-
   private resolveEdges(structure: TerrainStructure): HexTileSignature {
     const kind: HexEdgeKind =
       structure === "wall" ? "closed" : structure === "lake" ? "lake" : structure === "river" ? "river" : "open";
@@ -306,55 +248,6 @@ export class GridWorld {
     };
   }
 
-  private isAdjacentToWaterSeed(q: number, r: number) {
-    return this.getDirectionOffsets().some((offset) => WATER_STRUCTURES.has(this.waterSeedStructure(q + offset.q, r + offset.r)));
-  }
-
-  private isAdjacentToRiverSeed(q: number, r: number) {
-    return this.getDirectionOffsets().some((offset) => this.isRiverSeed(q + offset.q, r + offset.r));
-  }
-
-  private isAdjacentToWallSeed(q: number, r: number) {
-    return this.getDirectionOffsets().some((offset) => this.isWallSeed(q + offset.q, r + offset.r));
-  }
-
-  private waterSeedStructure(q: number, r: number): TerrainStructure {
-    if (this.isLakeSeed(q, r)) {
-      return "lake";
-    }
-    if (this.isRiverSeed(q, r)) {
-      return "river";
-    }
-    return "open";
-  }
-
-  private isLakeSeed(q: number, r: number) {
-    if (this.hexDistance({ q, r }, { q: 0, r: 0 }) < 18) {
-      return false;
-    }
-
-    const centerA = this.hexDistance({ q, r }, { q: -34, r: 24 }) <= 5;
-    const centerB = this.hexDistance({ q, r }, { q: 42, r: -19 }) <= 4;
-    return centerA || centerB || this.hash(q - 101, r + 73) > 0.9975;
-  }
-
-  private isRiverSeed(q: number, r: number) {
-    if (this.hexDistance({ q, r }, { q: 0, r: 0 }) < 15) {
-      return false;
-    }
-
-    const channel = Math.round(Math.sin(r * 0.18) * 4 + Math.sin(r * 0.047) * 7);
-    return Math.abs(q - channel - 18) <= 0 && r > -70 && r < 72;
-  }
-
-  private isWallSeed(q: number, r: number) {
-    if (this.hexDistance({ q, r }, { q: 0, r: 0 }) <= 7) {
-      return false;
-    }
-
-    return this.hash(q, r) > 0.985;
-  }
-
   private createOutOfBoundsCell(q: number, r: number): TerrainCell {
     return {
       q,
@@ -367,10 +260,6 @@ export class GridWorld {
     };
   }
 
-  private hash(q: number, r: number) {
-    const n = Math.sin(q * 127.1 + r * 311.7) * 43758.5453123;
-    return n - Math.floor(n);
-  }
 }
 
 function roundAxial(q: number, r: number): HexCoord {

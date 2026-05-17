@@ -66,6 +66,7 @@ async function verifyInBrowser() {
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
       await verifyVisibilitySystem(page, viewport);
+      await verifyTerrainGrammar(page, viewport);
       await verifyBlockerNavigation(page, viewport);
       await verifyEnemyHealthBars(page, viewport);
       await verifyEnemyAvoidance(page, viewport);
@@ -89,6 +90,26 @@ async function verifyInBrowser() {
   }
 
   return results;
+}
+
+async function verifyTerrainGrammar(page, viewport) {
+  const diagnostics = await readDiagnostics(page);
+  const grammar = diagnostics.terrainGrammar;
+  if (!grammar) {
+    throw new Error(`${viewport.name} missing terrain grammar diagnostics`);
+  }
+  if (grammar.committedCells < 100) {
+    throw new Error(`${viewport.name} terrain grammar committed too few cells: ${JSON.stringify(grammar)}`);
+  }
+  if (!grammar.structureCounts || grammar.structureCounts.open < 1) {
+    throw new Error(`${viewport.name} terrain grammar did not expose open terrain counts: ${JSON.stringify(grammar)}`);
+  }
+  if (!grammar.patternCounts || Object.keys(grammar.patternCounts).length < 1) {
+    throw new Error(`${viewport.name} terrain grammar did not record pattern usage: ${JSON.stringify(grammar)}`);
+  }
+  if (grammar.invalidSample) {
+    throw new Error(`${viewport.name} terrain grammar produced an invalid local sample: ${JSON.stringify(grammar.invalidSample)}`);
+  }
 }
 
 async function verifyShadowRigTracking(page, viewport) {
