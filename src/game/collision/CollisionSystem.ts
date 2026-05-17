@@ -4,7 +4,7 @@ import { distance2D } from "../../lib/math";
 import type { GridWorld } from "../../world/GridWorld";
 import { hasLineOfSight } from "./linecast";
 import { findPath, type PathResult } from "./pathfinding";
-import { canOccupyWorld, clampWorldToRadius, getCellBounds, isCellBlocked, isCellInBounds } from "./occupancy";
+import { canOccupyWorld, clampWorldToRadius, getCellCenter, isCellBlocked, isCellInBounds } from "./occupancy";
 import type { Profiler } from "../perf/Profiler";
 
 export type ResolvedPath = PathResult & {
@@ -133,22 +133,16 @@ export class CollisionSystem {
     for (let ring = 0; ring <= maxRing; ring += 1) {
       const candidates: THREE.Vector3[] = [];
 
-      for (let z = center.z - ring; z <= center.z + ring; z += 1) {
-        for (let x = center.x - ring; x <= center.x + ring; x += 1) {
-          if (ring > 0 && x !== center.x - ring && x !== center.x + ring && z !== center.z - ring && z !== center.z + ring) {
-            continue;
-          }
+      for (const cell of this.gridWorld.ring(center, ring)) {
+        const key = this.gridWorld.cellKey(cell.q, cell.r);
+        if (seen.has(key) || !isCellInBounds(this.gridWorld, cell.q, cell.r) || isCellBlocked(this.gridWorld, cell.q, cell.r)) {
+          continue;
+        }
+        seen.add(key);
 
-          const key = `${x},${z}`;
-          if (seen.has(key) || !isCellInBounds(this.gridWorld, x, z) || isCellBlocked(this.gridWorld, x, z)) {
-            continue;
-          }
-          seen.add(key);
-
-          const candidate = this.pointInsideCell(point, x, z, radius);
-          if (this.canOccupy(candidate.x, candidate.z, radius)) {
-            candidates.push(candidate);
-          }
+        const candidate = this.pointInsideCell(point, cell.q, cell.r, radius);
+        if (this.canOccupy(candidate.x, candidate.z, radius)) {
+          candidates.push(candidate);
         }
       }
 
@@ -160,17 +154,15 @@ export class CollisionSystem {
     return rings;
   }
 
-  private pointInsideCell(point: THREE.Vector3, cellX: number, cellZ: number, radius: number) {
-    const bounds = getCellBounds(this.gridWorld, cellX, cellZ);
-    const minX = bounds.minX + radius;
-    const maxX = bounds.maxX - radius;
-    const minZ = bounds.minZ + radius;
-    const maxZ = bounds.maxZ - radius;
-
-    if (minX > maxX || minZ > maxZ) {
-      return new THREE.Vector3((bounds.minX + bounds.maxX) / 2, 0, (bounds.minZ + bounds.maxZ) / 2);
+  private pointInsideCell(point: THREE.Vector3, q: number, r: number, radius: number) {
+    const pointCell = this.gridWorld.worldToCell(point.x, point.z);
+    if (pointCell.q === q && pointCell.r === r) {
+      const candidate = new THREE.Vector3(point.x, 0, point.z);
+      if (this.canOccupy(candidate.x, candidate.z, radius)) {
+        return candidate;
+      }
     }
 
-    return new THREE.Vector3(Math.min(maxX, Math.max(minX, point.x)), 0, Math.min(maxZ, Math.max(minZ, point.z)));
+    return getCellCenter(this.gridWorld, q, r);
   }
 }

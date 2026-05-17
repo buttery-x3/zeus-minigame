@@ -1,8 +1,9 @@
 import type { EnemyHealthBarVisibilityMode, SpellConfig, SpellId } from "./types";
 
 export const TILE_SIZE = 4;
-export const WORLD_CELLS = 180;
-export const WORLD_SIZE = TILE_SIZE * WORLD_CELLS;
+export const WORLD_CELLS = 181;
+export const WORLD_HEX_RADIUS = Math.floor(WORLD_CELLS / 2);
+export const WORLD_SIZE = TILE_SIZE * WORLD_HEX_RADIUS * 2;
 export const WORLD_HALF = WORLD_SIZE / 2;
 
 export const PLAYER_MAX_HEALTH = 120;

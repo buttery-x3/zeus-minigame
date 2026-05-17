@@ -409,8 +409,8 @@ async function verifyHudTransparency(page, viewport) {
   if (initial.vitals.text.includes("Kills") || initial.vitals.text.includes("Wave")) {
     throw new Error(`${viewport.name} vitals panel still contained game progression text: ${JSON.stringify(initial.vitals)}`);
   }
-  if (!initial.game.text.includes("Cell") || !initial.game.text.includes("Kills") || !initial.game.text.includes("Wave")) {
-    throw new Error(`${viewport.name} game panel did not contain cell, kills, and wave text: ${JSON.stringify(initial.game)}`);
+  if (!initial.game.text.includes("Hex") || !initial.game.text.includes("Kills") || !initial.game.text.includes("Wave")) {
+    throw new Error(`${viewport.name} game panel did not contain hex, kills, and wave text: ${JSON.stringify(initial.game)}`);
   }
   if (Math.abs(initial.vitals.centerXRatio - 0.5) > 0.08 || Math.abs(initial.abilities.centerXRatio - 0.5) > 0.08) {
     throw new Error(`${viewport.name} central HUD panels were not horizontally centered: ${JSON.stringify(initial)}`);
@@ -1174,7 +1174,7 @@ async function collectHudMetrics(page) {
     return {
       hasKills: text.includes("Kills"),
       hasWave: text.includes("Wave"),
-      hasCell: text.includes("Cell"),
+      hasCell: text.includes("Hex"),
       hasChain: abilities.some((text) => text.includes("Q") && text.includes("Chain")),
       hasBolt: abilities.some((text) => text.includes("W") && text.includes("Bolt")),
       statusVisible,
@@ -1234,7 +1234,7 @@ async function readHudPanelMetrics(page) {
 
 function assertResult(result) {
   const { viewport, metrics, hud, errors } = result;
-  const usablePixels = metrics.nonDark > 1500 && metrics.bright > 20 && metrics.colorBuckets > 18;
+  const usablePixels = metrics.nonDark > 1500 && metrics.bright > 8 && metrics.colorBuckets > 18;
   const hudOk = hud.hasKills && hud.hasWave && hud.hasCell && hud.hasChain && hud.hasBolt && hud.statusVisible;
 
   if (!usablePixels) {

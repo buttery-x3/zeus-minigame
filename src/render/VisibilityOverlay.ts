@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { VISIBILITY_LIGHT_EPSILON, WORLD_CELLS, WORLD_SIZE } from "../config";
+import { VISIBILITY_LIGHT_EPSILON, WORLD_CELLS, WORLD_HALF, WORLD_SIZE } from "../config";
 import { clamp } from "../lib/math";
 import type { VisibilitySystem } from "../game/visibility/VisibilitySystem";
+import type { GridWorld } from "../world/GridWorld";
 
 const UNDISCOVERED_ALPHA = 0.96;
 const BLOCKED_MEMORY_ALPHA = 0.66;
@@ -16,14 +17,13 @@ export class VisibilityOverlay {
   readonly object: THREE.Mesh;
 
   private readonly data = new Uint8Array(TEXTURE_CELLS * TEXTURE_CELLS * 4);
-  private readonly cellAlpha = new Float32Array(WORLD_CELLS * WORLD_CELLS);
   private readonly targetAlpha = new Float32Array(TEXTURE_CELLS * TEXTURE_CELLS);
   private readonly displayedAlpha = new Float32Array(TEXTURE_CELLS * TEXTURE_CELLS);
   private readonly texture: THREE.DataTexture;
   private visibilityVersion = -1;
   private settling = true;
 
-  constructor() {
+  constructor(private readonly gridWorld: GridWorld) {
     for (let i = 0; i < TEXTURE_CELLS * TEXTURE_CELLS; i += 1) {
       const offset = i * 4;
       this.data[offset] = 0;
@@ -105,47 +105,24 @@ export class VisibilityOverlay {
   }
 
   private updateTargets(visibility: VisibilitySystem) {
-    for (let z = 0; z < WORLD_CELLS; z += 1) {
-      for (let x = 0; x < WORLD_CELLS; x += 1) {
-        this.cellAlpha[z * WORLD_CELLS + x] = this.alphaForCell(visibility, x, z);
-      }
-    }
-
     for (let textureZ = 0; textureZ < TEXTURE_CELLS; textureZ += 1) {
-      const sourceZ = (TEXTURE_CELLS - textureZ - 0.5) / RESOLUTION_SCALE - 0.5;
+      const worldZ = WORLD_HALF - ((textureZ + 0.5) / TEXTURE_CELLS) * WORLD_SIZE;
 
       for (let textureX = 0; textureX < TEXTURE_CELLS; textureX += 1) {
-        const sourceX = (textureX + 0.5) / RESOLUTION_SCALE - 0.5;
-        this.targetAlpha[textureZ * TEXTURE_CELLS + textureX] = this.sampleCellAlpha(sourceX, sourceZ);
+        const worldX = ((textureX + 0.5) / TEXTURE_CELLS) * WORLD_SIZE - WORLD_HALF;
+        const cell = this.gridWorld.worldToCell(worldX, worldZ);
+        this.targetAlpha[textureZ * TEXTURE_CELLS + textureX] = this.alphaForCell(visibility, cell.q, cell.r);
       }
     }
   }
 
-  private sampleCellAlpha(sourceX: number, sourceZ: number) {
-    const x = clamp(sourceX, 0, WORLD_CELLS - 1);
-    const z = clamp(sourceZ, 0, WORLD_CELLS - 1);
-    const x0 = Math.floor(x);
-    const z0 = Math.floor(z);
-    const x1 = Math.min(x0 + 1, WORLD_CELLS - 1);
-    const z1 = Math.min(z0 + 1, WORLD_CELLS - 1);
-    const tx = x - x0;
-    const tz = z - z0;
-    const top = this.mix(this.cellAlpha[z0 * WORLD_CELLS + x0], this.cellAlpha[z0 * WORLD_CELLS + x1], tx);
-    const bottom = this.mix(this.cellAlpha[z1 * WORLD_CELLS + x0], this.cellAlpha[z1 * WORLD_CELLS + x1], tx);
-    return this.mix(top, bottom, tz);
-  }
-
-  private mix(a: number, b: number, amount: number) {
-    return a + (b - a) * amount;
-  }
-
-  private alphaForCell(visibility: VisibilitySystem, x: number, z: number) {
-    const lightReach = visibility.getLightReachCell(x, z);
-    if (!visibility.isDiscoveredCell(x, z) || lightReach <= VISIBILITY_LIGHT_EPSILON) {
+  private alphaForCell(visibility: VisibilitySystem, q: number, r: number) {
+    const lightReach = visibility.getLightReachCell(q, r);
+    if (!visibility.isDiscoveredCell(q, r) || lightReach <= VISIBILITY_LIGHT_EPSILON) {
       return UNDISCOVERED_ALPHA;
     }
 
-    if (!visibility.isVisibleCell(x, z)) {
+    if (!visibility.isVisibleCell(q, r)) {
       return clamp(
         BLOCKED_MEMORY_ALPHA + (1 - lightReach) * (UNDISCOVERED_ALPHA - BLOCKED_MEMORY_ALPHA),
         BLOCKED_MEMORY_ALPHA,
@@ -153,7 +130,7 @@ export class VisibilityOverlay {
       );
     }
 
-    const light = visibility.getLightCell(x, z);
+    const light = visibility.getLightCell(q, r);
     return clamp(VISIBLE_MIN_ALPHA + (1 - light) * (VISIBLE_MAX_ALPHA - VISIBLE_MIN_ALPHA), VISIBLE_MIN_ALPHA, VISIBLE_MAX_ALPHA);
   }
 }

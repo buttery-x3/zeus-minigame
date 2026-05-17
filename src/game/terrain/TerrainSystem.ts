@@ -1,14 +1,15 @@
 import * as THREE from "three";
-import { TILE_SIZE, VISIBILITY_LIGHT_EPSILON, WORLD_CELLS, WORLD_HALF } from "../../config";
+import { VISIBILITY_LIGHT_EPSILON } from "../../config";
 import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createChargedGlyph } from "../../render/meshes";
 import type { GridWorld } from "../../world/GridWorld";
+import type { TerrainCell, TerrainSurface } from "../../types";
 import type { VisibilitySystem } from "../visibility/VisibilitySystem";
 
 type BlockerRecord = {
-  cellX: number;
-  cellZ: number;
+  q: number;
+  r: number;
   mesh: THREE.Mesh;
 };
 
@@ -31,72 +32,15 @@ export class TerrainSystem {
 
   update(playerPosition: THREE.Vector3, visibility: VisibilitySystem) {
     const center = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
-    const radius = 16;
-    const key = `${Math.floor(center.x / 2)},${Math.floor(center.z / 2)}`;
+    const radius = 18;
+    const key = `${Math.floor(center.q / 2)},${Math.floor(center.r / 2)}`;
 
     if (key === this.terrainWindowKey && visibility.getVersion() === this.visibilityVersion) {
       return;
     }
 
     if (key !== this.terrainWindowKey) {
-      this.terrainWindowKey = key;
-      this.visibilityVersion = -1;
-      this.blockers.length = 0;
-      disposeObject3D(this.terrainGroup, { preserveMaterials: Object.values(this.materials) });
-      disposeObject3D(this.blockerGroup, { preserveMaterials: Object.values(this.materials) });
-      this.terrainGroup.clear();
-      this.blockerGroup.clear();
-
-      const tileGeometry = new THREE.BoxGeometry(TILE_SIZE * 0.98, 0.1, TILE_SIZE * 0.98);
-      const blockerGeometry = new THREE.BoxGeometry(TILE_SIZE * 0.88, 2.6, TILE_SIZE * 0.88);
-
-      for (let z = center.z - radius; z <= center.z + radius; z += 1) {
-        for (let x = center.x - radius; x <= center.x + radius; x += 1) {
-          if (x < 0 || z < 0 || x >= WORLD_CELLS || z >= WORLD_CELLS) {
-            continue;
-          }
-
-          const cell = this.gridWorld.getCell(x, z);
-          const world = this.gridWorld.cellToWorld(x, z);
-          const material =
-            cell.kind === "charged"
-              ? this.materials.charged
-              : cell.kind === "scarred"
-                ? this.materials.scarred
-                : this.materials.floor;
-
-          const tile = new THREE.Mesh(tileGeometry, material);
-          tile.position.set(world.x, -0.04, world.z);
-          tile.receiveShadow = true;
-          this.terrainGroup.add(tile);
-
-          if (cell.kind === "charged") {
-            this.terrainGroup.add(createChargedGlyph(world.x, world.z));
-          }
-
-          if (cell.blocked) {
-            const blocker = new THREE.Mesh(blockerGeometry, this.materials.blocker);
-            blocker.position.set(world.x, 1.25, world.z);
-            blocker.castShadow = true;
-            blocker.receiveShadow = true;
-            this.blockers.push({ cellX: x, cellZ: z, mesh: blocker });
-            this.blockerGroup.add(blocker);
-          }
-        }
-      }
-
-      const grid = new THREE.GridHelper((radius * 2 + 1) * TILE_SIZE, radius * 2 + 1, 0x263238, 0x263238);
-      grid.position.set(
-        center.x * TILE_SIZE - WORLD_HALF + TILE_SIZE / 2,
-        0.025,
-        center.z * TILE_SIZE - WORLD_HALF + TILE_SIZE / 2,
-      );
-      const gridMaterials = Array.isArray(grid.material) ? grid.material : [grid.material];
-      for (const material of gridMaterials) {
-        material.transparent = true;
-        material.opacity = 0.62;
-      }
-      this.terrainGroup.add(grid);
+      this.rebuild(center, radius);
     }
 
     this.applyBlockerVisibility(visibility);
@@ -108,14 +52,87 @@ export class TerrainSystem {
     };
   }
 
+  private rebuild(center: { q: number; r: number }, radius: number) {
+    this.terrainWindowKey = `${Math.floor(center.q / 2)},${Math.floor(center.r / 2)}`;
+    this.visibilityVersion = -1;
+    this.blockers.length = 0;
+    disposeObject3D(this.terrainGroup, { preserveMaterials: Object.values(this.materials) });
+    disposeObject3D(this.blockerGroup, { preserveMaterials: Object.values(this.materials) });
+    this.terrainGroup.clear();
+    this.blockerGroup.clear();
+
+    const tileGeometry = createHexCylinderGeometry(this.gridWorld.hexSize * 0.98, 0.09);
+    const waterGeometry = createHexCylinderGeometry(this.gridWorld.hexSize * 0.94, 0.08);
+    const wallGeometry = createHexCylinderGeometry(this.gridWorld.hexSize * 0.82, 2.65);
+    const bankGeometry = createHexCylinderGeometry(this.gridWorld.hexSize * 0.96, 0.12);
+
+    this.gridWorld.forEachCellInRange(center, radius, (q, r) => {
+      const cell = this.gridWorld.getCell(q, r);
+      const world = this.gridWorld.cellToWorld(q, r);
+      const isWater = cell.structure === "lake" || cell.structure === "river";
+      const isBank = cell.structure === "bank";
+      const tile = new THREE.Mesh(
+        isWater ? waterGeometry : isBank ? bankGeometry : tileGeometry,
+        this.materialForCell(cell),
+      );
+      tile.position.set(world.x, isWater ? -0.06 : -0.04, world.z);
+      tile.receiveShadow = true;
+      this.terrainGroup.add(tile);
+
+      if (cell.surface === "charged") {
+        this.terrainGroup.add(createChargedGlyph(world.x, world.z));
+      }
+
+      if (cell.structure === "wall") {
+        const blocker = new THREE.Mesh(wallGeometry, this.materials.blocker);
+        blocker.position.set(world.x, 1.26, world.z);
+        blocker.castShadow = true;
+        blocker.receiveShadow = true;
+        this.blockers.push({ q, r, mesh: blocker });
+        this.blockerGroup.add(blocker);
+      }
+    });
+  }
+
+  private materialForCell(cell: TerrainCell): THREE.Material {
+    if (cell.structure === "lake") {
+      return this.materials.lake;
+    }
+    if (cell.structure === "river") {
+      return this.materials.river;
+    }
+
+    return this.materialForSurface(cell.surface);
+  }
+
+  private materialForSurface(surface: TerrainSurface): THREE.Material {
+    switch (surface) {
+      case "charged":
+        return this.materials.charged;
+      case "scarred":
+        return this.materials.scarred;
+      case "dirt":
+        return this.materials.dirt;
+      case "sand":
+        return this.materials.sand;
+      case "mud":
+        return this.materials.mud;
+      case "stone":
+        return this.materials.stone;
+      case "grass":
+      default:
+        return this.materials.grass;
+    }
+  }
+
   private applyBlockerVisibility(visibility: VisibilitySystem) {
     let visible = 0;
     let hidden = 0;
 
     for (const blocker of this.blockers) {
       const shouldShow =
-        visibility.isDiscoveredCell(blocker.cellX, blocker.cellZ) &&
-        visibility.getLightReachCell(blocker.cellX, blocker.cellZ) > VISIBILITY_LIGHT_EPSILON;
+        visibility.isDiscoveredCell(blocker.q, blocker.r) &&
+        visibility.getLightReachCell(blocker.q, blocker.r) > VISIBILITY_LIGHT_EPSILON;
       blocker.mesh.visible = shouldShow;
 
       if (shouldShow) {
@@ -132,4 +149,10 @@ export class TerrainSystem {
       hidden,
     };
   }
+}
+
+function createHexCylinderGeometry(radius: number, height: number) {
+  const geometry = new THREE.CylinderGeometry(radius, radius, height, 6, 1, false);
+  geometry.rotateY(Math.PI / 6);
+  return geometry;
 }

@@ -44,7 +44,7 @@ export class ZeusGame {
   };
 
   private readonly scene = new GameScene();
-  private readonly visibilityOverlay = new VisibilityOverlay();
+  private readonly visibilityOverlay = new VisibilityOverlay(this.gridWorld);
   private readonly effects = new GameEffects(this.groups.effects);
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
   private readonly diagnostics = new GameDiagnostics(

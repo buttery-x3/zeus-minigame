@@ -15,7 +15,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/types.ts`: shared TypeScript types for gameplay and effects.
 - `src/game/ZeusGame.ts`: composition root, shared runtime state, and update order.
 - `src/game/camera/CameraRig.ts`: orthographic camera follow and resize behavior.
-- `src/game/collision`: blocker occupancy, grid linecasts, Theta* individual pathfinding, and movement collision helpers.
+- `src/game/collision`: hex occupancy, grid linecasts, Theta* individual pathfinding, and movement collision helpers.
 - `src/game/diagnostics/GameDiagnostics.ts`: dev/test diagnostics snapshot and world-to-screen probes.
 - `src/game/enemies/EnemySystem.ts`: enemy spawning, movement, contact damage, kill handling, and wave spawn timing.
 - `src/game/enemies/EnemyHealthBars.ts`: in-world enemy health bar lifecycle, visibility modes, and diagnostics.
@@ -27,8 +27,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, shadow rig, and ground setup.
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
-- `src/game/terrain/TerrainSystem.ts`: visible terrain window rendering.
-- `src/world/GridWorld.ts`: grid-to-world mapping and deterministic terrain cell generation.
+- `src/game/terrain/TerrainSystem.ts`: visible hex terrain window rendering.
+- `src/world/GridWorld.ts`: axial hex-to-world mapping, deterministic terrain cell generation, neighbor lookup, rings, ranges, and hex line sampling.
 - `src/render/GameEffects.ts`: short-lived lightning and shockwave effects.
 - `src/render/materials.ts`: shared Three.js material creation.
 - `src/render/meshes.ts`: player, enemy, and terrain glyph mesh factories.
@@ -48,8 +48,20 @@ The prototype is intentionally small, but the code is split by responsibility so
 - UI windows should consume their own pointer events so game movement clicks do not leak through, except locked transparent HUD panels while Unlock UI is off; those are intentionally click-through.
 - Rendering helpers should create reusable `THREE.Object3D` instances and avoid owning gameplay state.
 - `ZeusGame` can coordinate systems, but new large systems should become their own modules.
-- Navigation and future vision checks should share the grid linecast helper so blocker semantics stay consistent.
+- Navigation and future vision checks should share the hex linecast helper so blocker semantics stay consistent.
 - Normal melee enemies should not call Theta* directly during frame update; shared flow fields handle swarm chase and the path queue handles rare fallback paths.
+
+## Hex World
+
+Gameplay grid coordinates are axial hex coordinates named `q/r`. Three.js world space still uses the `X/Z` ground plane and `Y` as vertical height. `GridWorld` is the only module that should own coordinate conversion details; other systems should ask it for cell centers, neighbors, rings, ranges, line samples, bounds checks, and cell keys.
+
+Terrain is split into structural cells and derived surfaces:
+
+- Structures: `open`, `wall`, `bank`, `lake`, `river`.
+- Surfaces: `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, `charged`.
+- Edge/socket vocabulary for future WFC: `open`, `closed`, `river`, `lake`.
+
+`open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Only `wall` blocks visibility; water is a movement obstacle but not an occluder. The current deterministic generator includes sparse walls, simple lake/river seeds, and bank adapters. Future WFC work should keep surfaces as post-process/infill so structural tile vocabulary stays small. The key structural adjacency rule is that wall-water direct adjacency is invalid; use `wall -> bank -> lake/river`.
 
 ## Future Splits
 

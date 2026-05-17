@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { PLAYER_COLLISION_RADIUS, WORLD_HALF } from "../../config";
-import { clamp, distance2D } from "../../lib/math";
+import { PLAYER_COLLISION_RADIUS } from "../../config";
+import { distance2D } from "../../lib/math";
 import type { GameMaterials } from "../../render/materials";
 import type { GameEffects } from "../../render/GameEffects";
 import { createCrosshair, createRing } from "../../render/primitives";
@@ -84,9 +84,9 @@ export class PlayerController {
 
   setMoveTarget(x: number, z: number, options: MoveTargetOptions = {}) {
     const force = options.force ?? true;
-    const requestedTarget = new THREE.Vector3(clamp(x, -WORLD_HALF + 2, WORLD_HALF - 2), 0, clamp(z, -WORLD_HALF + 2, WORLD_HALF - 2));
+    const requestedTarget = this.gridWorld.clampWorld(new THREE.Vector3(x, 0, z), PLAYER_COLLISION_RADIUS);
     const requestedCell = this.gridWorld.worldToCell(requestedTarget.x, requestedTarget.z);
-    const requestedCellKey = `${requestedCell.x},${requestedCell.z}`;
+    const requestedCellKey = this.gridWorld.cellKey(requestedCell.q, requestedCell.r);
 
     if (!force && requestedCellKey === this.lastRequestedCellKey && this.path.length > 0) {
       return;

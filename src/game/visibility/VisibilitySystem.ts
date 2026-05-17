@@ -6,6 +6,7 @@ import {
   VISIBILITY_LIGHT_EPSILON,
 } from "../../config";
 import { clamp, distance2D } from "../../lib/math";
+import { hasOpaqueLineOfSight } from "../collision/linecast";
 import type { GridWorld } from "../../world/GridWorld";
 
 export type VisibilityCell = {
@@ -18,31 +19,13 @@ export type VisibilityCell = {
 };
 
 export type VisibilityLightSource = {
-  cellX: number;
-  cellZ: number;
+  q: number;
+  r: number;
   innerRadiusCells: number;
   outerRadiusCells: number;
   intensity: number;
   blocksByLos: boolean;
 };
-
-type Octant = {
-  xx: number;
-  xy: number;
-  yx: number;
-  yy: number;
-};
-
-const OCTANTS: Octant[] = [
-  { xx: 1, xy: 0, yx: 0, yy: 1 },
-  { xx: 0, xy: 1, yx: 1, yy: 0 },
-  { xx: 0, xy: -1, yx: 1, yy: 0 },
-  { xx: -1, xy: 0, yx: 0, yy: 1 },
-  { xx: -1, xy: 0, yx: 0, yy: -1 },
-  { xx: 0, xy: -1, yx: -1, yy: 0 },
-  { xx: 0, xy: 1, yx: -1, yy: 0 },
-  { xx: 1, xy: 0, yx: 0, yy: -1 },
-];
 
 export class VisibilitySystem {
   readonly innerRadiusCells = Math.max(1, Math.floor(PLAYER_LIGHT_INNER_RADIUS / TILE_SIZE));
@@ -62,7 +45,7 @@ export class VisibilitySystem {
   private version = 0;
   private lastComputeMs = 0;
   private lastSourceCellKey = "";
-  private lastSourceCell = { x: 0, z: 0 };
+  private lastSourceCell = { q: 0, r: 0 };
 
   constructor(private readonly gridWorld: GridWorld) {
     const cellCount = this.gridWorld.worldCells * this.gridWorld.worldCells;
@@ -76,7 +59,7 @@ export class VisibilitySystem {
 
   update(playerPosition: { x: number; z: number }, nowSeconds = performance.now() / 1000) {
     const sourceCell = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
-    const sourceCellKey = `${sourceCell.x},${sourceCell.z}`;
+    const sourceCellKey = this.gridWorld.cellKey(sourceCell.q, sourceCell.r);
     if (sourceCellKey === this.lastSourceCellKey) {
       return false;
     }
@@ -93,8 +76,8 @@ export class VisibilitySystem {
     this.discoveredUnlitCount = 0;
 
     const source = {
-      cellX: sourceCell.x,
-      cellZ: sourceCell.z,
+      q: sourceCell.q,
+      r: sourceCell.r,
       innerRadiusCells: this.innerRadiusCells,
       outerRadiusCells: this.outerRadiusCells,
       intensity: 1,
@@ -127,57 +110,57 @@ export class VisibilitySystem {
     this.discoveredCount = 0;
     this.lastComputeMs = 0;
     this.lastSourceCellKey = "";
-    this.lastSourceCell = { x: 0, z: 0 };
+    this.lastSourceCell = { q: 0, r: 0 };
     this.version += 1;
   }
 
   isDiscoveredWorld(worldX: number, worldZ: number) {
     const cell = this.gridWorld.worldToCell(worldX, worldZ);
-    return this.isDiscoveredCell(cell.x, cell.z);
+    return this.isDiscoveredCell(cell.q, cell.r);
   }
 
   isVisibleWorld(worldX: number, worldZ: number) {
     const cell = this.gridWorld.worldToCell(worldX, worldZ);
-    return this.isVisibleCell(cell.x, cell.z);
+    return this.isVisibleCell(cell.q, cell.r);
   }
 
   getLightWorld(worldX: number, worldZ: number) {
     const cell = this.gridWorld.worldToCell(worldX, worldZ);
-    return this.getLightCell(cell.x, cell.z);
+    return this.getLightCell(cell.q, cell.r);
   }
 
   getLightReachWorld(worldX: number, worldZ: number) {
     const cell = this.gridWorld.worldToCell(worldX, worldZ);
-    return this.getLightReachCell(cell.x, cell.z);
+    return this.getLightReachCell(cell.q, cell.r);
   }
 
-  isDiscoveredCell(cellX: number, cellZ: number) {
-    const index = this.indexIfInBounds(cellX, cellZ);
+  isDiscoveredCell(q: number, r: number) {
+    const index = this.indexIfInBounds(q, r);
     return index !== -1 && this.discovered[index] === 1;
   }
 
-  isVisibleCell(cellX: number, cellZ: number) {
-    const index = this.indexIfInBounds(cellX, cellZ);
+  isVisibleCell(q: number, r: number) {
+    const index = this.indexIfInBounds(q, r);
     return index !== -1 && this.visible[index] === 1;
   }
 
-  getLightCell(cellX: number, cellZ: number) {
-    const index = this.indexIfInBounds(cellX, cellZ);
+  getLightCell(q: number, r: number) {
+    const index = this.indexIfInBounds(q, r);
     return index === -1 ? 0 : this.light[index];
   }
 
-  getLightReachCell(cellX: number, cellZ: number) {
-    const index = this.indexIfInBounds(cellX, cellZ);
+  getLightReachCell(q: number, r: number) {
+    const index = this.indexIfInBounds(q, r);
     return index === -1 ? 0 : this.lightReach[index];
   }
 
-  getMemoryLightCell(cellX: number, cellZ: number) {
-    const index = this.indexIfInBounds(cellX, cellZ);
+  getMemoryLightCell(q: number, r: number) {
+    const index = this.indexIfInBounds(q, r);
     return index === -1 ? 0 : this.memoryLight[index];
   }
 
-  getCell(cellX: number, cellZ: number): VisibilityCell {
-    const index = this.indexIfInBounds(cellX, cellZ);
+  getCell(q: number, r: number): VisibilityCell {
+    const index = this.indexIfInBounds(q, r);
     if (index === -1) {
       return { discovered: false, visible: false, light: 0, lightReach: 0, memoryLight: 0, lastSeenAt: 0 };
     }
@@ -209,110 +192,52 @@ export class VisibilitySystem {
   }
 
   private applyLightReach(source: VisibilityLightSource) {
-    for (let z = source.cellZ - source.outerRadiusCells; z <= source.cellZ + source.outerRadiusCells; z += 1) {
-      for (let x = source.cellX - source.outerRadiusCells; x <= source.cellX + source.outerRadiusCells; x += 1) {
-        if (!this.distanceWithinLight(source, x, z)) {
-          continue;
-        }
-
-        const index = this.indexIfInBounds(x, z);
-        if (index === -1) {
-          continue;
-        }
-
-        const distanceWorld = distance2D(source.cellX, source.cellZ, x, z) * TILE_SIZE;
-        const lightReach = this.lightAtDistance(distanceWorld, source);
-        if (lightReach <= VISIBILITY_LIGHT_EPSILON) {
-          continue;
-        }
-
-        if (this.lightReach[index] <= VISIBILITY_LIGHT_EPSILON) {
-          this.lightReachCount += 1;
-        }
-        this.lightReach[index] = Math.max(this.lightReach[index], lightReach);
+    this.gridWorld.forEachCellInRange(source, source.outerRadiusCells, (q, r) => {
+      const distanceWorld = this.distanceFromSource(source, q, r);
+      const lightReach = this.lightAtDistance(distanceWorld, source);
+      if (lightReach <= VISIBILITY_LIGHT_EPSILON) {
+        return;
       }
-    }
+
+      const index = this.indexIfInBounds(q, r);
+      if (index === -1) {
+        return;
+      }
+
+      if (this.lightReach[index] <= VISIBILITY_LIGHT_EPSILON) {
+        this.lightReachCount += 1;
+      }
+      this.lightReach[index] = Math.max(this.lightReach[index], lightReach);
+    });
   }
 
   private applyLightSource(source: VisibilityLightSource, nowSeconds: number) {
-    this.revealCell(source, source.cellX, source.cellZ, nowSeconds);
-
-    for (const octant of OCTANTS) {
-      this.castLight(source, 1, 1, 0, octant, nowSeconds);
-    }
-  }
-
-  private castLight(
-    source: VisibilityLightSource,
-    row: number,
-    startSlope: number,
-    endSlope: number,
-    octant: Octant,
-    nowSeconds: number,
-  ) {
-    if (startSlope < endSlope) {
-      return;
-    }
-
-    let nextStartSlope = startSlope;
-    for (let distance = row; distance <= source.outerRadiusCells; distance += 1) {
-      let blocked = false;
-      let deltaX = -distance - 1;
-      const deltaZ = -distance;
-
-      while (deltaX <= 0) {
-        deltaX += 1;
-
-        const cellX = source.cellX + deltaX * octant.xx + deltaZ * octant.xy;
-        const cellZ = source.cellZ + deltaX * octant.yx + deltaZ * octant.yy;
-        const leftSlope = (deltaX - 0.5) / (deltaZ + 0.5);
-        const rightSlope = (deltaX + 0.5) / (deltaZ - 0.5);
-
-        if (startSlope < rightSlope) {
-          continue;
-        }
-        if (endSlope > leftSlope) {
-          break;
-        }
-
-        if (this.distanceWithinLight(source, cellX, cellZ)) {
-          this.revealCell(source, cellX, cellZ, nowSeconds);
-        }
-
-        const cellBlocks = source.blocksByLos && this.isOpaqueCell(cellX, cellZ);
-        if (blocked) {
-          if (cellBlocks) {
-            nextStartSlope = rightSlope;
-            continue;
-          }
-
-          blocked = false;
-          startSlope = nextStartSlope;
-        } else if (cellBlocks && distance < source.outerRadiusCells) {
-          blocked = true;
-          this.castLight(source, distance + 1, startSlope, leftSlope, octant, nowSeconds);
-          nextStartSlope = rightSlope;
-        }
+    const sourceWorld = this.gridWorld.cellToWorld(source.q, source.r);
+    this.gridWorld.forEachCellInRange(source, source.outerRadiusCells, (q, r) => {
+      if (!this.distanceWithinLight(source, q, r)) {
+        return;
       }
 
-      if (blocked) {
-        break;
+      const targetWorld = this.gridWorld.cellToWorld(q, r);
+      if (
+        source.blocksByLos &&
+        (q !== source.q || r !== source.r) &&
+        !hasOpaqueLineOfSight(this.gridWorld, sourceWorld, targetWorld)
+      ) {
+        return;
       }
-    }
+
+      this.revealCell(source, q, r, nowSeconds);
+    });
   }
 
-  private revealCell(source: VisibilityLightSource, cellX: number, cellZ: number, nowSeconds: number) {
-    const index = this.indexIfInBounds(cellX, cellZ);
+  private revealCell(source: VisibilityLightSource, q: number, r: number, nowSeconds: number) {
+    const index = this.indexIfInBounds(q, r);
     if (index === -1) {
       return;
     }
 
-    const distanceWorld = distance2D(source.cellX, source.cellZ, cellX, cellZ) * TILE_SIZE;
-    if (distanceWorld > PLAYER_LIGHT_OUTER_RADIUS) {
-      return;
-    }
-
-    const light = this.lightAtDistance(distanceWorld, source);
+    const light = this.lightAtDistance(this.distanceFromSource(source, q, r), source);
     if (light <= VISIBILITY_LIGHT_EPSILON) {
       return;
     }
@@ -358,68 +283,39 @@ export class VisibilitySystem {
     return source.intensity * (1 - smooth);
   }
 
-  private distanceWithinLight(source: VisibilityLightSource, cellX: number, cellZ: number) {
-    const dx = cellX - source.cellX;
-    const dz = cellZ - source.cellZ;
-    return dx * dx + dz * dz <= source.outerRadiusCells * source.outerRadiusCells;
+  private distanceWithinLight(source: VisibilityLightSource, q: number, r: number) {
+    return this.distanceFromSource(source, q, r) <= PLAYER_LIGHT_OUTER_RADIUS;
   }
 
-  private isOpaqueCell(cellX: number, cellZ: number) {
-    return this.indexIfInBounds(cellX, cellZ) === -1 || this.gridWorld.getCell(cellX, cellZ).blocked;
+  private distanceFromSource(source: VisibilityLightSource, q: number, r: number) {
+    const sourceWorld = this.gridWorld.cellToWorld(source.q, source.r);
+    const cellWorld = this.gridWorld.cellToWorld(q, r);
+    return distance2D(sourceWorld.x, sourceWorld.z, cellWorld.x, cellWorld.z);
   }
 
   private findShadowSample() {
     const center = this.lastSourceCell;
-    for (let radius = 1; radius <= this.outerRadiusCells; radius += 1) {
-      for (let z = center.z - radius; z <= center.z + radius; z += 1) {
-        for (let x = center.x - radius; x <= center.x + radius; x += 1) {
-          if (x !== center.x - radius && x !== center.x + radius && z !== center.z - radius && z !== center.z + radius) {
-            continue;
-          }
-          if (!this.isVisibleCell(x, z) || !this.gridWorld.getCell(x, z).blocked) {
-            continue;
-          }
-
-          const stepX = Math.sign(x - center.x);
-          const stepZ = Math.sign(z - center.z);
-          if (stepX === 0 && stepZ === 0) {
-            continue;
-          }
-
-          for (let step = 1; step <= 4; step += 1) {
-            const shadowX = x + stepX * step;
-            const shadowZ = z + stepZ * step;
-            if (!this.isInBounds(shadowX, shadowZ)) {
-              break;
-            }
-            if (distance2D(center.x, center.z, shadowX, shadowZ) > this.outerRadiusCells) {
-              break;
-            }
-            if (this.gridWorld.getCell(shadowX, shadowZ).blocked) {
-              continue;
-            }
-            if (!this.isVisibleCell(shadowX, shadowZ)) {
-              return {
-                blocker: { x, z },
-                shadow: { x: shadowX, z: shadowZ },
-              };
-            }
-          }
+    for (let radius = 2; radius <= this.outerRadiusCells; radius += 1) {
+      for (const cell of this.gridWorld.ring(center, radius)) {
+        if (
+          this.getLightReachCell(cell.q, cell.r) <= VISIBILITY_LIGHT_EPSILON ||
+          this.isVisibleCell(cell.q, cell.r) ||
+          this.gridWorld.getCell(cell.q, cell.r).opaque
+        ) {
+          continue;
         }
+
+        return {
+          blocker: { ...center },
+          shadow: cell,
+        };
       }
     }
 
     return null;
   }
 
-  private indexIfInBounds(cellX: number, cellZ: number) {
-    if (!this.isInBounds(cellX, cellZ)) {
-      return -1;
-    }
-    return cellZ * this.gridWorld.worldCells + cellX;
-  }
-
-  private isInBounds(cellX: number, cellZ: number) {
-    return cellX >= 0 && cellZ >= 0 && cellX < this.gridWorld.worldCells && cellZ < this.gridWorld.worldCells;
+  private indexIfInBounds(q: number, r: number) {
+    return this.gridWorld.indexIfInBounds(q, r);
   }
 }

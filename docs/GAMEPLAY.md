@@ -35,7 +35,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 
 ## Enemies
 
-- Melee enemies chase directly when blockers do not interrupt line of sight, otherwise they use a shared flow field around Zeus.
+- Melee enemies chase directly when walls do not interrupt line of sight, otherwise they use a shared hex flow field around Zeus.
 - If an enemy cannot sample the flow field, it steers toward the field edge and only requests a budgeted fallback path if it stalls.
 - Ranged, retreating, special-goal, and future tactical enemy intents are scaffolded but not active yet.
 - Waves accelerate spawning over time.
@@ -45,9 +45,10 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 
 ## World
 
-- The world is a deterministic grid over the `X/Z` plane.
-- Terrain cells currently include floor, scarred, charged, and reserved blocker cells.
-- Reserved blockers block movement and are used by player/enemy pathfinding.
-- Gameplay visibility is tracked separately from Three.js render lighting. Zeus has a world light radius with blocker-aware field of view, per-cell light falloff, permanent discovered navigation memory, and void treatment for unlit cells.
+- The world is a deterministic axial hex grid over the `X/Z` plane. HUD coordinates are shown as `q,r`.
+- Terrain cells have a structural type and a derived surface. Structures are `open`, `wall`, `bank`, `lake`, and `river`; surfaces include `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, and `charged`.
+- `open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Water is not a visibility occluder in the first hex pass; only `wall` blocks sight.
+- The terrain grammar also reserves future WFC edge/socket kinds: `open`, `closed`, `river`, and `lake`. Future generation should keep surfaces as post-process detail and preserve the wall-water adjacency rule by placing `bank` between `wall` and `lake`/`river`.
+- Gameplay visibility is tracked separately from Three.js render lighting. Zeus has a world light radius with wall-aware hex field of view, per-cell light falloff, permanent discovered navigation memory, and void treatment for unlit cells.
 - Discovered terrain outside all current light goes dark again. Discovered terrain only remains dimly readable when it is inside the current light radius but hidden by blocker line of sight; active details and actors require direct current visibility.
-- Blocker objects are hidden when their cells are undiscovered or outside the current light reach, so floating props do not remain readable in complete darkness.
+- Wall blocker objects are hidden when their cells are undiscovered or outside the current light reach, so raised geometry does not remain readable in complete darkness.
