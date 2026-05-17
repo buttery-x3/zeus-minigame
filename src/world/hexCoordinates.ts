@@ -18,6 +18,14 @@ export const HEX_DIRECTIONS: Record<HexDirection, HexCoord> = {
 
 export const HEX_DIRECTION_ORDER: HexDirection[] = ["ne", "e", "se", "sw", "w", "nw"];
 export const HEX_RING_ORDER: HexDirection[] = ["e", "ne", "nw", "w", "sw", "se"];
+export const OPPOSITE_HEX_DIRECTIONS: Record<HexDirection, HexDirection> = {
+  ne: "sw",
+  e: "w",
+  se: "nw",
+  sw: "ne",
+  w: "e",
+  nw: "se",
+};
 
 export function hexCellKey(q: number, r: number) {
   return `${q},${r}`;

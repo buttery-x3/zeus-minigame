@@ -1,20 +1,32 @@
-import type { TerrainStructure, TerrainSurface } from "../types";
+import type { HexEdgeKind, HexTileSignature, TerrainStructure, TerrainSurface } from "../types";
 import {
   HEX_DIRECTIONS,
   HEX_DIRECTION_ORDER,
+  OPPOSITE_HEX_DIRECTIONS,
   hexCellKey,
   hexDistance,
   type HexCoord,
   type HexDirection,
 } from "./hexCoordinates";
 
-type PatternFamily = "open" | "wall" | "bank" | "lake" | "river";
+export type TerrainPatternFamily = "open" | "wall" | "bank" | "lake" | "river";
 
-type HexPattern = {
+export type HexTerrainPattern = {
   name: string;
-  family: PatternFamily;
+  family: TerrainPatternFamily;
   weight: number;
   center: TerrainStructure;
+  neighbors: Record<HexDirection, TerrainStructure>;
+};
+
+export type HexTerrainTileVariant = {
+  id: string;
+  patternName: string;
+  family: TerrainPatternFamily;
+  structure: TerrainStructure;
+  surface: TerrainSurface;
+  edges: HexTileSignature;
+  weight: number;
   neighbors: Record<HexDirection, TerrainStructure>;
 };
 
@@ -39,7 +51,8 @@ export type TerrainGrammarDiagnostics = {
 };
 
 const WATER_STRUCTURES = new Set<TerrainStructure>(["lake", "river"]);
-const PATTERNS = createPatternCatalog();
+export const HEX_TERRAIN_PATTERNS = createPatternCatalog();
+const TILE_VARIANTS = createTileVariantCatalog(HEX_TERRAIN_PATTERNS);
 
 export class HexTerrainGrammar {
   private readonly structures = new Map<string, TerrainStructure>();
@@ -68,50 +81,19 @@ export class HexTerrainGrammar {
   deriveSurface(q: number, r: number): TerrainSurface {
     const structure = this.getStructure(q, r);
     const neighbors = this.getNeighborStructures(q, r);
-    const nearLake = neighbors.includes("lake");
-    const nearRiver = neighbors.includes("river");
-    const nearWall = neighbors.includes("wall");
-    const h = this.hash(q + 31, r - 17);
+    return deriveTerrainSurface(structure, neighbors, this.hash(q + 31, r - 17));
+  }
 
-    if (structure === "wall") {
-      return "stone";
-    }
-    if (structure === "lake") {
-      return "sand";
-    }
-    if (structure === "river") {
-      return "mud";
-    }
-    if (structure === "bank") {
-      if (nearRiver) {
-        return "mud";
-      }
-      if (nearLake) {
-        return "sand";
-      }
-      return nearWall ? "stone" : "dirt";
-    }
+  getTileVariants() {
+    return getHexTerrainTileVariants();
+  }
 
-    if (h > 0.978) {
-      return "charged";
-    }
-    if (h < 0.052) {
-      return "scarred";
-    }
-    if (nearLake) {
-      return "sand";
-    }
-    if (nearRiver) {
-      return "mud";
-    }
-    if (nearWall) {
-      return "stone";
-    }
-    return h > 0.58 ? "dirt" : "grass";
+  variantsCanNeighbor(a: HexTerrainTileVariant, direction: HexDirection, b: HexTerrainTileVariant) {
+    return terrainVariantsCanNeighbor(a, direction, b);
   }
 
   getDiagnostics(): TerrainGrammarDiagnostics {
-    const structureCounts = createStructureCounts();
+    const structureCounts = createTerrainStructureCounts();
     for (const structure of this.structures.values()) {
       structureCounts[structure] += 1;
     }
@@ -128,9 +110,9 @@ export class HexTerrainGrammar {
 
   private selectPattern(q: number, r: number) {
     const preferred = this.preferredStructure(q, r);
-    let best: { pattern: HexPattern; score: number } | null = null;
+    let best: { pattern: HexTerrainPattern; score: number } | null = null;
 
-    for (const pattern of PATTERNS) {
+    for (const pattern of HEX_TERRAIN_PATTERNS) {
       if (!this.patternFits(pattern, q, r)) {
         continue;
       }
@@ -152,7 +134,7 @@ export class HexTerrainGrammar {
     return this.createRepairPattern(q, r, preferred);
   }
 
-  private scorePattern(pattern: HexPattern, q: number, r: number, preferred: TerrainStructure) {
+  private scorePattern(pattern: HexTerrainPattern, q: number, r: number, preferred: TerrainStructure) {
     let score = pattern.weight + this.hash(q + pattern.name.length * 13, r - pattern.name.length * 19) * 4;
     if (pattern.center === preferred) {
       score += 100;
@@ -173,7 +155,7 @@ export class HexTerrainGrammar {
     return score;
   }
 
-  private patternFits(pattern: HexPattern, q: number, r: number) {
+  private patternFits(pattern: HexTerrainPattern, q: number, r: number) {
     const cells = this.patternCells(pattern, q, r);
     const candidateMap = new Map<string, TerrainStructure>();
 
@@ -267,7 +249,7 @@ export class HexTerrainGrammar {
     return neighbors;
   }
 
-  private commitPattern(pattern: HexPattern, q: number, r: number) {
+  private commitPattern(pattern: HexTerrainPattern, q: number, r: number) {
     for (const cell of this.patternCells(pattern, q, r)) {
       if (!this.isInBounds(cell.q, cell.r)) {
         continue;
@@ -282,7 +264,7 @@ export class HexTerrainGrammar {
     this.patternCounts.set(pattern.name, (this.patternCounts.get(pattern.name) ?? 0) + 1);
   }
 
-  private patternCells(pattern: HexPattern, q: number, r: number): CandidateCell[] {
+  private patternCells(pattern: HexTerrainPattern, q: number, r: number): CandidateCell[] {
     const cells: CandidateCell[] = [{ q, r, structure: pattern.center }];
     for (const direction of HEX_DIRECTION_ORDER) {
       const offset = HEX_DIRECTIONS[direction];
@@ -295,7 +277,7 @@ export class HexTerrainGrammar {
     return cells;
   }
 
-  private createRepairPattern(q: number, r: number, preferred: TerrainStructure): HexPattern {
+  private createRepairPattern(q: number, r: number, preferred: TerrainStructure): HexTerrainPattern {
     const committedNeighbors = this.neighborCandidates(q, r, new Map());
     const hasWall = committedNeighbors.some((neighbor) => neighbor.structure === "wall");
     const hasWater = committedNeighbors.some((neighbor) => WATER_STRUCTURES.has(neighbor.structure));
@@ -496,12 +478,223 @@ export class HexTerrainGrammar {
   }
 }
 
-function structuresCannotTouch(a: TerrainStructure, b: TerrainStructure) {
+export function structuresCannotTouch(a: TerrainStructure, b: TerrainStructure) {
   return (a === "wall" && WATER_STRUCTURES.has(b)) || (b === "wall" && WATER_STRUCTURES.has(a));
 }
 
+export function createTerrainStructureCounts(): Record<TerrainStructure, number> {
+  return {
+    open: 0,
+    wall: 0,
+    bank: 0,
+    lake: 0,
+    river: 0,
+  };
+}
+
+export function getHexTerrainTileVariants() {
+  return TILE_VARIANTS;
+}
+
+export function deriveTerrainSurface(
+  structure: TerrainStructure,
+  neighbors: readonly TerrainStructure[],
+  h = 0.5,
+): TerrainSurface {
+  const nearLake = neighbors.includes("lake");
+  const nearRiver = neighbors.includes("river");
+  const nearWall = neighbors.includes("wall");
+
+  if (structure === "wall") {
+    return "stone";
+  }
+  if (structure === "lake") {
+    return "sand";
+  }
+  if (structure === "river") {
+    return "mud";
+  }
+  if (structure === "bank") {
+    if (nearRiver) {
+      return "mud";
+    }
+    if (nearLake) {
+      return "sand";
+    }
+    return nearWall ? "stone" : "dirt";
+  }
+
+  if (h > 0.978) {
+    return "charged";
+  }
+  if (h < 0.052) {
+    return "scarred";
+  }
+  if (nearLake) {
+    return "sand";
+  }
+  if (nearRiver) {
+    return "mud";
+  }
+  if (nearWall) {
+    return "stone";
+  }
+  return h > 0.58 ? "dirt" : "grass";
+}
+
+export function terrainVariantsCanNeighbor(
+  a: HexTerrainTileVariant,
+  direction: HexDirection,
+  b: HexTerrainTileVariant,
+) {
+  const opposite = OPPOSITE_HEX_DIRECTIONS[direction];
+  const edge = a.edges[direction];
+
+  return (
+    edge === b.edges[opposite] &&
+    a.neighbors[direction] === b.structure &&
+    b.neighbors[opposite] === a.structure &&
+    !structuresCannotTouch(a.structure, b.structure) &&
+    edgeMatchesStructures(edge, a.structure, b.structure)
+  );
+}
+
+export function findInvalidTerrainSample(
+  cells: Iterable<HexCoord & { structure: TerrainStructure }>,
+  options: { ignoreIncompleteNeighborhoods?: boolean } = {},
+): TerrainGrammarInvalidSample | null {
+  const structures = new Map<string, TerrainStructure>();
+  for (const cell of cells) {
+    structures.set(hexCellKey(cell.q, cell.r), cell.structure);
+  }
+
+  for (const [key, structure] of structures) {
+    const [q, r] = key.split(",").map(Number);
+    const cell = { q, r };
+    const neighbors: (HexCoord & { structure: TerrainStructure })[] = [];
+
+    for (const direction of HEX_DIRECTION_ORDER) {
+      const offset = HEX_DIRECTIONS[direction];
+      const neighbor = { q: q + offset.q, r: r + offset.r };
+      const neighborStructure = structures.get(hexCellKey(neighbor.q, neighbor.r));
+      if (neighborStructure) {
+        neighbors.push({ ...neighbor, structure: neighborStructure });
+      }
+    }
+
+    const invalidPair = neighbors.find((neighbor) => structuresCannotTouch(structure, neighbor.structure));
+    if (invalidPair) {
+      return { kind: "wall_water_adjacency", cell, structure, neighbor: invalidPair };
+    }
+
+    if (options.ignoreIncompleteNeighborhoods && neighbors.length < HEX_DIRECTION_ORDER.length) {
+      continue;
+    }
+
+    if (structure === "river" && !neighbors.some((neighbor) => neighbor.structure === "river" || neighbor.structure === "lake")) {
+      return { kind: "isolated_river", cell, structure };
+    }
+
+    if (structure === "lake" && !neighbors.some((neighbor) => neighbor.structure === "lake" || neighbor.structure === "river")) {
+      return { kind: "isolated_lake", cell, structure };
+    }
+
+    if (structure === "bank" && !neighbors.some((neighbor) => neighbor.structure === "wall" || WATER_STRUCTURES.has(neighbor.structure))) {
+      return { kind: "orphan_bank", cell, structure };
+    }
+  }
+
+  return null;
+}
+
+function edgeMatchesStructures(edge: HexEdgeKind, a: TerrainStructure, b: TerrainStructure) {
+  if (edge === "closed") {
+    return a === "wall" || b === "wall";
+  }
+  if (edge === "river") {
+    return a === "river" || b === "river";
+  }
+  if (edge === "lake") {
+    return a === "lake" || b === "lake";
+  }
+  return !WATER_STRUCTURES.has(a) && !WATER_STRUCTURES.has(b) && a !== "wall" && b !== "wall";
+}
+
+function createTileVariantCatalog(patterns: readonly HexTerrainPattern[]) {
+  const variants: HexTerrainTileVariant[] = [];
+
+  for (const pattern of patterns) {
+    const edges = createTileSignature(pattern.center, pattern.neighbors);
+    for (const surfaceOption of surfaceOptionsForPattern(pattern)) {
+      variants.push({
+        id: `${pattern.name}.${surfaceOption.surface}`,
+        patternName: pattern.name,
+        family: pattern.family,
+        structure: pattern.center,
+        surface: surfaceOption.surface,
+        edges,
+        weight: surfaceOption.weight,
+        neighbors: pattern.neighbors,
+      });
+    }
+  }
+
+  return variants;
+}
+
+function surfaceOptionsForPattern(pattern: HexTerrainPattern) {
+  const primary = deriveTerrainSurface(pattern.center, Object.values(pattern.neighbors));
+  const weight = pattern.weight;
+
+  if (pattern.center === "wall" || pattern.center === "lake" || pattern.center === "river") {
+    return [{ surface: primary, weight }] satisfies { surface: TerrainSurface; weight: number }[];
+  }
+
+  const options: { surface: TerrainSurface; weight: number }[] = [];
+  if (pattern.center === "open" && (primary === "grass" || primary === "dirt")) {
+    options.push({ surface: "grass", weight: weight * 0.68 });
+    options.push({ surface: "dirt", weight: weight * 0.32 });
+  } else {
+    options.push({ surface: primary, weight: weight * 0.95 });
+  }
+
+  if (pattern.center === "open" || pattern.center === "bank") {
+    options.push({ surface: "scarred", weight: Math.max(0.25, weight * 0.035) });
+    options.push({ surface: "charged", weight: Math.max(0.2, weight * 0.022) });
+  }
+
+  return options;
+}
+
+function createTileSignature(
+  center: TerrainStructure,
+  neighbors: Record<HexDirection, TerrainStructure>,
+): HexTileSignature {
+  return {
+    ne: edgeKindForStructures(center, neighbors.ne),
+    e: edgeKindForStructures(center, neighbors.e),
+    se: edgeKindForStructures(center, neighbors.se),
+    sw: edgeKindForStructures(center, neighbors.sw),
+    w: edgeKindForStructures(center, neighbors.w),
+    nw: edgeKindForStructures(center, neighbors.nw),
+  };
+}
+
+function edgeKindForStructures(a: TerrainStructure, b: TerrainStructure): HexEdgeKind {
+  if (a === "wall" || b === "wall") {
+    return "closed";
+  }
+  if (a === "river" || b === "river") {
+    return "river";
+  }
+  if (a === "lake" || b === "lake") {
+    return "lake";
+  }
+  return "open";
+}
+
 function createPatternCatalog() {
-  const patterns: HexPattern[] = [];
+  const patterns: HexTerrainPattern[] = [];
 
   addPattern(patterns, "open.field", "open", 32, "open", allNeighbors("open"));
   addRotations(patterns, "open.wall-edge", "open", 12, "open", neighborsWith("open", { ne: "wall" }));
@@ -534,9 +727,9 @@ function createPatternCatalog() {
 }
 
 function addPattern(
-  patterns: HexPattern[],
+  patterns: HexTerrainPattern[],
   name: string,
-  family: PatternFamily,
+  family: TerrainPatternFamily,
   weight: number,
   center: TerrainStructure,
   neighbors: Record<HexDirection, TerrainStructure>,
@@ -545,9 +738,9 @@ function addPattern(
 }
 
 function addRotations(
-  patterns: HexPattern[],
+  patterns: HexTerrainPattern[],
   name: string,
-  family: PatternFamily,
+  family: TerrainPatternFamily,
   weight: number,
   center: TerrainStructure,
   neighbors: Record<HexDirection, TerrainStructure>,
@@ -583,14 +776,4 @@ function neighborsWith(
   overrides: Partial<Record<HexDirection, TerrainStructure>>,
 ): Record<HexDirection, TerrainStructure> {
   return { ...allNeighbors(fallback), ...overrides };
-}
-
-function createStructureCounts(): Record<TerrainStructure, number> {
-  return {
-    open: 0,
-    wall: 0,
-    bank: 0,
-    lake: 0,
-    river: 0,
-  };
 }

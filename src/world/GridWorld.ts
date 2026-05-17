@@ -3,6 +3,7 @@ import { TILE_SIZE, WORLD_CELLS, WORLD_HALF, WORLD_HEX_RADIUS, WORLD_SIZE } from
 import { clamp } from "../lib/math";
 import type { HexEdgeKind, HexTileSignature, TerrainCell, TerrainStructure } from "../types";
 import { HexTerrainGrammar } from "./HexTerrainGrammar";
+import { HexTerrainWfcRegion } from "./HexTerrainWfcSolver";
 import {
   HEX_DIRECTIONS,
   HEX_DIRECTION_ORDER,
@@ -13,6 +14,9 @@ import {
 } from "./hexCoordinates";
 
 export type { HexCoord };
+
+const WFC_TERRAIN_RADIUS = 36;
+const WFC_TERRAIN_SEED = 20260517;
 
 export class GridWorld {
   readonly tileSize = TILE_SIZE;
@@ -26,6 +30,10 @@ export class GridWorld {
 
   private cells = new Map<string, TerrainCell>();
   private readonly terrainGrammar = new HexTerrainGrammar(this.worldRadius);
+  private readonly terrainWfc = new HexTerrainWfcRegion(this.terrainGrammar, {
+    radius: WFC_TERRAIN_RADIUS,
+    seed: WFC_TERRAIN_SEED,
+  });
 
   worldToCell(worldX: number, worldZ: number): HexCoord {
     const r = worldZ / this.hexVerticalSpacing;
@@ -51,8 +59,9 @@ export class GridWorld {
       return existing;
     }
 
-    const structure = this.terrainGrammar.getStructure(q, r);
-    const surface = this.terrainGrammar.deriveSurface(q, r);
+    const wfcCell = this.terrainWfc.getCell(q, r);
+    const structure = wfcCell?.structure ?? this.terrainGrammar.getStructure(q, r);
+    const surface = wfcCell?.surface ?? this.terrainGrammar.deriveSurface(q, r);
     const cell: TerrainCell = {
       q,
       r,
@@ -60,7 +69,7 @@ export class GridWorld {
       surface,
       blocked: structure === "wall" || structure === "lake" || structure === "river",
       opaque: structure === "wall",
-      edges: this.resolveEdges(structure),
+      edges: wfcCell?.edges ?? this.resolveEdges(structure),
     };
     this.cells.set(key, cell);
     return cell;
@@ -162,7 +171,10 @@ export class GridWorld {
   }
 
   getTerrainDiagnostics() {
-    return this.terrainGrammar.getDiagnostics();
+    return {
+      ...this.terrainGrammar.getDiagnostics(),
+      wfc: this.terrainWfc.getDiagnostics(),
+    };
   }
 
   getHexCorners(q: number, r: number, inset = 1) {

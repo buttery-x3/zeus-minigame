@@ -98,17 +98,28 @@ async function verifyTerrainGrammar(page, viewport) {
   if (!grammar) {
     throw new Error(`${viewport.name} missing terrain grammar diagnostics`);
   }
-  if (grammar.committedCells < 100) {
-    throw new Error(`${viewport.name} terrain grammar committed too few cells: ${JSON.stringify(grammar)}`);
-  }
-  if (!grammar.structureCounts || grammar.structureCounts.open < 1) {
-    throw new Error(`${viewport.name} terrain grammar did not expose open terrain counts: ${JSON.stringify(grammar)}`);
-  }
-  if (!grammar.patternCounts || Object.keys(grammar.patternCounts).length < 1) {
-    throw new Error(`${viewport.name} terrain grammar did not record pattern usage: ${JSON.stringify(grammar)}`);
-  }
   if (grammar.invalidSample) {
-    throw new Error(`${viewport.name} terrain grammar produced an invalid local sample: ${JSON.stringify(grammar.invalidSample)}`);
+    throw new Error(`${viewport.name} terrain grammar fallback produced an invalid local sample: ${JSON.stringify(grammar.invalidSample)}`);
+  }
+
+  const wfc = grammar.wfc;
+  if (!wfc) {
+    throw new Error(`${viewport.name} missing terrain WFC diagnostics: ${JSON.stringify(grammar)}`);
+  }
+  if (wfc.resolvedCells < 3900 || wfc.regionRadius !== 36) {
+    throw new Error(`${viewport.name} terrain WFC resolved an unexpected region: ${JSON.stringify(wfc)}`);
+  }
+  if (!wfc.structureCounts || wfc.structureCounts.open < 1 || wfc.structureCounts.wall < 1) {
+    throw new Error(`${viewport.name} terrain WFC/fallback did not produce playable land and blockers: ${JSON.stringify(wfc)}`);
+  }
+  if (!wfc.patternCounts || Object.keys(wfc.patternCounts).length < 4) {
+    throw new Error(`${viewport.name} terrain WFC did not use enough grammar patterns: ${JSON.stringify(wfc)}`);
+  }
+  if (wfc.invalidSample) {
+    throw new Error(`${viewport.name} terrain WFC violated local grammar: ${JSON.stringify(wfc.invalidSample)}`);
+  }
+  if (!wfc.fellBack && wfc.socketMismatchSample) {
+    throw new Error(`${viewport.name} terrain WFC produced a socket mismatch: ${JSON.stringify(wfc.socketMismatchSample)}`);
   }
 }
 
