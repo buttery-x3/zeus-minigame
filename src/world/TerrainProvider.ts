@@ -4,6 +4,8 @@ import { terrainBlocksMovement, terrainBlocksSight } from "./HexTerrainRules";
 export interface TerrainProvider {
   getCell(q: number, r: number): TerrainCell;
   ensureGeneratedAround?(q: number, r: number, radius?: number): void;
+  getGeneratedCellsInRange?(center: { q: number; r: number }, radius: number): TerrainCell[];
+  getGenerationVersion?(): number;
   getDiagnostics(): unknown;
 }
 

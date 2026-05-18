@@ -36,6 +36,20 @@ export class SeedTerrainProvider implements TerrainProvider {
     return cell;
   }
 
+  getGeneratedCellsInRange(center: { q: number; r: number }, radius: number) {
+    const cells: TerrainCell[] = [];
+    for (const cell of this.cells.values()) {
+      if (hexDistance(center, cell) <= radius) {
+        cells.push(cell);
+      }
+    }
+    return cells;
+  }
+
+  getGenerationVersion() {
+    return this.cells.size;
+  }
+
   getDiagnostics(): SeedTerrainProviderDiagnostics {
     const structureCounts = createTerrainStructureCounts();
     for (const cell of this.cells.values()) {

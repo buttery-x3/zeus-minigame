@@ -124,6 +124,7 @@ async function verifyTerrainDebugMode(page, viewport) {
   const before = await readDiagnostics(page);
   const beforeTop = Math.abs(before.camera?.projection?.top ?? 0);
   const beforeRadius = before.terrainGrammar?.wfc?.activePatchRadius;
+  const beforeGeneratedPatches = before.terrainGrammar?.wfc?.generatedPatchCount;
   const beforeBlockers = before.terrain?.blockers?.total ?? 0;
 
   await page.keyboard.press("F4");
@@ -146,6 +147,9 @@ async function verifyTerrainDebugMode(page, viewport) {
   }
   if (after.terrainGrammar?.wfc?.activePatchRadius !== beforeRadius) {
     throw new Error(`${viewport.name} terrain debug mode changed generation radius: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
+  }
+  if (after.terrainGrammar?.wfc?.generatedPatchCount !== beforeGeneratedPatches) {
+    throw new Error(`${viewport.name} terrain debug mode generated new patches: before=${beforeGeneratedPatches}, after=${after.terrainGrammar?.wfc?.generatedPatchCount}`);
   }
   if ((after.terrain?.blockers?.total ?? 0) <= beforeBlockers) {
     throw new Error(`${viewport.name} terrain debug mode did not expand rendered terrain window: before=${beforeBlockers}, after=${after.terrain?.blockers?.total}`);

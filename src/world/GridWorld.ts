@@ -49,6 +49,24 @@ export class GridWorld {
     return cell;
   }
 
+  getGeneratedCellsInRange(center: HexCoord, radius: number) {
+    if (this.terrainProvider.getGeneratedCellsInRange) {
+      return this.terrainProvider.getGeneratedCellsInRange(center, radius);
+    }
+
+    const cells: TerrainCell[] = [];
+    for (const cell of this.cells.values()) {
+      if (this.hexDistance(center, cell) <= radius) {
+        cells.push(cell);
+      }
+    }
+    return cells;
+  }
+
+  getTerrainGenerationVersion() {
+    return this.terrainProvider.getGenerationVersion?.() ?? this.cells.size;
+  }
+
   ensureTerrainGeneratedAroundCell(q: number, r: number) {
     this.terrainProvider.ensureGeneratedAround?.(q, r);
   }

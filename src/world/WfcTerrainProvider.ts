@@ -68,6 +68,20 @@ export class WfcTerrainProvider implements TerrainProvider {
     return this.generatedCells.get(key) ?? createTerrainCell(q, r, "open", "grass");
   }
 
+  getGeneratedCellsInRange(center: HexCoord, radius: number) {
+    const cells: TerrainCell[] = [];
+    for (const cell of this.generatedCells.values()) {
+      if (hexDistance(center, cell) <= radius) {
+        cells.push(cell);
+      }
+    }
+    return cells;
+  }
+
+  getGenerationVersion() {
+    return this.generatedPatchCount;
+  }
+
   ensureGeneratedAround(q: number, r: number, radius = ROLLING_TERRAIN_PATCH_RADIUS) {
     const center = microToPatchLocal({ q, r }).patch;
     const required = createHexPatchRegion(radius)
