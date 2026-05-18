@@ -1222,7 +1222,7 @@ function assertContinuousVisibilityOverlay(viewport, diagnostics, label) {
     );
   }
 
-  if (!["initial", "none", "remap", "reset"].includes(overlay.alphaHistoryAction)) {
+  if (overlay.alphaHistoryAction !== "smooth") {
     throw new Error(`${viewport.name} visibility overlay reported invalid alpha history action (${label}): ${JSON.stringify(overlay)}`);
   }
 }

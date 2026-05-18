@@ -8,16 +8,23 @@ const UNDISCOVERED_ALPHA = 0.96;
 const BLOCKED_MEMORY_ALPHA = 0.66;
 const VISIBLE_MIN_ALPHA = 0.03;
 const VISIBLE_MAX_ALPHA = 0.62;
-const REVEAL_SPEED = 12;
-const HIDE_SPEED = 5.5;
+const ALPHA_SMOOTH_SPEED = 26;
 const RESOLUTION_SCALE = 2;
 const OVERLAY_RADIUS_CELLS = Math.ceil(PLAYER_LIGHT_OUTER_RADIUS / TILE_SIZE) + 16;
 const TEXTURE_CELLS = (OVERLAY_RADIUS_CELLS * 2 + 1) * RESOLUTION_SCALE;
 const OVERLAY_WINDOW_SIZE = OVERLAY_RADIUS_CELLS * TILE_SIZE * 2;
 const TEXEL_WORLD_SIZE = OVERLAY_WINDOW_SIZE / TEXTURE_CELLS;
-const MAX_REMAP_SHIFT_PIXELS = Math.floor(TEXTURE_CELLS * 0.45);
+const SPATIAL_SAMPLE_OFFSET = TEXEL_WORLD_SIZE * 0.65;
 
-type AlphaHistoryAction = "initial" | "none" | "remap" | "reset";
+const SPATIAL_SAMPLE_OFFSETS = [
+  { x: 0, z: 0 },
+  { x: SPATIAL_SAMPLE_OFFSET, z: 0 },
+  { x: -SPATIAL_SAMPLE_OFFSET, z: 0 },
+  { x: 0, z: SPATIAL_SAMPLE_OFFSET },
+  { x: 0, z: -SPATIAL_SAMPLE_OFFSET },
+];
+
+type AlphaHistoryAction = "smooth";
 
 export class VisibilityOverlay {
   readonly object: THREE.Mesh;
@@ -25,16 +32,12 @@ export class VisibilityOverlay {
   private readonly data = new Uint8Array(TEXTURE_CELLS * TEXTURE_CELLS * 4);
   private readonly targetAlpha = new Float32Array(TEXTURE_CELLS * TEXTURE_CELLS);
   private readonly displayedAlpha = new Float32Array(TEXTURE_CELLS * TEXTURE_CELLS);
-  private readonly alphaScratch = new Float32Array(TEXTURE_CELLS * TEXTURE_CELLS);
   private readonly texture: THREE.DataTexture;
   private settling = true;
   private debugReveal = false;
-  private hasHistoryCenter = false;
-  private historyCenterX = 0;
-  private historyCenterZ = 0;
+  private hasSyncedAlpha = false;
   private centerWorld = { x: 0, z: 0 };
-  private lastAlphaHistoryAction: AlphaHistoryAction = "initial";
-  private lastAlphaHistoryShift = { x: 0, z: 0 };
+  private lastAlphaHistoryAction: AlphaHistoryAction = "smooth";
 
   constructor(private readonly gridWorld: GridWorld) {
     for (let i = 0; i < TEXTURE_CELLS * TEXTURE_CELLS; i += 1) {
@@ -85,30 +88,7 @@ export class VisibilityOverlay {
     this.object.position.z = this.centerWorld.z;
 
     this.updateTargets(visibility, this.centerWorld);
-    this.updateAlphaHistoryAnchor();
-    this.settling = true;
-
-    if (!this.settling) {
-      return;
-    }
-
-    const revealStep = 1 - Math.exp(-REVEAL_SPEED * dt);
-    const hideStep = 1 - Math.exp(-HIDE_SPEED * dt);
-    let maxDelta = 0;
-
-    for (let i = 0; i < this.displayedAlpha.length; i += 1) {
-      const current = this.displayedAlpha[i];
-      const target = this.targetAlpha[i];
-      const step = target < current ? revealStep : hideStep;
-      const next = current + (target - current) * step;
-      const delta = Math.abs(next - target);
-      this.displayedAlpha[i] = delta < 0.002 ? target : next;
-      this.data[i * 4 + 3] = Math.round(clamp(this.displayedAlpha[i], 0, 1) * 255);
-      maxDelta = Math.max(maxDelta, delta);
-    }
-
-    this.texture.needsUpdate = true;
-    this.settling = maxDelta > 0.002;
+    this.smoothDisplayedAlphaToTarget(dt);
   }
 
   dispose() {
@@ -130,7 +110,6 @@ export class VisibilityOverlay {
       overlayRadiusCells: OVERLAY_RADIUS_CELLS,
       centerWorld: { ...this.centerWorld },
       alphaHistoryAction: this.lastAlphaHistoryAction,
-      alphaHistoryShift: { ...this.lastAlphaHistoryShift },
       debugReveal: this.debugReveal,
       visible: this.object.visible,
       settling: this.settling,
@@ -143,10 +122,20 @@ export class VisibilityOverlay {
 
       for (let textureX = 0; textureX < TEXTURE_CELLS; textureX += 1) {
         const worldX = centerWorld.x + ((textureX + 0.5) / TEXTURE_CELLS) * OVERLAY_WINDOW_SIZE - OVERLAY_WINDOW_SIZE / 2;
-        const cell = this.gridWorld.worldToCell(worldX, worldZ);
-        this.targetAlpha[textureZ * TEXTURE_CELLS + textureX] = this.alphaForSample(visibility, cell.q, cell.r, worldX, worldZ, centerWorld);
+        this.targetAlpha[textureZ * TEXTURE_CELLS + textureX] = this.alphaForSmoothedSample(visibility, worldX, worldZ, centerWorld);
       }
     }
+  }
+
+  private alphaForSmoothedSample(visibility: VisibilitySystem, worldX: number, worldZ: number, centerWorld: { x: number; z: number }) {
+    let alpha = 0;
+    for (const offset of SPATIAL_SAMPLE_OFFSETS) {
+      const sampleX = worldX + offset.x;
+      const sampleZ = worldZ + offset.z;
+      const cell = this.gridWorld.worldToCell(sampleX, sampleZ);
+      alpha += this.alphaForSample(visibility, cell.q, cell.r, sampleX, sampleZ, centerWorld);
+    }
+    return alpha / SPATIAL_SAMPLE_OFFSETS.length;
   }
 
   private alphaForSample(
@@ -173,51 +162,27 @@ export class VisibilityOverlay {
     return clamp(VISIBLE_MIN_ALPHA + (1 - light) * (VISIBLE_MAX_ALPHA - VISIBLE_MIN_ALPHA), VISIBLE_MIN_ALPHA, VISIBLE_MAX_ALPHA);
   }
 
-  private updateAlphaHistoryAnchor() {
-    if (!this.hasHistoryCenter) {
+  private smoothDisplayedAlphaToTarget(dt: number) {
+    if (!this.hasSyncedAlpha) {
       this.displayedAlpha.set(this.targetAlpha);
-      this.historyCenterX = this.centerWorld.x;
-      this.historyCenterZ = this.centerWorld.z;
-      this.hasHistoryCenter = true;
-      this.lastAlphaHistoryAction = "initial";
-      this.lastAlphaHistoryShift = { x: 0, z: 0 };
-      return;
+      this.hasSyncedAlpha = true;
     }
 
-    const shiftX = Math.trunc((this.centerWorld.x - this.historyCenterX) / TEXEL_WORLD_SIZE);
-    const shiftZ = Math.trunc((this.centerWorld.z - this.historyCenterZ) / TEXEL_WORLD_SIZE);
-    if (shiftX === 0 && shiftZ === 0) {
-      this.lastAlphaHistoryAction = "none";
-      this.lastAlphaHistoryShift = { x: 0, z: 0 };
-      return;
+    const step = 1 - Math.exp(-ALPHA_SMOOTH_SPEED * dt);
+    let maxDelta = 0;
+    for (let i = 0; i < this.displayedAlpha.length; i += 1) {
+      const current = this.displayedAlpha[i];
+      const target = this.targetAlpha[i];
+      const next = current + (target - current) * step;
+      const delta = Math.abs(next - target);
+      this.displayedAlpha[i] = delta < 0.002 ? target : next;
+      this.data[i * 4 + 3] = Math.round(clamp(this.displayedAlpha[i], 0, 1) * 255);
+      maxDelta = Math.max(maxDelta, delta);
     }
 
-    if (Math.abs(shiftX) > MAX_REMAP_SHIFT_PIXELS || Math.abs(shiftZ) > MAX_REMAP_SHIFT_PIXELS) {
-      this.displayedAlpha.set(this.targetAlpha);
-      this.historyCenterX = this.centerWorld.x;
-      this.historyCenterZ = this.centerWorld.z;
-      this.lastAlphaHistoryAction = "reset";
-      this.lastAlphaHistoryShift = { x: shiftX, z: shiftZ };
-      return;
-    }
-
-    this.alphaScratch.set(this.displayedAlpha);
-    for (let textureZ = 0; textureZ < TEXTURE_CELLS; textureZ += 1) {
-      const sourceZ = textureZ - shiftZ;
-      for (let textureX = 0; textureX < TEXTURE_CELLS; textureX += 1) {
-        const sourceX = textureX + shiftX;
-        const targetIndex = textureZ * TEXTURE_CELLS + textureX;
-        this.displayedAlpha[targetIndex] =
-          sourceX >= 0 && sourceX < TEXTURE_CELLS && sourceZ >= 0 && sourceZ < TEXTURE_CELLS
-            ? this.alphaScratch[sourceZ * TEXTURE_CELLS + sourceX]
-            : this.targetAlpha[targetIndex];
-      }
-    }
-
-    this.historyCenterX += shiftX * TEXEL_WORLD_SIZE;
-    this.historyCenterZ += shiftZ * TEXEL_WORLD_SIZE;
-    this.lastAlphaHistoryAction = "remap";
-    this.lastAlphaHistoryShift = { x: shiftX, z: shiftZ };
+    this.texture.needsUpdate = true;
+    this.settling = maxDelta > 0.002;
+    this.lastAlphaHistoryAction = "smooth";
   }
 
   private lightAtDistance(distanceWorld: number) {

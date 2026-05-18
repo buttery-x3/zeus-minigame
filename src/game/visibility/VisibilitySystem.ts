@@ -22,6 +22,8 @@ export type VisibilityCell = {
 export type VisibilityLightSource = {
   q: number;
   r: number;
+  x: number;
+  z: number;
   innerRadiusCells: number;
   outerRadiusCells: number;
   intensity: number;
@@ -31,6 +33,7 @@ export type VisibilityLightSource = {
 export class VisibilitySystem {
   readonly innerRadiusCells = Math.max(1, Math.floor(PLAYER_LIGHT_INNER_RADIUS / TILE_SIZE));
   readonly outerRadiusCells = Math.max(this.innerRadiusCells + 1, Math.ceil(PLAYER_LIGHT_OUTER_RADIUS / TILE_SIZE));
+  private readonly updateDistanceEpsilon = TILE_SIZE / 8;
 
   private readonly visible = new Set<string>();
   private readonly discovered = new Set<string>();
@@ -47,19 +50,24 @@ export class VisibilitySystem {
   private lastComputeMs = 0;
   private lastSourceCellKey = "";
   private lastSourceCell = { q: 0, r: 0 };
+  private lastSourceWorld = { x: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY };
 
   constructor(private readonly gridWorld: GridWorld) {}
 
   update(playerPosition: { x: number; z: number }, nowSeconds = performance.now() / 1000) {
     const sourceCell = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
     const sourceCellKey = this.gridWorld.cellKey(sourceCell.q, sourceCell.r);
-    if (sourceCellKey === this.lastSourceCellKey) {
+    if (
+      sourceCellKey === this.lastSourceCellKey &&
+      distance2D(playerPosition.x, playerPosition.z, this.lastSourceWorld.x, this.lastSourceWorld.z) < this.updateDistanceEpsilon
+    ) {
       return false;
     }
 
     const startedAt = performance.now();
     this.lastSourceCellKey = sourceCellKey;
     this.lastSourceCell = sourceCell;
+    this.lastSourceWorld = { x: playerPosition.x, z: playerPosition.z };
     this.visible.clear();
     this.light.clear();
     this.lightReach.clear();
@@ -71,6 +79,8 @@ export class VisibilitySystem {
     const source = {
       q: sourceCell.q,
       r: sourceCell.r,
+      x: playerPosition.x,
+      z: playerPosition.z,
       innerRadiusCells: this.innerRadiusCells,
       outerRadiusCells: this.outerRadiusCells,
       intensity: 1,
@@ -104,6 +114,7 @@ export class VisibilitySystem {
     this.lastComputeMs = 0;
     this.lastSourceCellKey = "";
     this.lastSourceCell = { q: 0, r: 0 };
+    this.lastSourceWorld = { x: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY };
     this.version += 1;
   }
 
@@ -163,6 +174,7 @@ export class VisibilitySystem {
     return {
       version: this.version,
       playerCell: { ...this.lastSourceCell },
+      playerWorld: { ...this.lastSourceWorld },
       innerRadiusCells: this.innerRadiusCells,
       outerRadiusCells: this.outerRadiusCells,
       visibleCells: this.visibleCount,
@@ -176,7 +188,7 @@ export class VisibilitySystem {
   }
 
   private applyLightReach(source: VisibilityLightSource) {
-    this.gridWorld.forEachCellInRange(source, source.outerRadiusCells, (q, r) => {
+    this.gridWorld.forEachCellInRange(source, source.outerRadiusCells + 1, (q, r) => {
       const distanceWorld = this.distanceFromSource(source, q, r);
       const lightReach = this.lightAtDistance(distanceWorld, source);
       if (lightReach <= VISIBILITY_LIGHT_EPSILON) {
@@ -193,8 +205,8 @@ export class VisibilitySystem {
   }
 
   private applyLightSource(source: VisibilityLightSource, nowSeconds: number) {
-    const sourceWorld = this.gridWorld.cellToWorld(source.q, source.r);
-    this.gridWorld.forEachCellInRange(source, source.outerRadiusCells, (q, r) => {
+    const sourceWorld = { x: source.x, z: source.z };
+    this.gridWorld.forEachCellInRange(source, source.outerRadiusCells + 1, (q, r) => {
       if (!this.distanceWithinLight(source, q, r)) {
         return;
       }
@@ -245,8 +257,8 @@ export class VisibilitySystem {
   }
 
   private lightAtDistance(distanceWorld: number, source: VisibilityLightSource) {
-    const inner = source.innerRadiusCells * TILE_SIZE;
-    const outer = source.outerRadiusCells * TILE_SIZE;
+    const inner = PLAYER_LIGHT_INNER_RADIUS;
+    const outer = PLAYER_LIGHT_OUTER_RADIUS;
     if (distanceWorld <= inner) {
       return source.intensity;
     }
@@ -261,9 +273,8 @@ export class VisibilitySystem {
   }
 
   private distanceFromSource(source: VisibilityLightSource, q: number, r: number) {
-    const sourceWorld = this.gridWorld.cellToWorld(source.q, source.r);
     const cellWorld = this.gridWorld.cellToWorld(q, r);
-    return distance2D(sourceWorld.x, sourceWorld.z, cellWorld.x, cellWorld.z);
+    return distance2D(source.x, source.z, cellWorld.x, cellWorld.z);
   }
 
   private findShadowSample() {
