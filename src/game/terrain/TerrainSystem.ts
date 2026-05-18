@@ -153,6 +153,6 @@ export class TerrainSystem {
 
 function createHexCylinderGeometry(radius: number, height: number) {
   const geometry = new THREE.CylinderGeometry(radius, radius, height, 6, 1, false);
-  geometry.rotateY(Math.PI / 6);
+  //geometry.rotateY(Math.PI / 6); //this was an unnecessary rotation, causes error triangles
   return geometry;
 }
