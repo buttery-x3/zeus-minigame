@@ -27,7 +27,7 @@ npm run verify
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
-- Checks gameplay visibility diagnostics, 2x visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
+- Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
 - Checks rolling patch terrain diagnostics, including active patch-radius generation, at least one river micro hex, no emergency patches, and ordered patch edge socket agreement.
 - Checks Terrain Debug mode by toggling it on, verifying fog is disabled, camera view is widened with debug framing, HP remains full, the rendered terrain window expands, and rolling terrain diagnostics remain valid without increasing the configured generation radius or generating new patches.
 - Checks that hidden spell targets do not spend cooldown, default out-of-range spell targets snap to max range, and strict mode rejects out-of-range raw targets.

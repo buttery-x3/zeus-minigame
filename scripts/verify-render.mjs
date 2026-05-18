@@ -209,6 +209,7 @@ async function verifyVisibilitySystem(page, viewport) {
   if (!start.visibilityOverlay || start.visibilityOverlay.resolutionScale !== 2) {
     throw new Error(`${viewport.name} visibility overlay did not report 2x resolution: ${JSON.stringify(start.visibilityOverlay)}`);
   }
+  assertContinuousVisibilityOverlay(viewport, start, "initial");
   if (start.visibility.visibleCells < 80) {
     throw new Error(`${viewport.name} visibility revealed too few cells: ${JSON.stringify(start.visibility)}`);
   }
@@ -275,6 +276,7 @@ async function verifyVisibilitySystem(page, viewport) {
       throw new Error(`${viewport.name} blocked-memory sample had wrong visibility state: ${JSON.stringify(memory)}`);
     }
   }
+  assertContinuousVisibilityOverlay(viewport, afterMove, "after exploration");
 }
 
 async function verifyHiddenCastRejected(page, viewport, diagnostics) {
@@ -1202,6 +1204,27 @@ function quaternionDistance(a, b) {
 
 function groundDistance(a, b) {
   return Math.hypot(a[0] - b[0], a[2] - b[2]);
+}
+
+function assertContinuousVisibilityOverlay(viewport, diagnostics, label) {
+  const overlay = diagnostics.visibilityOverlay;
+  if (!overlay || !(overlay.texelWorldSize > 0) || !overlay.centerWorld) {
+    throw new Error(`${viewport.name} missing continuous visibility overlay diagnostics (${label}): ${JSON.stringify(overlay)}`);
+  }
+
+  const centerDistance = Math.hypot(
+    overlay.centerWorld.x - diagnostics.player.position[0],
+    overlay.centerWorld.z - diagnostics.player.position[2],
+  );
+  if (centerDistance > Math.max(0.25, overlay.texelWorldSize)) {
+    throw new Error(
+      `${viewport.name} visibility overlay center did not follow player (${label}): distance=${centerDistance}, overlay=${JSON.stringify(overlay.centerWorld)}, player=${JSON.stringify(diagnostics.player.position)}`,
+    );
+  }
+
+  if (!["initial", "none", "remap", "reset"].includes(overlay.alphaHistoryAction)) {
+    throw new Error(`${viewport.name} visibility overlay reported invalid alpha history action (${label}): ${JSON.stringify(overlay)}`);
+  }
 }
 
 function cameraLowerFrustumOriginY(camera) {
