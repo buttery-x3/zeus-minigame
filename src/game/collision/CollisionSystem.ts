@@ -14,6 +14,8 @@ export type ResolvedPath = PathResult & {
 
 type ResolvePathOptions = {
   canUseDestination?: (destination: THREE.Vector3) => boolean;
+  maxCandidatePathAttempts?: number;
+  maxPathfindingMs?: number;
 };
 
 export class CollisionSystem {
@@ -30,10 +32,10 @@ export class CollisionSystem {
     return hasLineOfSight(this.gridWorld, from, to, radius);
   }
 
-  findPath(start: THREE.Vector3, goal: THREE.Vector3, radius: number, maxIterations = PATHFINDING_MAX_ITERATIONS) {
+  findPath(start: THREE.Vector3, goal: THREE.Vector3, radius: number, maxIterations = PATHFINDING_MAX_ITERATIONS, maxMs?: number) {
     const clampedGoal = clampWorldToRadius(this.gridWorld, new THREE.Vector3(goal.x, 0, goal.z), radius);
     const startedAt = performance.now();
-    const result = findPath(this.gridWorld, start, clampedGoal, { radius, maxIterations });
+    const result = findPath(this.gridWorld, start, clampedGoal, { radius, maxIterations, maxMs });
     this.profiler?.recordPathfinding(performance.now() - startedAt, result?.iterations ?? 0, result !== null);
     return result;
   }
@@ -47,20 +49,43 @@ export class CollisionSystem {
     const requested = clampWorldToRadius(this.gridWorld, new THREE.Vector3(requestedTarget.x, 0, requestedTarget.z), radius);
     const requestedBlocked = !this.canOccupy(requested.x, requested.z, radius);
     const canUseDestination = options.canUseDestination ?? (() => true);
-    const direct = requestedBlocked || !canUseDestination(requested) ? null : this.findPath(start, requested, radius);
+    const deadline = options.maxPathfindingMs ? performance.now() + options.maxPathfindingMs : Number.POSITIVE_INFINITY;
+    const remainingPathMs = () =>
+      Number.isFinite(deadline) ? Math.max(0.25, deadline - performance.now()) : undefined;
+    const direct =
+      requestedBlocked || !canUseDestination(requested)
+        ? null
+        : this.findPath(start, requested, radius, PATHFINDING_MAX_ITERATIONS, remainingPathMs());
 
     if (direct) {
       return { ...direct, destination: requested, requestedBlocked };
     }
 
+    let attemptedPaths = 0;
+    const maxCandidatePathAttempts = options.maxCandidatePathAttempts ?? Number.POSITIVE_INFINITY;
+
     for (const candidates of this.findNearbyOpenCandidateRings(requested, radius)) {
       let best: ResolvedPath | null = null;
-      for (const candidate of candidates) {
+      const sortedCandidates = candidates
+        .slice()
+        .sort(
+          (a, b) =>
+            distance2D(start.x, start.z, a.x, a.z) +
+            distance2D(requested.x, requested.z, a.x, a.z) -
+            (distance2D(start.x, start.z, b.x, b.z) + distance2D(requested.x, requested.z, b.x, b.z)),
+        );
+
+      for (const candidate of sortedCandidates) {
+        if (attemptedPaths >= maxCandidatePathAttempts || performance.now() >= deadline) {
+          return best;
+        }
+
         if (!canUseDestination(candidate)) {
           continue;
         }
 
-        const path = this.findPath(start, candidate, radius);
+        attemptedPaths += 1;
+        const path = this.findPath(start, candidate, radius, PATHFINDING_MAX_ITERATIONS, remainingPathMs());
         if (!path) {
           continue;
         }

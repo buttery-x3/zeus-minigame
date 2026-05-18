@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PLAYER_COLLISION_RADIUS } from "../../config";
+import { PLAYER_COLLISION_RADIUS, PLAYER_PATHFINDING_BUDGET_MS, PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS } from "../../config";
 import { distance2D } from "../../lib/math";
 import type { GameMaterials } from "../../render/materials";
 import type { GameEffects } from "../../render/GameEffects";
@@ -94,6 +94,8 @@ export class PlayerController {
 
     const resolved = this.collision.resolvePathToTarget(this.object.position, requestedTarget, PLAYER_COLLISION_RADIUS, {
       canUseDestination: options.canUseDestination,
+      maxCandidatePathAttempts: PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS,
+      maxPathfindingMs: PLAYER_PATHFINDING_BUDGET_MS,
     });
     this.lastRequestedCellKey = requestedCellKey;
     this.lastRequestedBlocked = this.gridWorld.isBlockedWorld(requestedTarget.x, requestedTarget.z);

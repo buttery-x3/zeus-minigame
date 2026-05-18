@@ -23,6 +23,7 @@ type PathNode = {
 type FindPathOptions = {
   radius: number;
   maxIterations?: number;
+  maxMs?: number;
 };
 
 export function findPath(gridWorld: GridWorld, start: THREE.Vector3, goal: THREE.Vector3, options: FindPathOptions) {
@@ -47,6 +48,7 @@ export function findPath(gridWorld: GridWorld, start: THREE.Vector3, goal: THREE
   const openSet = new Set(openKeys);
   const closedSet = new Set<string>();
   const maxIterations = options.maxIterations ?? PATHFINDING_MAX_ITERATIONS;
+  const deadline = options.maxMs ? performance.now() + options.maxMs : Number.POSITIVE_INFINITY;
 
   nodes.set(startKey, {
     q: startCell.q,
@@ -58,6 +60,10 @@ export function findPath(gridWorld: GridWorld, start: THREE.Vector3, goal: THREE
   });
 
   for (let iterations = 1; openKeys.length > 0 && iterations <= maxIterations; iterations += 1) {
+    if (performance.now() >= deadline) {
+      break;
+    }
+
     const current = takeBestOpenNode(openKeys, openSet, nodes);
     if (!current) {
       break;
