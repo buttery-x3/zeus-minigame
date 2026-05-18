@@ -118,10 +118,7 @@ class HexTerrainWfcSolver {
       const counters: SolveCounters = { collapsedCells: 0, propagationSteps: 0 };
       const domains = this.createInitialDomains();
       const entropies = this.createInitialEntropies(domains);
-      const initialQueue = [
-        ...this.applySafeStart(domains, entropies),
-        ...this.applyFeatureHints(domains, entropies),
-      ];
+      const initialQueue = this.applySafeStart(domains, entropies);
       const seeded = this.propagate(domains, entropies, initialQueue, counters);
 
       if (seeded.ok && this.collapseAll(domains, entropies, rng, counters)) {
@@ -212,64 +209,6 @@ class HexTerrainWfcSolver {
     }
 
     return queue;
-  }
-
-  private applyFeatureHints(domains: Map<string, Set<number>>, entropies: Map<string, number>) {
-    const queue: string[] = [];
-
-    for (const cell of this.cells) {
-      const structure = this.featureStructureAtCell(cell);
-      if (!structure) {
-        continue;
-      }
-
-      const key = hexCellKey(cell.q, cell.r);
-      const domain = domains.get(key);
-      if (!domain) {
-        continue;
-      }
-
-      const filtered = new Set([...domain].filter((index) => this.variants[index].structure === structure));
-      if (filtered.size === 0) {
-        continue;
-      }
-
-      domains.set(key, filtered);
-      entropies.set(key, filtered.size);
-      queue.push(key);
-    }
-
-    return queue;
-  }
-
-  private featureStructureAtCell(cell: HexCoord): TerrainStructure | null {
-    if (hexDistance(cell, { q: 0, r: 0 }) <= this.safeRadius + 2) {
-      return null;
-    }
-
-    const wallDistance = Math.min(
-      hexDistance(cell, { q: -11, r: 4 }),
-      hexDistance(cell, { q: 8, r: 9 }),
-    );
-    if (wallDistance === 0) {
-      return "wall";
-    }
-
-    return null;
-
-    const lakeDistance = Math.min(
-      hexDistance(cell, { q: -23, r: 16 }),
-      hexDistance(cell, { q: 24, r: -17 }),
-    );
-    if (lakeDistance <= 2) {
-      return "lake";
-    }
-
-    if (cell.r > -24 && cell.r < 24 && cell.q === 16) {
-      return "river";
-    }
-
-    return null;
   }
 
   private propagate(
@@ -366,19 +305,6 @@ class HexTerrainWfcSolver {
     }
 
     return bestKeys.length > 0 ? bestKeys[Math.floor(rng() * bestKeys.length)] : null;
-  }
-
-  private weightedEntropy(domain: Set<number>, cell: HexCoord) {
-    let total = 0;
-    let weightedLogTotal = 0;
-
-    for (const index of domain) {
-      const weight = this.weightVariantAtCell(this.variants[index], cell);
-      total += weight;
-      weightedLogTotal += weight * Math.log(weight);
-    }
-
-    return total > 0 ? Math.log(total) - weightedLogTotal / total : Number.POSITIVE_INFINITY;
   }
 
   private chooseWeightedVariant(domain: Set<number>, rng: () => number, cell: HexCoord) {

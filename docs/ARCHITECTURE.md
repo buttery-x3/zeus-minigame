@@ -28,9 +28,12 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
 - `src/game/terrain/TerrainSystem.ts`: visible hex terrain window rendering.
-- `src/world/GridWorld.ts`: axial hex-to-world mapping, terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
+- `src/world/GridWorld.ts`: axial hex-to-world mapping, cached terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
 - `src/world/HexTerrainGrammar.ts`: local terrain grammar, tile variant vocabulary, compatibility rules, and surface derivation.
 - `src/world/HexTerrainWfcSolver.ts`: finite axial hex WFC solver that arranges grammar-derived tile variants.
+- `src/world/TerrainProvider.ts`: terrain provider interface and shared `TerrainCell` construction helpers.
+- `src/world/WfcTerrainProvider.ts`: default terrain provider that wraps the grammar/WFC pipeline.
+- `src/world/SeedTerrainProvider.ts`: cheap deterministic hash terrain provider for fallback/debug use.
 - `src/world/hexCoordinates.ts`: shared axial hex coordinate types, directions, keys, and distance helpers.
 - `src/render/GameEffects.ts`: short-lived lightning and shockwave effects.
 - `src/render/materials.ts`: shared Three.js material creation.
@@ -56,13 +59,15 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 ## Hex World
 
-Gameplay grid coordinates are axial hex coordinates named `q/r`. Three.js world space still uses the `X/Z` ground plane and `Y` as vertical height. `GridWorld` is the only module that should own coordinate conversion details; other systems should ask it for cell centers, neighbors, rings, ranges, line samples, bounds checks, and cell keys.
+Gameplay grid coordinates are axial hex coordinates named `q/r`. Three.js world space still uses the `X/Z` ground plane and `Y` as vertical height. `GridWorld` owns coordinate conversion, bounds checks, cached cell access, neighbors, rings, ranges, line samples, and cell keys. Terrain generation is delegated to a `TerrainProvider`.
+
+The default provider is `WfcTerrainProvider`, which wraps the local grammar plus finite WFC solver. `SeedTerrainProvider` is a deterministic hash-based provider kept for fallback/debug use and future generation-mode selection.
 
 Terrain starts with a local grammar. Each grammar pattern describes one center hex plus its six neighbors, and those patterns define what terrain is meaningful: wall-water adjacency is illegal, banks mediate hard/wet transitions, rivers need river or lake continuity, lakes should cluster, and banks should exist near walls or water.
 
 The playable origin region is generated once by a finite hex WFC solver. Each cell begins with every grammar-derived tile variant; a variant includes structure, surface, six edge sockets, weight, and the local neighbor structure expectations from the grammar pattern that produced it. The solver repeatedly collapses a lowest-entropy cell, then propagates socket and local-grammar compatibility to the six axial neighbors until the region is resolved. This keeps the local grammar as the rules layer and makes WFC the arrangement layer.
 
-The current WFC region covers radius 36 around the origin with a small open safe start. Collapse weights include deterministic lake and river feature zones so the first finite region exercises the full grammar without needing an infinite-world planner yet. Terrain outside that finite region temporarily falls back to the older lazy committed-pattern generator, using the same grammar rules and surface derivation.
+The current WFC region covers radius 36 around the origin with a small open safe start. Terrain outside that finite region temporarily falls back to the older lazy committed-pattern generator inside `WfcTerrainProvider`, using the same grammar rules and surface derivation.
 
 Terrain is split into structural cells and derived surfaces:
 

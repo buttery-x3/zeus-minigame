@@ -46,7 +46,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 ## World
 
 - The world is a deterministic axial hex grid over the `X/Z` plane. HUD coordinates are shown as `q,r`.
-- Terrain cells near the origin are generated once by a finite hex WFC solver. The solver uses the local grammar as its rules layer: each tile variant comes from a legal 7-hex grammar pattern and carries structure, surface, six edge sockets, weight, and expected neighbor structures.
+- Terrain cells are supplied by the default WFC terrain provider. Near the origin it generates once with a finite hex WFC solver; outside that region it temporarily falls back to the same local grammar rules. The solver uses the local grammar as its rules layer: each tile variant comes from a legal 7-hex grammar pattern and carries structure, surface, six edge sockets, weight, and expected neighbor structures.
 - Terrain cells have a structural type and a derived surface. Structures are `open`, `wall`, `bank`, `lake`, and `river`; surfaces include `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, and `charged`.
 - `open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Water is not a visibility occluder in the first hex pass; only `wall` blocks sight.
 - Lakes are blob-like water patches. Rivers are path-like water that can form lines, bends, forks, sources, and mouths. Banks separate hard terrain from wet terrain when needed, especially around river shores and wall-water transitions.

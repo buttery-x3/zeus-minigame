@@ -1,9 +1,7 @@
 import * as THREE from "three";
 import { TILE_SIZE, WORLD_CELLS, WORLD_HALF, WORLD_HEX_RADIUS, WORLD_SIZE } from "../config";
 import { clamp } from "../lib/math";
-import type { HexEdgeKind, HexTileSignature, TerrainCell, TerrainStructure } from "../types";
-import { HexTerrainGrammar } from "./HexTerrainGrammar";
-import { HexTerrainWfcRegion } from "./HexTerrainWfcSolver";
+import type { TerrainCell } from "../types";
 import {
   HEX_DIRECTIONS,
   HEX_DIRECTION_ORDER,
@@ -12,11 +10,10 @@ import {
   hexDistance,
   type HexCoord,
 } from "./hexCoordinates";
+import { createOutOfBoundsTerrainCell, type TerrainProvider } from "./TerrainProvider";
+import { WfcTerrainProvider } from "./WfcTerrainProvider";
 
 export type { HexCoord };
-
-const WFC_TERRAIN_RADIUS = 36;
-const WFC_TERRAIN_SEED = 20260517;
 
 export class GridWorld {
   readonly tileSize = TILE_SIZE;
@@ -29,11 +26,8 @@ export class GridWorld {
   readonly half = WORLD_HALF;
 
   private cells = new Map<string, TerrainCell>();
-  private readonly terrainGrammar = new HexTerrainGrammar(this.worldRadius);
-  private readonly terrainWfc = new HexTerrainWfcRegion(this.terrainGrammar, {
-    radius: WFC_TERRAIN_RADIUS,
-    seed: WFC_TERRAIN_SEED,
-  });
+
+  constructor(private readonly terrainProvider: TerrainProvider = new WfcTerrainProvider(WORLD_HEX_RADIUS)) {}
 
   worldToCell(worldX: number, worldZ: number): HexCoord {
     const r = worldZ / this.hexVerticalSpacing;
@@ -50,7 +44,7 @@ export class GridWorld {
 
   getCell(q: number, r: number): TerrainCell {
     if (!this.isInBounds(q, r)) {
-      return this.createOutOfBoundsCell(q, r);
+      return createOutOfBoundsTerrainCell(q, r);
     }
 
     const key = this.cellKey(q, r);
@@ -59,18 +53,7 @@ export class GridWorld {
       return existing;
     }
 
-    const wfcCell = this.terrainWfc.getCell(q, r);
-    const structure = wfcCell?.structure ?? this.terrainGrammar.getStructure(q, r);
-    const surface = wfcCell?.surface ?? this.terrainGrammar.deriveSurface(q, r);
-    const cell: TerrainCell = {
-      q,
-      r,
-      structure,
-      surface,
-      blocked: structure === "wall" || structure === "lake" || structure === "river",
-      opaque: structure === "wall",
-      edges: wfcCell?.edges ?? this.resolveEdges(structure),
-    };
+    const cell = this.terrainProvider.getCell(q, r);
     this.cells.set(key, cell);
     return cell;
   }
@@ -171,10 +154,7 @@ export class GridWorld {
   }
 
   getTerrainDiagnostics() {
-    return {
-      ...this.terrainGrammar.getDiagnostics(),
-      wfc: this.terrainWfc.getDiagnostics(),
-    };
+    return this.terrainProvider.getDiagnostics();
   }
 
   getHexCorners(q: number, r: number, inset = 1) {
@@ -244,32 +224,6 @@ export class GridWorld {
     }
 
     return { q: x, r: z };
-  }
-
-  private resolveEdges(structure: TerrainStructure): HexTileSignature {
-    const kind: HexEdgeKind =
-      structure === "wall" ? "closed" : structure === "lake" ? "lake" : structure === "river" ? "river" : "open";
-
-    return {
-      ne: kind,
-      e: kind,
-      se: kind,
-      sw: kind,
-      w: kind,
-      nw: kind,
-    };
-  }
-
-  private createOutOfBoundsCell(q: number, r: number): TerrainCell {
-    return {
-      q,
-      r,
-      structure: "wall",
-      surface: "stone",
-      blocked: true,
-      opaque: true,
-      edges: this.resolveEdges("wall"),
-    };
   }
 
 }
