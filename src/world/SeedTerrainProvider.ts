@@ -2,8 +2,7 @@ import type { TerrainCell, TerrainStructure } from "../types";
 import {
   createTerrainStructureCounts,
   deriveTerrainSurface,
-  findInvalidTerrainSample,
-} from "./HexTerrainGrammar";
+} from "./HexTerrainRules";
 import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, hexCellKey, hexDistance } from "./hexCoordinates";
 import { createTerrainCell, type TerrainProvider } from "./TerrainProvider";
 
@@ -12,7 +11,6 @@ export type SeedTerrainProviderDiagnostics = {
   seed: number;
   generatedCells: number;
   structureCounts: Record<TerrainStructure, number>;
-  invalidSample: ReturnType<typeof findInvalidTerrainSample>;
 };
 
 export class SeedTerrainProvider implements TerrainProvider {
@@ -52,7 +50,6 @@ export class SeedTerrainProvider implements TerrainProvider {
       seed: this.seed,
       generatedCells: this.cells.size,
       structureCounts,
-      invalidSample: findInvalidTerrainSample(this.cells.values(), { ignoreIncompleteNeighborhoods: true }),
     };
   }
 

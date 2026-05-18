@@ -1,4 +1,5 @@
 import type { HexEdgeKind, HexTileSignature, TerrainCell, TerrainStructure, TerrainSurface } from "../types";
+import { terrainBlocksMovement, terrainBlocksSight } from "./HexTerrainRules";
 
 export interface TerrainProvider {
   getCell(q: number, r: number): TerrainCell;
@@ -17,8 +18,8 @@ export function createTerrainCell(
     r,
     structure,
     surface,
-    blocked: structure === "wall" || structure === "lake" || structure === "river",
-    opaque: structure === "wall",
+    blocked: terrainBlocksMovement(structure),
+    opaque: terrainBlocksSight(structure),
     edges,
   };
 }

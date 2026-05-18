@@ -98,10 +98,6 @@ async function verifyTerrainGrammar(page, viewport) {
   if (!grammar) {
     throw new Error(`${viewport.name} missing terrain grammar diagnostics`);
   }
-  if (grammar.invalidSample) {
-    throw new Error(`${viewport.name} terrain grammar fallback produced an invalid local sample: ${JSON.stringify(grammar.invalidSample)}`);
-  }
-
   const wfc = grammar.wfc;
   if (!wfc) {
     throw new Error(`${viewport.name} missing terrain WFC diagnostics: ${JSON.stringify(grammar)}`);
@@ -109,16 +105,10 @@ async function verifyTerrainGrammar(page, viewport) {
   if (wfc.resolvedCells < 3900 || wfc.regionRadius !== 36) {
     throw new Error(`${viewport.name} terrain WFC resolved an unexpected region: ${JSON.stringify(wfc)}`);
   }
-  if (!wfc.structureCounts || wfc.structureCounts.open < 1 || wfc.structureCounts.wall < 1) {
-    throw new Error(`${viewport.name} terrain WFC/fallback did not produce playable land and blockers: ${JSON.stringify(wfc)}`);
+  if (!wfc.structureCounts || wfc.structureCounts.open < 1 || wfc.structureCounts.river < 1) {
+    throw new Error(`${viewport.name} terrain WFC did not produce open terrain and at least one river: ${JSON.stringify(wfc)}`);
   }
-  if (!wfc.patternCounts || Object.keys(wfc.patternCounts).length < 4) {
-    throw new Error(`${viewport.name} terrain WFC did not use enough grammar patterns: ${JSON.stringify(wfc)}`);
-  }
-  if (wfc.invalidSample) {
-    throw new Error(`${viewport.name} terrain WFC violated local grammar: ${JSON.stringify(wfc.invalidSample)}`);
-  }
-  if (!wfc.fellBack && wfc.socketMismatchSample) {
+  if (wfc.socketMismatchSample) {
     throw new Error(`${viewport.name} terrain WFC produced a socket mismatch: ${JSON.stringify(wfc.socketMismatchSample)}`);
   }
 }

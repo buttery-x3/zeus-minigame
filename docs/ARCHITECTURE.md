@@ -29,7 +29,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
 - `src/game/terrain/TerrainSystem.ts`: visible hex terrain window rendering.
 - `src/world/GridWorld.ts`: axial hex-to-world mapping, cached terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
-- `src/world/HexTerrainGrammar.ts`: local terrain grammar, tile variant vocabulary, compatibility rules, and surface derivation.
+- `src/world/HexTerrainCatalog.ts`: explicit socket-only terrain tile variant catalog.
+- `src/world/HexTerrainRules.ts`: terrain socket compatibility, diagnostics validation, and surface/blocking helper rules.
 - `src/world/HexTerrainWfcSolver.ts`: finite axial hex WFC solver that arranges grammar-derived tile variants.
 - `src/world/TerrainProvider.ts`: terrain provider interface and shared `TerrainCell` construction helpers.
 - `src/world/WfcTerrainProvider.ts`: default terrain provider that wraps the grammar/WFC pipeline.
@@ -61,11 +62,11 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 Gameplay grid coordinates are axial hex coordinates named `q/r`. Three.js world space still uses the `X/Z` ground plane and `Y` as vertical height. `GridWorld` owns coordinate conversion, bounds checks, cached cell access, neighbors, rings, ranges, line samples, and cell keys. Terrain generation is delegated to a `TerrainProvider`.
 
-The default provider is `WfcTerrainProvider`, which wraps the local grammar plus finite WFC solver. `SeedTerrainProvider` is a deterministic hash-based provider kept for fallback/debug use and future generation-mode selection.
+The default provider is `WfcTerrainProvider`, which wraps the explicit terrain catalog plus finite WFC solver. `SeedTerrainProvider` is a deterministic hash-based provider kept for fallback/debug use and future generation-mode selection.
 
-Terrain starts with a local grammar. Each grammar pattern describes one center hex plus its six neighbors, and those patterns define what terrain is meaningful: wall-water adjacency is illegal, banks mediate hard/wet transitions, rivers need river or lake continuity, lakes should cluster, and banks should exist near walls or water.
+Terrain starts with a declarative socket grammar. The catalog defines legal tile variants and the rules module defines which sockets can touch. The current WFC pass is intentionally minimal: sockets, not local pattern stamping, decide adjacency.
 
-The playable origin region is generated once by a finite hex WFC solver. Each cell begins with every grammar-derived tile variant; a variant includes structure, surface, six edge sockets, weight, and the local neighbor structure expectations from the grammar pattern that produced it. The solver repeatedly collapses a lowest-entropy cell, then propagates socket and local-grammar compatibility to the six axial neighbors until the region is resolved. This keeps the local grammar as the rules layer and makes WFC the arrangement layer.
+The playable origin region is generated once by a finite hex WFC solver. Each cell begins with every explicit tile variant; a variant includes structure, surface, six edge sockets, and weight. The solver repeatedly collapses a lowest-entropy cell, then propagates exact socket compatibility to the six axial neighbors until the region is resolved.
 
 The current WFC region covers radius 36 around the origin with a small open safe start. Terrain outside that finite region temporarily falls back to the older lazy committed-pattern generator inside `WfcTerrainProvider`, using the same grammar rules and surface derivation.
 
