@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { VISIBILITY_LIGHT_EPSILON } from "../../config";
+import { ROLLING_TERRAIN_PATCH_RADIUS, VISIBILITY_LIGHT_EPSILON } from "../../config";
 import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createChargedGlyph } from "../../render/meshes";
@@ -12,6 +12,9 @@ type BlockerRecord = {
   r: number;
   mesh: THREE.Mesh;
 };
+
+const NORMAL_RENDER_RADIUS = 18;
+const DEBUG_RENDER_RADIUS = Math.max(NORMAL_RENDER_RADIUS, ROLLING_TERRAIN_PATCH_RADIUS * 6 + 6);
 
 export class TerrainSystem {
   private terrainWindowKey = "";
@@ -32,8 +35,8 @@ export class TerrainSystem {
 
   update(playerPosition: THREE.Vector3, visibility: VisibilitySystem, revealAll = false) {
     const center = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
-    const radius = 18;
-    const key = `${Math.floor(center.q / 2)},${Math.floor(center.r / 2)}`;
+    const radius = revealAll ? DEBUG_RENDER_RADIUS : NORMAL_RENDER_RADIUS;
+    const key = `${Math.floor(center.q / 2)},${Math.floor(center.r / 2)},${radius}`;
 
     if (key === this.terrainWindowKey && visibility.getVersion() === this.visibilityVersion) {
       return;

@@ -73,7 +73,6 @@ async function verifyInBrowser() {
       await verifyWindowUi(page, viewport);
       await exerciseCoreInteractions(page, viewport);
       await verifyEnemyPathfindingBudget(page, viewport, "after core interactions");
-      await verifyTerrainDebugMode(page, viewport);
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -82,6 +81,7 @@ async function verifyInBrowser() {
       const hud = await collectHudMetrics(page);
       const result = { viewport, screenshotPath, metrics, hud, errors };
       assertResult(result);
+      await verifyTerrainDebugMode(page, viewport);
       results.push(result);
 
       await page.close();
@@ -124,6 +124,7 @@ async function verifyTerrainDebugMode(page, viewport) {
   const before = await readDiagnostics(page);
   const beforeTop = Math.abs(before.camera?.projection?.top ?? 0);
   const beforeRadius = before.terrainGrammar?.wfc?.activePatchRadius;
+  const beforeBlockers = before.terrain?.blockers?.total ?? 0;
 
   await page.keyboard.press("F4");
   await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === true);
@@ -146,12 +147,22 @@ async function verifyTerrainDebugMode(page, viewport) {
   if (after.terrainGrammar?.wfc?.activePatchRadius !== beforeRadius) {
     throw new Error(`${viewport.name} terrain debug mode changed generation radius: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
   }
+  if ((after.terrain?.blockers?.total ?? 0) <= beforeBlockers) {
+    throw new Error(`${viewport.name} terrain debug mode did not expand rendered terrain window: before=${beforeBlockers}, after=${after.terrain?.blockers?.total}`);
+  }
   if (after.terrainGrammar?.wfc?.emergencyPatchCount > 0 || after.terrainGrammar?.wfc?.patchSocketMismatchSample) {
     throw new Error(`${viewport.name} terrain debug mode terrain diagnostics invalid: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
   }
 
   await page.keyboard.press("F4");
   await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === false);
+  await page.waitForTimeout(500);
+
+  const restored = await readDiagnostics(page);
+  const restoredTop = Math.abs(restored.camera?.projection?.top ?? 0);
+  if (restoredTop > beforeTop * 1.1) {
+    throw new Error(`${viewport.name} terrain debug mode did not restore camera view: before=${beforeTop}, restored=${restoredTop}`);
+  }
 }
 
 async function verifyShadowRigTracking(page, viewport) {
