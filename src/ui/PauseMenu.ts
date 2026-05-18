@@ -10,6 +10,7 @@ type PauseMenuCallbacks = {
   setQuickCastEnabled: (enabled: boolean) => void;
   setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
   setUnlockUiEnabled: (enabled: boolean) => void;
+  setTerrainDebugMode: (enabled: boolean) => void;
 };
 
 export class PauseMenu {
@@ -18,6 +19,7 @@ export class PauseMenu {
   private readonly quickCastToggle: HTMLInputElement;
   private readonly maxRangeTargetSnapToggle: HTMLInputElement;
   private readonly unlockUiToggle: HTMLInputElement;
+  private readonly terrainDebugToggle: HTMLInputElement;
 
   constructor(
     windowManager: WindowManager,
@@ -26,6 +28,7 @@ export class PauseMenu {
     quickCastEnabled: boolean,
     allowMaxRangeTargetSnap: boolean,
     unlockUiEnabled: boolean,
+    terrainDebugMode: boolean,
   ) {
     const content = document.createElement("div");
     content.className = "pause-menu";
@@ -52,6 +55,11 @@ export class PauseMenu {
       <label class="pause-menu__setting pause-menu__switch" data-unlock-ui-toggle>
         <span>Unlock UI</span>
         <input type="checkbox" data-unlock-ui aria-label="Unlock UI" />
+        <i aria-hidden="true"></i>
+      </label>
+      <label class="pause-menu__setting pause-menu__switch" data-terrain-debug-toggle>
+        <span>Terrain Debug</span>
+        <input type="checkbox" data-terrain-debug aria-label="Terrain debug" />
         <i aria-hidden="true"></i>
       </label>
       <div class="pause-menu__actions">
@@ -93,6 +101,13 @@ export class PauseMenu {
     });
     this.setUnlockUiEnabled(unlockUiEnabled);
 
+    this.terrainDebugToggle = mustQuery<HTMLInputElement>(content, "[data-terrain-debug]");
+    this.terrainDebugToggle.addEventListener("change", () => {
+      this.setTerrainDebugMode(this.terrainDebugToggle.checked);
+      callbacks.setTerrainDebugMode(this.terrainDebugToggle.checked);
+    });
+    this.setTerrainDebugMode(terrainDebugMode);
+
     this.window = windowManager.createWindow({
       id: "pause-menu",
       title: "Pause",
@@ -132,5 +147,10 @@ export class PauseMenu {
   setUnlockUiEnabled(enabled: boolean) {
     this.unlockUiToggle.checked = enabled;
     this.unlockUiToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
+  }
+
+  setTerrainDebugMode(enabled: boolean) {
+    this.terrainDebugToggle.checked = enabled;
+    this.terrainDebugToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
   }
 }

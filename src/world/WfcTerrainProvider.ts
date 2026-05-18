@@ -52,7 +52,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   private emergencyPatchCount = 0;
   private contradictionCount = 0;
 
-  constructor(private readonly worldRadius: number) {
+  constructor() {
     this.ensureGeneratedAround(0, 0);
   }
 
@@ -216,10 +216,6 @@ export class WfcTerrainProvider implements TerrainProvider {
   private expandPatch(patch: CommittedPatch) {
     for (const localCell of patch.variant.cells.values()) {
       const world = patchLocalToWorld(patch, localCell);
-      if (!this.isInWorldBounds(world.q, world.r)) {
-        continue;
-      }
-
       const key = hexCellKey(world.q, world.r);
       if (this.generatedCells.has(key)) {
         continue;
@@ -229,10 +225,6 @@ export class WfcTerrainProvider implements TerrainProvider {
       this.generatedCells.set(key, cell);
       this.structureCounts[cell.structure] += 1;
     }
-  }
-
-  private isInWorldBounds(q: number, r: number) {
-    return Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r)) <= this.worldRadius;
   }
 }
 

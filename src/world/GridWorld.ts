@@ -1,6 +1,5 @@
 import * as THREE from "three";
-import { TILE_SIZE, WORLD_CELLS, WORLD_HALF, WORLD_HEX_RADIUS, WORLD_SIZE } from "../config";
-import { clamp } from "../lib/math";
+import { TILE_SIZE } from "../config";
 import type { TerrainCell } from "../types";
 import {
   HEX_DIRECTIONS,
@@ -10,7 +9,7 @@ import {
   hexDistance,
   type HexCoord,
 } from "./hexCoordinates";
-import { createOutOfBoundsTerrainCell, type TerrainProvider } from "./TerrainProvider";
+import type { TerrainProvider } from "./TerrainProvider";
 import { WfcTerrainProvider } from "./WfcTerrainProvider";
 
 export type { HexCoord };
@@ -20,19 +19,15 @@ export class GridWorld {
   readonly hexSize = TILE_SIZE / Math.sqrt(3);
   readonly hexHeight = this.hexSize * 2;
   readonly hexVerticalSpacing = this.hexSize * 1.5;
-  readonly worldCells = WORLD_CELLS;
-  readonly worldRadius = WORLD_HEX_RADIUS;
-  readonly worldSize = WORLD_SIZE;
-  readonly half = WORLD_HALF;
 
   private cells = new Map<string, TerrainCell>();
 
-  constructor(private readonly terrainProvider: TerrainProvider = new WfcTerrainProvider(WORLD_HEX_RADIUS)) {}
+  constructor(private readonly terrainProvider: TerrainProvider = new WfcTerrainProvider()) {}
 
   worldToCell(worldX: number, worldZ: number): HexCoord {
     const r = worldZ / this.hexVerticalSpacing;
     const q = worldX / this.tileSize - r / 2;
-    return this.clampCell(roundAxial(q, r));
+    return roundAxial(q, r);
   }
 
   cellToWorld(q: number, r: number) {
@@ -43,10 +38,6 @@ export class GridWorld {
   }
 
   getCell(q: number, r: number): TerrainCell {
-    if (!this.isInBounds(q, r)) {
-      return createOutOfBoundsTerrainCell(q, r);
-    }
-
     const key = this.cellKey(q, r);
     const existing = this.cells.get(key);
     if (existing) {
@@ -59,9 +50,7 @@ export class GridWorld {
   }
 
   ensureTerrainGeneratedAroundCell(q: number, r: number) {
-    if (this.isInBounds(q, r)) {
-      this.terrainProvider.ensureGeneratedAround?.(q, r);
-    }
+    this.terrainProvider.ensureGeneratedAround?.(q, r);
   }
 
   ensureTerrainGeneratedAroundWorld(point: THREE.Vector3) {
@@ -83,9 +72,6 @@ export class GridWorld {
       direction.setLength(maxDistance);
       point.x = clamped.x + direction.x;
       point.z = clamped.z + direction.z;
-    } else {
-      point.x = clamp(point.x, -this.half + margin, this.half - margin);
-      point.z = clamp(point.z, -this.half + margin, this.half - margin);
     }
 
     return point;
@@ -101,22 +87,18 @@ export class GridWorld {
   }
 
   isInBounds(q: number, r: number) {
-    return Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r)) <= this.worldRadius;
+    return Number.isFinite(q) && Number.isFinite(r);
   }
 
   indexIfInBounds(q: number, r: number) {
-    if (!this.isInBounds(q, r)) {
-      return -1;
-    }
-
-    return (r + this.worldRadius) * this.worldCells + q + this.worldRadius;
+    return this.isInBounds(q, r) ? 0 : -1;
   }
 
   getNeighbors(q: number, r: number): HexCoord[] {
     return HEX_DIRECTION_ORDER.map((direction) => {
       const offset = HEX_DIRECTIONS[direction];
       return { q: q + offset.q, r: r + offset.r };
-    }).filter((cell) => this.isInBounds(cell.q, cell.r));
+    });
   }
 
   getDirectionOffsets() {
@@ -130,16 +112,14 @@ export class GridWorld {
       for (let dr = minDr; dr <= maxDr; dr += 1) {
         const q = center.q + dq;
         const r = center.r + dr;
-        if (this.isInBounds(q, r)) {
-          visit(q, r);
-        }
+        visit(q, r);
       }
     }
   }
 
   ring(center: HexCoord, radius: number) {
     if (radius === 0) {
-      return this.isInBounds(center.q, center.r) ? [center] : [];
+      return [center];
     }
 
     const cells: HexCoord[] = [];
@@ -149,9 +129,7 @@ export class GridWorld {
     for (const direction of HEX_RING_ORDER) {
       const offset = HEX_DIRECTIONS[direction];
       for (let step = 0; step < radius; step += 1) {
-        if (this.isInBounds(q, r)) {
-          cells.push({ q, r });
-        }
+        cells.push({ q, r });
         q += offset.q;
         r += offset.r;
       }
@@ -196,45 +174,13 @@ export class GridWorld {
         lerp(from.r, to.r, amount),
       );
       const key = this.cellKey(rounded.q, rounded.r);
-      if (key !== previousKey && this.isInBounds(rounded.q, rounded.r)) {
+      if (key !== previousKey) {
         cells.push(rounded);
         previousKey = key;
       }
     }
 
     return cells;
-  }
-
-  private clampCell(cell: HexCoord): HexCoord {
-    if (this.isInBounds(cell.q, cell.r)) {
-      return cell;
-    }
-
-    let x = cell.q;
-    let z = cell.r;
-    let y = -x - z;
-    const clampedX = clamp(x, -this.worldRadius, this.worldRadius);
-    const clampedY = clamp(y, -this.worldRadius, this.worldRadius);
-    const clampedZ = clamp(z, -this.worldRadius, this.worldRadius);
-    const xDelta = Math.abs(clampedX - x);
-    const yDelta = Math.abs(clampedY - y);
-    const zDelta = Math.abs(clampedZ - z);
-
-    x = clampedX;
-    y = clampedY;
-    z = clampedZ;
-
-    if (x + y + z !== 0) {
-      if (xDelta >= yDelta && xDelta >= zDelta) {
-        x = -y - z;
-      } else if (yDelta >= zDelta) {
-        y = -x - z;
-      } else {
-        z = -x - y;
-      }
-    }
-
-    return { q: x, r: z };
   }
 
 }

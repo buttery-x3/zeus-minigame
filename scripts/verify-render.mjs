@@ -73,6 +73,7 @@ async function verifyInBrowser() {
       await verifyWindowUi(page, viewport);
       await exerciseCoreInteractions(page, viewport);
       await verifyEnemyPathfindingBudget(page, viewport, "after core interactions");
+      await verifyTerrainDebugMode(page, viewport);
 
       const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
@@ -117,6 +118,40 @@ async function verifyTerrainGrammar(page, viewport) {
   if (wfc.patchSocketMismatchSample) {
     throw new Error(`${viewport.name} rolling patch terrain produced a socket mismatch: ${JSON.stringify(wfc.patchSocketMismatchSample)}`);
   }
+}
+
+async function verifyTerrainDebugMode(page, viewport) {
+  const before = await readDiagnostics(page);
+  const beforeTop = Math.abs(before.camera?.projection?.top ?? 0);
+  const beforeRadius = before.terrainGrammar?.wfc?.activePatchRadius;
+
+  await page.keyboard.press("F4");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === true);
+  await page.waitForTimeout(350);
+
+  const after = await readDiagnostics(page);
+  if (!after.input.terrainDebugMode) {
+    throw new Error(`${viewport.name} terrain debug mode did not enable`);
+  }
+  if (!after.visibilityOverlay?.debugReveal || after.visibilityOverlay?.visible) {
+    throw new Error(`${viewport.name} terrain debug mode did not disable fog overlay: ${JSON.stringify(after.visibilityOverlay)}`);
+  }
+  const afterTop = Math.abs(after.camera?.projection?.top ?? 0);
+  if (beforeTop <= 0 || afterTop < beforeTop * 2.9) {
+    throw new Error(`${viewport.name} terrain debug mode did not widen camera view: before=${beforeTop}, after=${afterTop}`);
+  }
+  if (after.player.health !== 120) {
+    throw new Error(`${viewport.name} terrain debug mode did not keep player health full: ${after.player.health}`);
+  }
+  if (after.terrainGrammar?.wfc?.activePatchRadius !== beforeRadius) {
+    throw new Error(`${viewport.name} terrain debug mode changed generation radius: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
+  }
+  if (after.terrainGrammar?.wfc?.emergencyPatchCount > 0 || after.terrainGrammar?.wfc?.patchSocketMismatchSample) {
+    throw new Error(`${viewport.name} terrain debug mode terrain diagnostics invalid: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
+  }
+
+  await page.keyboard.press("F4");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === false);
 }
 
 async function verifyShadowRigTracking(page, viewport) {

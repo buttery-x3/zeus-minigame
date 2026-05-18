@@ -30,7 +30,7 @@ export class TerrainSystem {
     private readonly materials: GameMaterials,
   ) {}
 
-  update(playerPosition: THREE.Vector3, visibility: VisibilitySystem) {
+  update(playerPosition: THREE.Vector3, visibility: VisibilitySystem, revealAll = false) {
     const center = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
     const radius = 18;
     const key = `${Math.floor(center.q / 2)},${Math.floor(center.r / 2)}`;
@@ -43,7 +43,7 @@ export class TerrainSystem {
       this.rebuild(center, radius);
     }
 
-    this.applyBlockerVisibility(visibility);
+    this.applyBlockerVisibility(visibility, revealAll);
   }
 
   getDiagnostics() {
@@ -125,14 +125,15 @@ export class TerrainSystem {
     }
   }
 
-  private applyBlockerVisibility(visibility: VisibilitySystem) {
+  private applyBlockerVisibility(visibility: VisibilitySystem, revealAll: boolean) {
     let visible = 0;
     let hidden = 0;
 
     for (const blocker of this.blockers) {
       const shouldShow =
-        visibility.isDiscoveredCell(blocker.q, blocker.r) &&
-        visibility.getLightReachCell(blocker.q, blocker.r) > VISIBILITY_LIGHT_EPSILON;
+        revealAll ||
+        (visibility.isDiscoveredCell(blocker.q, blocker.r) &&
+          visibility.getLightReachCell(blocker.q, blocker.r) > VISIBILITY_LIGHT_EPSILON);
       blocker.mesh.visible = shouldShow;
 
       if (shouldShow) {

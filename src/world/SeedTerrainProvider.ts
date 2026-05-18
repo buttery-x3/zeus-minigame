@@ -16,10 +16,7 @@ export type SeedTerrainProviderDiagnostics = {
 export class SeedTerrainProvider implements TerrainProvider {
   private readonly cells = new Map<string, TerrainCell>();
 
-  constructor(
-    private readonly worldRadius: number,
-    private readonly seed = 20260517,
-  ) {}
+  constructor(private readonly seed = 20260517) {}
 
   getCell(q: number, r: number): TerrainCell {
     const key = hexCellKey(q, r);
@@ -54,9 +51,6 @@ export class SeedTerrainProvider implements TerrainProvider {
   }
 
   private structureAt(q: number, r: number): TerrainStructure {
-    if (!this.isInBounds(q, r)) {
-      return "wall";
-    }
     if (hexDistance({ q, r }, { q: 0, r: 0 }) <= 7) {
       return "open";
     }
@@ -64,10 +58,6 @@ export class SeedTerrainProvider implements TerrainProvider {
     const macroQ = Math.floor(q / 6);
     const macroR = Math.floor(r / 6);
     return this.hash(macroQ * 31, macroR * 37) > 0.84 && this.hash(q, r) > 0.47 ? "wall" : "open";
-  }
-
-  private isInBounds(q: number, r: number) {
-    return Math.max(Math.abs(q), Math.abs(r), Math.abs(-q - r)) <= this.worldRadius;
   }
 
   private hash(q: number, r: number) {

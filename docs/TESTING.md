@@ -29,6 +29,7 @@ npm run verify
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Checks gameplay visibility diagnostics, 2x visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
 - Checks rolling patch terrain diagnostics, including active patch-radius generation, at least one river micro hex, no emergency patches, and ordered patch edge socket agreement.
+- Checks Terrain Debug mode by toggling it on, verifying fog is disabled, camera view is widened, HP remains full, and rolling terrain diagnostics remain valid without increasing the configured generation radius.
 - Checks that hidden spell targets do not spend cooldown, default out-of-range spell targets snap to max range, and strict mode rejects out-of-range raw targets.
 - Checks that click and held movement commands reject undiscovered terrain.
 - Clicks a visible wall blocker and checks that navigation resolves to reachable discovered neighboring hex space.

@@ -14,6 +14,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Press backtick or `F3` to toggle diagnostics.
 - Press `V` to toggle enemy health bars between smart and always visible.
 - Press `R` after defeat to restart.
+- Press `F4` or use the pause menu to toggle Terrain Debug, which removes fog, zooms the camera out 3x, bypasses visibility-gated movement/cast checks, and keeps Zeus at full HP for terrain inspection.
 - Use the top-right controls to pause or open diagnostics.
 
 ## Player
@@ -47,6 +48,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 ## World
 
 - The world is a deterministic axial hex grid over the `X/Z` plane. HUD coordinates are shown as `q,r`.
+- The world has no gameplay boundary; rolling patch terrain is generated as needed around Zeus.
 - Terrain cells are supplied by the default WFC terrain provider. It generates rolling patch-by-patch terrain around the player over explicit patch tile variants. A micro hex is a gameplay terrain cell; a patch tile is a non-overlapping radius-2 group of micro hexes selected as one generation unit.
 - Terrain cells have a structural type and a derived surface. Structures are `open`, `wall`, `bank`, `lake`, and `river`; the active rolling catalog currently emits `open`, `wall`, and `river`. Surfaces include `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, and `charged`.
 - `open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Water is not a visibility occluder in the first hex pass; only `wall` blocks sight.

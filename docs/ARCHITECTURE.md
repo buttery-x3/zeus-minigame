@@ -6,7 +6,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 1. `src/main.ts` imports CSS and boots `ZeusGame`.
 2. `ZeusGame` owns the Three.js scene, camera, input loop, high-level gameplay state, and system update order.
-3. The game loop records performance timings while updating camera, terrain window, targeting visuals, HUD, movement, enemies, spawning, and effects.
+3. The game loop records performance timings while updating camera, rolling terrain generation, terrain window, targeting visuals, HUD, movement, enemies, spawning, and effects.
 4. Three.js renders the scene; HUD, pause, and diagnostics are regular DOM windows over the canvas.
 
 ## Module Map
@@ -28,7 +28,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
 - `src/game/terrain/TerrainSystem.ts`: visible hex terrain window rendering.
-- `src/world/GridWorld.ts`: axial hex-to-world mapping, cached terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
+- `src/world/GridWorld.ts`: unbounded axial hex-to-world mapping, cached terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
 - `src/world/HexTerrainCatalog.ts`: patch tile catalog, canonical patch micro-hex coordinates, and patch edge ordering.
 - `src/world/HexTerrainRules.ts`: patch edge compatibility, diagnostics validation, and surface/blocking helper rules.
 - `src/world/HexTerrainWfcSolver.ts`: finite axial patch WFC solver kept as a reference for patch solving experiments.
@@ -60,7 +60,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 ## Hex World
 
-Gameplay grid coordinates are axial hex coordinates named `q/r`. Three.js world space still uses the `X/Z` ground plane and `Y` as vertical height. `GridWorld` owns coordinate conversion, bounds checks, cached cell access, neighbors, rings, ranges, line samples, and cell keys. Terrain generation is delegated to a `TerrainProvider`.
+Gameplay grid coordinates are axial hex coordinates named `q/r`. Three.js world space still uses the `X/Z` ground plane and `Y` as vertical height. `GridWorld` owns unbounded coordinate conversion, cached cell access, neighbors, rings, ranges, line samples, and cell keys. Terrain generation is delegated to a `TerrainProvider`.
 
 The default provider is `WfcTerrainProvider`, which uses the explicit patch tile catalog for rolling patch-by-patch terrain generation. `SeedTerrainProvider` is a deterministic hash-based provider kept for fallback/debug use and future generation-mode selection.
 
@@ -69,6 +69,8 @@ Terrain starts with a declarative patch grammar. A micro hex is an actual gamepl
 `WfcTerrainProvider` commits terrain one patch at a time as the player moves. It keeps committed patch variants by patch coordinate and expanded micro cells by micro coordinate. The active generation radius is measured in patch coordinates around the player's current patch. Missing patches are generated in deterministic ring order, filtered against already-committed neighbor edge signatures, then committed permanently. Existing patches are never regenerated.
 
 The origin starts with a small open safe patch radius. Runtime patch selection uses local edge compatibility rather than solving a precomputed finite island. If a requested micro hex belongs to an uncommitted patch, the provider lazily commits that containing patch before returning the terrain cell.
+
+The world no longer has a gameplay boundary. The old finite-world `WORLD_CELLS`, `WORLD_SIZE`, and related constants have been removed from runtime config; if future diagnostics need fixed windows, they should define local active-window sizes instead of gameplay bounds. Visibility state is sparse-map backed so discovered memory can grow with generated terrain instead of being limited to a fixed array.
 
 Terrain is split into structural cells and derived surfaces:
 

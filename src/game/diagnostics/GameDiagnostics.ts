@@ -28,9 +28,16 @@ export class GameDiagnostics {
         position: this.scene.camera.position.toArray(),
         quaternion: this.scene.camera.quaternion.toArray(),
         forward: cameraForward.toArray(),
+        projection: {
+          left: this.scene.camera.left,
+          right: this.scene.camera.right,
+          top: this.scene.camera.top,
+          bottom: this.scene.camera.bottom,
+        },
       },
       lighting: this.scene.getLightingDiagnostics(),
       player: {
+        health: state.health,
         position: this.player.object.position.toArray(),
         rotationY: this.player.object.rotation.y,
         navigation: {

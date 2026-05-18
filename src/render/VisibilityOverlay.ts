@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { VISIBILITY_LIGHT_EPSILON, WORLD_CELLS, WORLD_HALF, WORLD_SIZE } from "../config";
+import { PLAYER_LIGHT_OUTER_RADIUS, TILE_SIZE, VISIBILITY_LIGHT_EPSILON } from "../config";
 import { clamp } from "../lib/math";
 import type { VisibilitySystem } from "../game/visibility/VisibilitySystem";
 import type { GridWorld } from "../world/GridWorld";
@@ -11,7 +11,9 @@ const VISIBLE_MAX_ALPHA = 0.62;
 const REVEAL_SPEED = 12;
 const HIDE_SPEED = 5.5;
 const RESOLUTION_SCALE = 2;
-const TEXTURE_CELLS = WORLD_CELLS * RESOLUTION_SCALE;
+const OVERLAY_RADIUS_CELLS = Math.ceil(PLAYER_LIGHT_OUTER_RADIUS / TILE_SIZE) + 16;
+const TEXTURE_CELLS = (OVERLAY_RADIUS_CELLS * 2 + 1) * RESOLUTION_SCALE;
+const OVERLAY_WINDOW_SIZE = OVERLAY_RADIUS_CELLS * TILE_SIZE * 2;
 
 export class VisibilityOverlay {
   readonly object: THREE.Mesh;
@@ -21,7 +23,9 @@ export class VisibilityOverlay {
   private readonly displayedAlpha = new Float32Array(TEXTURE_CELLS * TEXTURE_CELLS);
   private readonly texture: THREE.DataTexture;
   private visibilityVersion = -1;
+  private centerKey = "";
   private settling = true;
+  private debugReveal = false;
 
   constructor(private readonly gridWorld: GridWorld) {
     for (let i = 0; i < TEXTURE_CELLS * TEXTURE_CELLS; i += 1) {
@@ -49,16 +53,34 @@ export class VisibilityOverlay {
       toneMapped: false,
     });
 
-    this.object = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE), material);
+    this.object = new THREE.Mesh(new THREE.PlaneGeometry(OVERLAY_WINDOW_SIZE, OVERLAY_WINDOW_SIZE), material);
     this.object.rotation.x = -Math.PI / 2;
     this.object.position.y = 0.09;
     this.object.renderOrder = 18;
   }
 
-  update(visibility: VisibilitySystem, dt: number) {
-    if (visibility.getVersion() !== this.visibilityVersion) {
-      this.updateTargets(visibility);
+  setDebugReveal(enabled: boolean) {
+    this.debugReveal = enabled;
+    this.object.visible = !enabled;
+  }
+
+  update(visibility: VisibilitySystem, dt: number, centerPosition: { x: number; z: number }) {
+    if (this.debugReveal) {
+      this.object.visible = false;
+      return;
+    }
+
+    this.object.visible = true;
+    const centerCell = this.gridWorld.worldToCell(centerPosition.x, centerPosition.z);
+    const centerWorld = this.gridWorld.cellToWorld(centerCell.q, centerCell.r);
+    const nextCenterKey = this.gridWorld.cellKey(centerCell.q, centerCell.r);
+    this.object.position.x = centerWorld.x;
+    this.object.position.z = centerWorld.z;
+
+    if (visibility.getVersion() !== this.visibilityVersion || nextCenterKey !== this.centerKey) {
+      this.updateTargets(visibility, centerWorld);
       this.visibilityVersion = visibility.getVersion();
+      this.centerKey = nextCenterKey;
       this.settling = true;
     }
 
@@ -100,16 +122,19 @@ export class VisibilityOverlay {
       textureWidth: TEXTURE_CELLS,
       textureHeight: TEXTURE_CELLS,
       texturePixels: TEXTURE_CELLS * TEXTURE_CELLS,
+      overlayRadiusCells: OVERLAY_RADIUS_CELLS,
+      debugReveal: this.debugReveal,
+      visible: this.object.visible,
       settling: this.settling,
     };
   }
 
-  private updateTargets(visibility: VisibilitySystem) {
+  private updateTargets(visibility: VisibilitySystem, centerWorld: { x: number; z: number }) {
     for (let textureZ = 0; textureZ < TEXTURE_CELLS; textureZ += 1) {
-      const worldZ = WORLD_HALF - ((textureZ + 0.5) / TEXTURE_CELLS) * WORLD_SIZE;
+      const worldZ = centerWorld.z + OVERLAY_WINDOW_SIZE / 2 - ((textureZ + 0.5) / TEXTURE_CELLS) * OVERLAY_WINDOW_SIZE;
 
       for (let textureX = 0; textureX < TEXTURE_CELLS; textureX += 1) {
-        const worldX = ((textureX + 0.5) / TEXTURE_CELLS) * WORLD_SIZE - WORLD_HALF;
+        const worldX = centerWorld.x + ((textureX + 0.5) / TEXTURE_CELLS) * OVERLAY_WINDOW_SIZE - OVERLAY_WINDOW_SIZE / 2;
         const cell = this.gridWorld.worldToCell(worldX, worldZ);
         this.targetAlpha[textureZ * TEXTURE_CELLS + textureX] = this.alphaForCell(visibility, cell.q, cell.r);
       }
