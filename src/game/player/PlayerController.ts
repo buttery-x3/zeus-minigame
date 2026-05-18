@@ -98,14 +98,15 @@ export class PlayerController {
       maxPathfindingMs: PLAYER_PATHFINDING_BUDGET_MS,
     });
     this.lastRequestedCellKey = requestedCellKey;
-    this.lastRequestedBlocked = this.gridWorld.isBlockedWorld(requestedTarget.x, requestedTarget.z);
 
     if (!resolved) {
+      this.lastRequestedBlocked = !this.collision.canOccupy(requestedTarget.x, requestedTarget.z, PLAYER_COLLISION_RADIUS);
       this.path = [];
       this.effects.createShockwave(requestedTarget, 0x879190, 2.4);
       return;
     }
 
+    this.lastRequestedBlocked = resolved.requestedBlocked;
     this.path = resolved.waypoints;
     this.moveTarget.copy(resolved.destination);
     this.moveMarker.position.set(resolved.destination.x, 0.08, resolved.destination.z);

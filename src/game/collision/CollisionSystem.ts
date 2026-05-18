@@ -12,6 +12,9 @@ export type ResolvedPath = PathResult & {
   requestedBlocked: boolean;
 };
 
+const MIN_LINE_FALLBACK_DISTANCE = 0.75;
+const MAX_LINE_FALLBACK_SAMPLES = 72;
+
 type ResolvePathOptions = {
   canUseDestination?: (destination: THREE.Vector3) => boolean;
   maxCandidatePathAttempts?: number;
@@ -100,6 +103,18 @@ export class CollisionSystem {
       }
     }
 
+    const fallback = this.findLineFallbackDestination(start, requested, radius, canUseDestination);
+    if (fallback) {
+      const distance = distance2D(start.x, start.z, fallback.x, fallback.z);
+      return {
+        waypoints: [fallback],
+        distance,
+        iterations: 0,
+        destination: fallback,
+        requestedBlocked,
+      };
+    }
+
     return null;
   }
 
@@ -148,6 +163,38 @@ export class CollisionSystem {
 
   private canMoveBetween(from: THREE.Vector3, to: THREE.Vector3, radius: number) {
     return this.canOccupy(to.x, to.z, radius) && hasLineOfSight(this.gridWorld, from, to, radius);
+  }
+
+  private findLineFallbackDestination(
+    start: THREE.Vector3,
+    requested: THREE.Vector3,
+    radius: number,
+    canUseDestination: (destination: THREE.Vector3) => boolean,
+  ) {
+    const dx = requested.x - start.x;
+    const dz = requested.z - start.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance <= MIN_LINE_FALLBACK_DISTANCE) {
+      return null;
+    }
+
+    const sampleCount = Math.min(MAX_LINE_FALLBACK_SAMPLES, Math.max(4, Math.ceil(distance / (this.gridWorld.tileSize * 0.5))));
+    let best: THREE.Vector3 | null = null;
+
+    for (let index = 1; index <= sampleCount; index += 1) {
+      const amount = index / sampleCount;
+      const point = new THREE.Vector3(start.x + dx * amount, 0, start.z + dz * amount);
+      if (!canUseDestination(point) || !this.canMoveBetween(start, point, radius)) {
+        break;
+      }
+      best = point;
+    }
+
+    if (!best || distance2D(start.x, start.z, best.x, best.z) < MIN_LINE_FALLBACK_DISTANCE) {
+      return null;
+    }
+
+    return best;
   }
 
   private findNearbyOpenCandidateRings(point: THREE.Vector3, radius: number, maxRing = 6) {
