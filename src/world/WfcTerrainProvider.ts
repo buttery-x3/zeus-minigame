@@ -2,7 +2,7 @@ import type { TerrainCell } from "../types";
 import { HexTerrainWfcRegion } from "./HexTerrainWfcSolver";
 import { createTerrainCell, type TerrainProvider } from "./TerrainProvider";
 
-const WFC_TERRAIN_RADIUS = 36;
+const WFC_PATCH_REGION_RADIUS = 8;
 const WFC_TERRAIN_SEED = 20260517;
 
 export class WfcTerrainProvider implements TerrainProvider {
@@ -10,7 +10,7 @@ export class WfcTerrainProvider implements TerrainProvider {
 
   constructor(_worldRadius: number) {
     this.terrainWfc = new HexTerrainWfcRegion({
-      radius: WFC_TERRAIN_RADIUS,
+      patchRegionRadius: WFC_PATCH_REGION_RADIUS,
       seed: WFC_TERRAIN_SEED,
     });
   }

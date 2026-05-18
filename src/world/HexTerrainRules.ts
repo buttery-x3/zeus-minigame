@@ -1,11 +1,11 @@
-import type { HexTileSignature, TerrainStructure, TerrainSurface } from "../types";
+import type { TerrainStructure, TerrainSurface } from "../types";
 import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, OPPOSITE_HEX_DIRECTIONS, hexCellKey, type HexCoord, type HexDirection } from "./hexCoordinates";
-import type { HexTerrainTileVariant } from "./HexTerrainCatalog";
+import type { HexPatchTileVariant } from "./HexTerrainCatalog";
 
-export type HexTerrainSocketMismatch = {
-  cell: HexCoord & { variantId: string; structure: TerrainStructure };
+export type HexPatchSocketMismatch = {
+  patch: HexCoord & { variantId: string };
   direction: HexDirection;
-  neighbor: HexCoord & { variantId: string; structure: TerrainStructure };
+  neighbor: HexCoord & { variantId: string };
 };
 
 export function createTerrainStructureCounts(): Record<TerrainStructure, number> {
@@ -58,33 +58,39 @@ export function terrainBlocksSight(structure: TerrainStructure) {
   return structure === "wall";
 }
 
-export function terrainVariantsCanNeighbor(a: HexTerrainTileVariant, direction: HexDirection, b: HexTerrainTileVariant) {
-  return a.edges[direction] === b.edges[OPPOSITE_HEX_DIRECTIONS[direction]];
+export function patchVariantsCanNeighbor(a: HexPatchTileVariant, direction: HexDirection, b: HexPatchTileVariant) {
+  const opposite = OPPOSITE_HEX_DIRECTIONS[direction];
+  const reversedNeighborEdge = [...b.edges[opposite]].reverse();
+  return edgeSignaturesMatch(a.edges[direction], reversedNeighborEdge);
 }
 
-export function findSocketMismatch(
-  cells: Iterable<HexCoord & { structure: TerrainStructure; variant: HexTerrainTileVariant }>,
-): HexTerrainSocketMismatch | null {
-  const byKey = new Map<string, HexCoord & { structure: TerrainStructure; variant: HexTerrainTileVariant }>();
-  for (const cell of cells) {
-    byKey.set(hexCellKey(cell.q, cell.r), cell);
+export function findPatchSocketMismatch(
+  patches: Iterable<HexCoord & { variant: HexPatchTileVariant }>,
+): HexPatchSocketMismatch | null {
+  const byKey = new Map<string, HexCoord & { variant: HexPatchTileVariant }>();
+  for (const patch of patches) {
+    byKey.set(hexCellKey(patch.q, patch.r), patch);
   }
 
-  for (const cell of byKey.values()) {
+  for (const patch of byKey.values()) {
     for (const direction of HEX_DIRECTION_ORDER) {
       const offset = HEX_DIRECTIONS[direction];
-      const neighbor = byKey.get(hexCellKey(cell.q + offset.q, cell.r + offset.r));
-      if (!neighbor || terrainVariantsCanNeighbor(cell.variant, direction, neighbor.variant)) {
+      const neighbor = byKey.get(hexCellKey(patch.q + offset.q, patch.r + offset.r));
+      if (!neighbor || patchVariantsCanNeighbor(patch.variant, direction, neighbor.variant)) {
         continue;
       }
 
       return {
-        cell: { q: cell.q, r: cell.r, variantId: cell.variant.id, structure: cell.structure },
+        patch: { q: patch.q, r: patch.r, variantId: patch.variant.id },
         direction,
-        neighbor: { q: neighbor.q, r: neighbor.r, variantId: neighbor.variant.id, structure: neighbor.structure },
+        neighbor: { q: neighbor.q, r: neighbor.r, variantId: neighbor.variant.id },
       };
     }
   }
 
   return null;
+}
+
+function edgeSignaturesMatch(a: readonly string[], b: readonly string[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
