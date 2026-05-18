@@ -103,16 +103,19 @@ async function verifyTerrainGrammar(page, viewport) {
     throw new Error(`${viewport.name} missing terrain WFC diagnostics: ${JSON.stringify(grammar)}`);
   }
   if (wfc.fellBack) {
-    throw new Error(`${viewport.name} patch WFC fell back instead of solving: ${JSON.stringify(wfc)}`);
+    throw new Error(`${viewport.name} rolling patch terrain fell back instead of solving: ${JSON.stringify(wfc)}`);
   }
-  if (wfc.resolvedPatchCount < 200 || wfc.patchRadius !== 2 || wfc.patchRegionRadius !== 8) {
-    throw new Error(`${viewport.name} patch WFC resolved an unexpected patch region: ${JSON.stringify(wfc)}`);
+  if (wfc.mode !== "rolling-patch" || wfc.patchRadius !== 2 || wfc.activePatchRadius < 4 || wfc.committedPatchCount < 61) {
+    throw new Error(`${viewport.name} rolling patch terrain resolved an unexpected active set: ${JSON.stringify(wfc)}`);
+  }
+  if (wfc.emergencyPatchCount > 0 || wfc.contradictionCount > 0) {
+    throw new Error(`${viewport.name} rolling patch terrain used emergency patches: ${JSON.stringify(wfc)}`);
   }
   if (!wfc.structureCounts || wfc.structureCounts.open < 1 || wfc.structureCounts.river < 1) {
-    throw new Error(`${viewport.name} patch WFC did not produce open terrain and at least one river micro hex: ${JSON.stringify(wfc)}`);
+    throw new Error(`${viewport.name} rolling patch terrain did not produce open terrain and at least one river micro hex: ${JSON.stringify(wfc)}`);
   }
   if (wfc.patchSocketMismatchSample) {
-    throw new Error(`${viewport.name} patch WFC produced a socket mismatch: ${JSON.stringify(wfc.patchSocketMismatchSample)}`);
+    throw new Error(`${viewport.name} rolling patch terrain produced a socket mismatch: ${JSON.stringify(wfc.patchSocketMismatchSample)}`);
   }
 }
 

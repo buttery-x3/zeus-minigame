@@ -58,6 +58,17 @@ export class GridWorld {
     return cell;
   }
 
+  ensureTerrainGeneratedAroundCell(q: number, r: number) {
+    if (this.isInBounds(q, r)) {
+      this.terrainProvider.ensureGeneratedAround?.(q, r);
+    }
+  }
+
+  ensureTerrainGeneratedAroundWorld(point: THREE.Vector3) {
+    const cell = this.worldToCell(point.x, point.z);
+    this.ensureTerrainGeneratedAroundCell(cell.q, cell.r);
+  }
+
   isBlockedWorld(worldX: number, worldZ: number) {
     const cell = this.worldToCell(worldX, worldZ);
     return this.getCell(cell.q, cell.r).blocked;

@@ -47,12 +47,12 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 ## World
 
 - The world is a deterministic axial hex grid over the `X/Z` plane. HUD coordinates are shown as `q,r`.
-- Terrain cells are supplied by the default WFC terrain provider. Near the origin it generates once with finite patch WFC over explicit patch tile variants. A micro hex is a gameplay terrain cell; a patch tile is a non-overlapping radius-2 group of micro hexes selected as one WFC unit.
-- Terrain cells have a structural type and a derived surface. Structures are `open`, `wall`, `bank`, `lake`, and `river`; surfaces include `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, and `charged`.
+- Terrain cells are supplied by the default WFC terrain provider. It generates rolling patch-by-patch terrain around the player over explicit patch tile variants. A micro hex is a gameplay terrain cell; a patch tile is a non-overlapping radius-2 group of micro hexes selected as one generation unit.
+- Terrain cells have a structural type and a derived surface. Structures are `open`, `wall`, `bank`, `lake`, and `river`; the active rolling catalog currently emits `open`, `wall`, and `river`. Surfaces include `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, and `charged`.
 - `open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Water is not a visibility occluder in the first hex pass; only `wall` blocks sight.
-- Lakes are blob-like water patches. Rivers are path-like water that can form lines, bends, forks, sources, and mouths. Banks separate hard terrain from wet terrain when needed, especially around river shores and wall-water transitions.
+- Rivers are path-like water that can form lines, bends, forks, and sources. Lakes and banks are reserved for a later pass.
 - Patch edge signatures are ordered lists of `open`, `closed`, and `river` sockets. Patch WFC matches each edge against the reversed opposite edge of its neighbor. Bank and lake variants are reserved for a later pass.
-- The current patch WFC region covers patch radius 8 around the origin. Terrain outside that finite patch coverage returns open terrain for now.
+- The active terrain radius is measured in patch coordinates around the player's current patch. Missing patches are committed as needed and existing patches are never overwritten.
 - Gameplay visibility is tracked separately from Three.js render lighting. Zeus has a world light radius with wall-aware hex field of view, per-cell light falloff, permanent discovered navigation memory, and void treatment for unlit cells.
 - Discovered terrain outside all current light goes dark again. Discovered terrain only remains dimly readable when it is inside the current light radius but hidden by blocker line of sight; active details and actors require direct current visibility.
 - Wall blocker objects are hidden when their cells are undiscovered or outside the current light reach, so raised geometry does not remain readable in complete darkness.

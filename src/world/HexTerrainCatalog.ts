@@ -31,10 +31,16 @@ export type HexPatchTileVariant = {
   };
 };
 
+export type HexPatchAddress = {
+  patch: HexCoord;
+  local: HexCoord;
+};
+
 const PATCH_E_VECTOR: HexCoord = { q: 5, r: -2 };
 const PATCH_SE_VECTOR: HexCoord = { q: 2, r: 3 };
 
 export const HEX_PATCH_LOCAL_CELLS: HexCoord[] = createPatchLocalCells();
+const HEX_PATCH_LOCAL_CELL_KEYS = new Set(HEX_PATCH_LOCAL_CELLS.map((cell) => hexCellKey(cell.q, cell.r)));
 
 export const HEX_PATCH_EDGE_CELLS: Record<HexDirection, HexCoord[]> = {
   ne: [
@@ -73,9 +79,11 @@ export function createHexPatchTileCatalog(): readonly HexPatchTileVariant[] {
   const variants: HexPatchTileVariant[] = [
     createPatchVariant("patch.open.grass", allPatchEdges("open"), 28),
     createPatchVariant("patch.open.dirt", allPatchEdges("open"), 10, "dirt"),
+    createInternalWallPatchVariant("patch.wall.island", [{ q: 0, r: 0 }], 8),
     createPatchVariant("patch.wall.core", allPatchEdges("closed"), 2),
   ];
 
+  addInternalWallRotations(variants, "patch.wall.island.line", [{ q: 0, r: 0 }, { q: 1, r: -1 }], 3);
   addRotations(variants, "patch.wall.edge", withPatchEdges("open", { ne: edgeWithCenter("closed") }), 3);
   addRotations(
     variants,
@@ -123,6 +131,46 @@ export function patchLocalToWorld(patch: HexCoord, local: HexCoord): HexCoord {
   return { q: origin.q + local.q, r: origin.r + local.r };
 }
 
+export function microToPatchLocal(cell: HexCoord): HexPatchAddress {
+  const estimatedPatch = roundAxial(
+    (3 * cell.q - 2 * cell.r) / 19,
+    (2 * cell.q + 5 * cell.r) / 19,
+  );
+  let best: HexPatchAddress | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let dq = -2; dq <= 2; dq += 1) {
+    for (let dr = -2; dr <= 2; dr += 1) {
+      const patch = { q: estimatedPatch.q + dq, r: estimatedPatch.r + dr };
+      const origin = patchCoordToWorld(patch);
+      const local = { q: cell.q - origin.q, r: cell.r - origin.r };
+      if (!HEX_PATCH_LOCAL_CELL_KEYS.has(hexCellKey(local.q, local.r))) {
+        continue;
+      }
+
+      const distance = hexDistance(local, { q: 0, r: 0 });
+      if (
+        !best ||
+        distance < bestDistance ||
+        (distance === bestDistance && (patch.q < best.patch.q || (patch.q === best.patch.q && patch.r < best.patch.r)))
+      ) {
+        best = { patch, local };
+        bestDistance = distance;
+      }
+    }
+  }
+
+  if (!best) {
+    const origin = patchCoordToWorld(estimatedPatch);
+    return {
+      patch: estimatedPatch,
+      local: { q: cell.q - origin.q, r: cell.r - origin.r },
+    };
+  }
+
+  return best;
+}
+
 export function createHexPatchRegion(radius: number): HexCoord[] {
   const cells: HexCoord[] = [];
   for (let q = -radius; q <= radius; q += 1) {
@@ -135,6 +183,32 @@ export function createHexPatchRegion(radius: number): HexCoord[] {
   return cells;
 }
 
+function createInternalWallPatchVariant(id: string, wallCells: HexCoord[], weight: number): HexPatchTileVariant {
+  const variant = createPatchVariant(id, allPatchEdges("open"), weight);
+  for (const local of wallCells) {
+    variant.cells.set(hexCellKey(local.q, local.r), {
+      ...local,
+      structure: "wall",
+      surface: "stone",
+      edges: microEdges("closed"),
+    });
+  }
+  return {
+    ...variant,
+    diagnostics: {
+      kind: "wall",
+      riverExitCount: 0,
+      closedExitCount: 0,
+    },
+  };
+}
+
+function addInternalWallRotations(variants: HexPatchTileVariant[], id: string, wallCells: HexCoord[], weight: number) {
+  for (let step = 0; step < HEX_DIRECTION_ORDER.length; step += 1) {
+    variants.push(createInternalWallPatchVariant(`${id}.${step}`, rotateLocalCells(wallCells, step), weight));
+  }
+}
+
 function addRotations(
   variants: HexPatchTileVariant[],
   id: string,
@@ -144,6 +218,20 @@ function addRotations(
   for (let step = 0; step < HEX_DIRECTION_ORDER.length; step += 1) {
     variants.push(createPatchVariant(`${id}.${step}`, rotatePatchEdges(edges, step), weight));
   }
+}
+
+function rotateLocalCells(cells: HexCoord[], step: number) {
+  return cells.map((cell) => {
+    let q = cell.q;
+    let r = cell.r;
+    for (let index = 0; index < step; index += 1) {
+      const nextQ = -r;
+      const nextR = q + r;
+      q = nextQ;
+      r = nextR;
+    }
+    return { q, r };
+  });
 }
 
 function createPatchVariant(

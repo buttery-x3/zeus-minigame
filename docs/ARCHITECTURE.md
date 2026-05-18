@@ -31,7 +31,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/world/GridWorld.ts`: axial hex-to-world mapping, cached terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
 - `src/world/HexTerrainCatalog.ts`: patch tile catalog, canonical patch micro-hex coordinates, and patch edge ordering.
 - `src/world/HexTerrainRules.ts`: patch edge compatibility, diagnostics validation, and surface/blocking helper rules.
-- `src/world/HexTerrainWfcSolver.ts`: finite axial patch WFC solver that arranges patch tiles and expands them to micro hexes.
+- `src/world/HexTerrainWfcSolver.ts`: finite axial patch WFC solver kept as a reference for patch solving experiments.
 - `src/world/TerrainProvider.ts`: terrain provider interface and shared `TerrainCell` construction helpers.
 - `src/world/WfcTerrainProvider.ts`: default terrain provider that wraps the grammar/WFC pipeline.
 - `src/world/SeedTerrainProvider.ts`: cheap deterministic hash terrain provider for fallback/debug use.
@@ -62,21 +62,21 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 Gameplay grid coordinates are axial hex coordinates named `q/r`. Three.js world space still uses the `X/Z` ground plane and `Y` as vertical height. `GridWorld` owns coordinate conversion, bounds checks, cached cell access, neighbors, rings, ranges, line samples, and cell keys. Terrain generation is delegated to a `TerrainProvider`.
 
-The default provider is `WfcTerrainProvider`, which wraps the explicit patch tile catalog plus finite patch WFC solver. `SeedTerrainProvider` is a deterministic hash-based provider kept for fallback/debug use and future generation-mode selection.
+The default provider is `WfcTerrainProvider`, which uses the explicit patch tile catalog for rolling patch-by-patch terrain generation. `SeedTerrainProvider` is a deterministic hash-based provider kept for fallback/debug use and future generation-mode selection.
 
-Terrain starts with a declarative patch grammar. A micro hex is an actual gameplay terrain cell. A patch tile is a non-overlapping radius-2 group of micro hexes used as one WFC unit. A patch edge signature is an ordered list of socket values along one patch side. The patch generator creates internally valid patch variants before WFC; the world is not stamped or mutated after selection.
+Terrain starts with a declarative patch grammar. A micro hex is an actual gameplay terrain cell. A patch tile is a non-overlapping radius-2 group of micro hexes used as one generation unit. A patch edge signature is an ordered list of socket values along one patch side. The patch generator creates internally valid patch variants before runtime selection; the world is not stamped or mutated after selection.
 
-The playable origin region is generated once by patch WFC. Each patch coordinate begins with every patch tile variant; a variant includes local micro-hex terrain cells, six ordered patch edge signatures, weight, and diagnostics metadata. The solver repeatedly collapses a lowest-entropy patch, then propagates edge compatibility to the six axial patch neighbors. Compatibility compares one patch edge to the reversed opposite edge of its neighbor.
+`WfcTerrainProvider` commits terrain one patch at a time as the player moves. It keeps committed patch variants by patch coordinate and expanded micro cells by micro coordinate. The active generation radius is measured in patch coordinates around the player's current patch. Missing patches are generated in deterministic ring order, filtered against already-committed neighbor edge signatures, then committed permanently. Existing patches are never regenerated.
 
-The current patch WFC region covers patch radius 8 around the origin with a small open safe start. `WfcTerrainProvider` maps each world micro hex to exactly one selected patch tile and local micro coordinate when the cell is inside the solved patch region. Terrain outside that finite coverage returns open terrain for now.
+The origin starts with a small open safe patch radius. Runtime patch selection uses local edge compatibility rather than solving a precomputed finite island. If a requested micro hex belongs to an uncommitted patch, the provider lazily commits that containing patch before returning the terrain cell.
 
 Terrain is split into structural cells and derived surfaces:
 
-- Structures: `open`, `wall`, `bank`, `lake`, `river`.
+- Structures: `open`, `wall`, `bank`, `lake`, `river`; the active rolling catalog currently emits `open`, `wall`, and `river`.
 - Surfaces: `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, `charged`.
 - Edge/socket vocabulary: `open`, `closed`, `river`, `lake`.
 
-`open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Only `wall` blocks visibility; water is a movement obstacle but not an occluder. The grammar includes wall clusters, lake patches, river lines/bends/forks/sources/mouths, and bank adapters. Surfaces stay secondary to structural terrain so the structural vocabulary remains small. The key structural adjacency rule is that wall-water direct adjacency is invalid; use `wall -> bank -> lake/river`.
+`open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Only `wall` blocks visibility; water is a movement obstacle but not an occluder. The current rolling catalog includes open patches, blocker patches, and river lines/bends/forks/sources. Bank and lake variants remain reserved for a later pass.
 
 ## Future Splits
 

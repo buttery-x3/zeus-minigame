@@ -135,6 +135,7 @@ export class ZeusGame {
     window.addEventListener("resize", this.cameraRig.resize);
     this.cameraRig.resize();
     this.enemies.spawnInitial(this.state, this.player.object.position);
+    this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
 
     this.animationId = window.requestAnimationFrame(this.tick);
   }
@@ -188,6 +189,7 @@ export class ZeusGame {
   private update(dt: number) {
     const playerPosition = this.player.object.position;
 
+    this.profiler.measure("terrainGeneration", () => this.gridWorld.ensureTerrainGeneratedAroundWorld(playerPosition));
     this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
     this.profiler.measure("input", () => this.input.update(dt));
     if (!this.state.gameOver && !this.state.paused) {
@@ -294,6 +296,7 @@ export class ZeusGame {
     this.ui.setPaused(false);
     this.spells.reset();
     this.player.reset();
+    this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
     this.visibility.reset();
     this.visibility.update(this.player.object.position);
     this.enemies.reset(this.state, this.player.object.position);
