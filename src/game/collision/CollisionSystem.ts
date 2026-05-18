@@ -66,6 +66,7 @@ export class CollisionSystem {
 
     let attemptedPaths = 0;
     const maxCandidatePathAttempts = options.maxCandidatePathAttempts ?? Number.POSITIVE_INFINITY;
+    let stoppedCandidateSearch = false;
 
     for (const candidates of this.findNearbyOpenCandidateRings(requested, radius)) {
       let best: ResolvedPath | null = null;
@@ -80,7 +81,11 @@ export class CollisionSystem {
 
       for (const candidate of sortedCandidates) {
         if (attemptedPaths >= maxCandidatePathAttempts || performance.now() >= deadline) {
-          return best;
+          if (best) {
+            return best;
+          }
+          stoppedCandidateSearch = true;
+          break;
         }
 
         if (!canUseDestination(candidate)) {
@@ -100,6 +105,9 @@ export class CollisionSystem {
 
       if (best) {
         return best;
+      }
+      if (stoppedCandidateSearch) {
+        break;
       }
     }
 
