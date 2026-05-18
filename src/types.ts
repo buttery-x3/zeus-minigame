@@ -4,13 +4,29 @@ export type SpellId = "chain" | "bolt";
 
 export type EnemyHealthBarVisibilityMode = "always" | "smart";
 
-export type TerrainKind = "floor" | "scarred" | "charged" | "reserved_blocker";
+export type TerrainStructure = "open" | "wall" | "bank" | "lake" | "river";
+
+export type TerrainSurface = "grass" | "dirt" | "sand" | "mud" | "stone" | "scarred" | "charged";
+
+export type HexEdgeKind = "open" | "closed" | "river" | "lake";
+
+export type HexTileSignature = {
+  ne: HexEdgeKind;
+  e: HexEdgeKind;
+  se: HexEdgeKind;
+  sw: HexEdgeKind;
+  w: HexEdgeKind;
+  nw: HexEdgeKind;
+};
 
 export type TerrainCell = {
-  x: number;
-  z: number;
-  kind: TerrainKind;
+  q: number;
+  r: number;
+  structure: TerrainStructure;
+  surface: TerrainSurface;
   blocked: boolean;
+  opaque: boolean;
+  edges: HexTileSignature;
 };
 
 export type EnemyState = {

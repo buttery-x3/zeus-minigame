@@ -1,6 +1,6 @@
 import * as THREE from "three";
-import { PLAYER_COLLISION_RADIUS, WORLD_HALF } from "../../config";
-import { clamp, distance2D } from "../../lib/math";
+import { PLAYER_COLLISION_RADIUS, PLAYER_PATHFINDING_BUDGET_MS, PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS } from "../../config";
+import { distance2D } from "../../lib/math";
 import type { GameMaterials } from "../../render/materials";
 import type { GameEffects } from "../../render/GameEffects";
 import { createCrosshair, createRing } from "../../render/primitives";
@@ -84,9 +84,9 @@ export class PlayerController {
 
   setMoveTarget(x: number, z: number, options: MoveTargetOptions = {}) {
     const force = options.force ?? true;
-    const requestedTarget = new THREE.Vector3(clamp(x, -WORLD_HALF + 2, WORLD_HALF - 2), 0, clamp(z, -WORLD_HALF + 2, WORLD_HALF - 2));
+    const requestedTarget = this.gridWorld.clampWorld(new THREE.Vector3(x, 0, z), PLAYER_COLLISION_RADIUS);
     const requestedCell = this.gridWorld.worldToCell(requestedTarget.x, requestedTarget.z);
-    const requestedCellKey = `${requestedCell.x},${requestedCell.z}`;
+    const requestedCellKey = this.gridWorld.cellKey(requestedCell.q, requestedCell.r);
 
     if (!force && requestedCellKey === this.lastRequestedCellKey && this.path.length > 0) {
       return;
@@ -94,16 +94,19 @@ export class PlayerController {
 
     const resolved = this.collision.resolvePathToTarget(this.object.position, requestedTarget, PLAYER_COLLISION_RADIUS, {
       canUseDestination: options.canUseDestination,
+      maxCandidatePathAttempts: PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS,
+      maxPathfindingMs: PLAYER_PATHFINDING_BUDGET_MS,
     });
     this.lastRequestedCellKey = requestedCellKey;
-    this.lastRequestedBlocked = this.gridWorld.isBlockedWorld(requestedTarget.x, requestedTarget.z);
 
     if (!resolved) {
+      this.lastRequestedBlocked = !this.collision.canOccupy(requestedTarget.x, requestedTarget.z, PLAYER_COLLISION_RADIUS);
       this.path = [];
       this.effects.createShockwave(requestedTarget, 0x879190, 2.4);
       return;
     }
 
+    this.lastRequestedBlocked = resolved.requestedBlocked;
     this.path = resolved.waypoints;
     this.moveTarget.copy(resolved.destination);
     this.moveMarker.position.set(resolved.destination.x, 0.08, resolved.destination.z);

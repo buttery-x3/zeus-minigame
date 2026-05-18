@@ -43,11 +43,13 @@ export class EnemyPathQueue {
       this.queuedIds.delete(request.enemy.id);
       request.enemy.pathQueued = false;
 
+      const remainingBudgetMs = Math.max(0.25, this.budgetMs - (performance.now() - startedAt));
       const path = this.collision.findPath(
         request.enemy.group.position,
         request.goal,
         ENEMY_COLLISION_RADIUS,
         PATHFINDING_MAX_ITERATIONS,
+        remainingBudgetMs,
       );
       if (path) {
         request.enemy.path = path.waypoints;

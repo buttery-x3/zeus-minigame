@@ -17,6 +17,8 @@ type GameUiCallbacks = {
   setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
   unlockUiEnabled: boolean;
   setUnlockUiEnabled: (enabled: boolean) => void;
+  terrainDebugMode: boolean;
+  setTerrainDebugMode: (enabled: boolean) => void;
 };
 
 export class GameUi {
@@ -44,11 +46,13 @@ export class GameUi {
         setQuickCastEnabled: callbacks.setQuickCastEnabled,
         setAllowMaxRangeTargetSnap: callbacks.setAllowMaxRangeTargetSnap,
         setUnlockUiEnabled: callbacks.setUnlockUiEnabled,
+        setTerrainDebugMode: callbacks.setTerrainDebugMode,
       },
       callbacks.enemyHealthBarMode,
       callbacks.quickCastEnabled,
       callbacks.allowMaxRangeTargetSnap,
       callbacks.unlockUiEnabled,
+      callbacks.terrainDebugMode,
     );
     this.setUnlockUiEnabled(callbacks.unlockUiEnabled);
   }
@@ -73,6 +77,10 @@ export class GameUi {
   setUnlockUiEnabled(enabled: boolean) {
     this.hud.setUnlockUiEnabled(enabled);
     this.pauseMenu.setUnlockUiEnabled(enabled);
+  }
+
+  setTerrainDebugMode(enabled: boolean) {
+    this.pauseMenu.setTerrainDebugMode(enabled);
   }
 
   toggleDiagnostics() {

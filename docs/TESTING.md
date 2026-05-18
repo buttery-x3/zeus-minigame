@@ -27,14 +27,16 @@ npm run verify
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
-- Checks gameplay visibility diagnostics, 2x visibility overlay diagnostics, blocker shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark blockers, and blocker-occluded memory after exploration.
+- Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
+- Checks rolling patch terrain diagnostics, including active patch-radius generation, at least one river micro hex, no emergency patches, and ordered patch edge socket agreement.
+- Checks Terrain Debug mode by toggling it on, verifying fog is disabled, camera view is widened with debug framing, HP remains full, the rendered terrain window expands, and rolling terrain diagnostics remain valid without increasing the configured generation radius or generating new patches.
 - Checks that hidden spell targets do not spend cooldown, default out-of-range spell targets snap to max range, and strict mode rejects out-of-range raw targets.
 - Checks that click and held movement commands reject undiscovered terrain.
-- Clicks a visible blocker and checks that navigation resolves to reachable discovered edge space.
+- Clicks a visible wall blocker and checks that navigation resolves to reachable discovered neighboring hex space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
 - Checks the pause menu enemy health bar visibility options, Quick Cast toggle, and Allow Max Range Target Snap toggle.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
-- Checks that diagnostics exposes enemy flow-field metrics and that the smoke path does not create a pathfinding call spike.
+- Checks that diagnostics exposes enemy hex flow-field metrics and that the smoke path does not create a pathfinding call spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.

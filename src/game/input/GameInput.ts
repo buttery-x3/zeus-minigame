@@ -15,6 +15,7 @@ type InputCallbacks = {
   handleEscape: () => void;
   toggleDiagnostics: () => void;
   toggleEnemyHealthBarMode: () => void;
+  toggleTerrainDebugMode: () => void;
 };
 
 const HELD_MOVE_REFIRE_SECONDS = 0.1;
@@ -106,6 +107,11 @@ export class GameInput {
 
     if (event.code === "Backquote" || event.key === "F3") {
       this.callbacks.toggleDiagnostics();
+      return;
+    }
+
+    if (event.key === "F4") {
+      this.callbacks.toggleTerrainDebugMode();
       return;
     }
 

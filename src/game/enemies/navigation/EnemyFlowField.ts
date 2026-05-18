@@ -6,36 +6,25 @@ import type { GridWorld } from "../../../world/GridWorld";
 import { canOccupyWorld, getCellCenter, isCellInBounds } from "../../collision/occupancy";
 
 type FlowCell = {
-  x: number;
-  z: number;
+  q: number;
+  r: number;
   cost: number;
-  nextX: number;
-  nextZ: number;
+  nextQ: number;
+  nextR: number;
 };
 
 type OpenCell = {
-  x: number;
-  z: number;
+  q: number;
+  r: number;
   cost: number;
 };
-
-const NEIGHBORS = [
-  { x: -1, z: -1 },
-  { x: 0, z: -1 },
-  { x: 1, z: -1 },
-  { x: -1, z: 0 },
-  { x: 1, z: 0 },
-  { x: -1, z: 1 },
-  { x: 0, z: 1 },
-  { x: 1, z: 1 },
-];
 
 export class EnemyFlowField {
   private readonly cells = new Map<string, FlowCell>();
   private readonly edgeCells: FlowCell[] = [];
   private readonly walkableCache = new Map<string, boolean>();
   private playerCellKey = "";
-  private playerCell = { x: 0, z: 0 };
+  private playerCell = { q: 0, r: 0 };
   private lastRebuildMs = 0;
   private visitedCount = 0;
 
@@ -46,10 +35,10 @@ export class EnemyFlowField {
 
   update(playerPosition: THREE.Vector3) {
     const playerCell = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
-    const nextKey = cellKey(playerCell.x, playerCell.z);
+    const nextKey = this.gridWorld.cellKey(playerCell.q, playerCell.r);
 
     if (nextKey !== this.playerCellKey) {
-      this.rebuild(playerCell.x, playerCell.z);
+      this.rebuild(playerCell.q, playerCell.r);
       return true;
     }
 
@@ -58,12 +47,12 @@ export class EnemyFlowField {
 
   sample(position: THREE.Vector3) {
     const cell = this.gridWorld.worldToCell(position.x, position.z);
-    const flowCell = this.cells.get(cellKey(cell.x, cell.z));
+    const flowCell = this.cells.get(this.gridWorld.cellKey(cell.q, cell.r));
     if (!flowCell) {
       return null;
     }
 
-    const target = getCellCenter(this.gridWorld, flowCell.nextX, flowCell.nextZ);
+    const target = getCellCenter(this.gridWorld, flowCell.nextQ, flowCell.nextR);
     const direction = new THREE.Vector3(target.x - position.x, 0, target.z - position.z);
     if (direction.lengthSq() < 0.000001) {
       return null;
@@ -79,7 +68,7 @@ export class EnemyFlowField {
     let closestDistance = Number.POSITIVE_INFINITY;
 
     for (const candidate of candidates) {
-      const world = this.gridWorld.cellToWorld(candidate.x, candidate.z);
+      const world = this.gridWorld.cellToWorld(candidate.q, candidate.r);
       const distance = distance2D(position.x, position.z, world.x, world.z);
       if (distance < closestDistance) {
         closest = candidate;
@@ -87,7 +76,7 @@ export class EnemyFlowField {
       }
     }
 
-    return closest ? getCellCenter(this.gridWorld, closest.x, closest.z) : null;
+    return closest ? getCellCenter(this.gridWorld, closest.q, closest.r) : null;
   }
 
   diagnostics() {
@@ -99,23 +88,23 @@ export class EnemyFlowField {
     };
   }
 
-  private rebuild(playerCellX: number, playerCellZ: number) {
+  private rebuild(playerQ: number, playerR: number) {
     const startedAt = performance.now();
     this.cells.clear();
     this.edgeCells.length = 0;
     this.walkableCache.clear();
-    this.playerCell = { x: playerCellX, z: playerCellZ };
-    this.playerCellKey = cellKey(playerCellX, playerCellZ);
+    this.playerCell = { q: playerQ, r: playerR };
+    this.playerCellKey = this.gridWorld.cellKey(playerQ, playerR);
 
-    if (!isCellInBounds(this.gridWorld, playerCellX, playerCellZ)) {
+    if (!isCellInBounds(this.gridWorld, playerQ, playerR)) {
       this.finishRebuild(startedAt);
       return;
     }
 
     const open = new MinHeap<OpenCell>((a, b) => a.cost - b.cost);
-    const startKey = cellKey(playerCellX, playerCellZ);
-    this.cells.set(startKey, { x: playerCellX, z: playerCellZ, cost: 0, nextX: playerCellX, nextZ: playerCellZ });
-    open.push({ x: playerCellX, z: playerCellZ, cost: 0 });
+    const startKey = this.gridWorld.cellKey(playerQ, playerR);
+    this.cells.set(startKey, { q: playerQ, r: playerR, cost: 0, nextQ: playerQ, nextR: playerR });
+    open.push({ q: playerQ, r: playerR, cost: 0 });
 
     while (open.size() > 0) {
       const current = open.pop();
@@ -123,41 +112,36 @@ export class EnemyFlowField {
         break;
       }
 
-      const currentCell = this.cells.get(cellKey(current.x, current.z));
+      const currentCell = this.cells.get(this.gridWorld.cellKey(current.q, current.r));
       if (!currentCell || current.cost > currentCell.cost) {
         continue;
       }
 
-      const currentPoint = getCellCenter(this.gridWorld, current.x, current.z);
-      for (const offset of NEIGHBORS) {
-        const neighborX = current.x + offset.x;
-        const neighborZ = current.z + offset.z;
-        if (!this.isInsideField(neighborX, neighborZ)) {
+      const currentPoint = getCellCenter(this.gridWorld, current.q, current.r);
+      for (const neighbor of this.gridWorld.getNeighbors(current.q, current.r)) {
+        if (!this.isInsideField(neighbor.q, neighbor.r)) {
           continue;
         }
 
-        if (!this.canOccupyCell(neighborX, neighborZ)) {
-          continue;
-        }
-        if (!this.canTraverseAdjacent(current.x, current.z, neighborX, neighborZ)) {
+        if (!this.canOccupyCell(neighbor.q, neighbor.r)) {
           continue;
         }
 
-        const neighborPoint = getCellCenter(this.gridWorld, neighborX, neighborZ);
+        const neighborPoint = getCellCenter(this.gridWorld, neighbor.q, neighbor.r);
         const stepCost = distance2D(currentPoint.x, currentPoint.z, neighborPoint.x, neighborPoint.z);
         const nextCost = currentCell.cost + stepCost;
-        const key = cellKey(neighborX, neighborZ);
+        const key = this.gridWorld.cellKey(neighbor.q, neighbor.r);
         const existing = this.cells.get(key);
         if (existing && existing.cost <= nextCost) {
           continue;
         }
 
-        const flowCell = { x: neighborX, z: neighborZ, cost: nextCost, nextX: current.x, nextZ: current.z };
+        const flowCell = { q: neighbor.q, r: neighbor.r, cost: nextCost, nextQ: current.q, nextR: current.r };
         this.cells.set(key, flowCell);
-        if (this.isEdgeCell(neighborX, neighborZ)) {
+        if (this.isEdgeCell(neighbor.q, neighbor.r)) {
           this.edgeCells.push(flowCell);
         }
-        open.push({ x: neighborX, z: neighborZ, cost: nextCost });
+        open.push({ q: neighbor.q, r: neighbor.r, cost: nextCost });
       }
     }
 
@@ -170,29 +154,15 @@ export class EnemyFlowField {
   }
 
   private isInsideField(cellX: number, cellZ: number) {
-    return (
-      isCellInBounds(this.gridWorld, cellX, cellZ) &&
-      Math.abs(cellX - this.playerCell.x) <= this.radius &&
-      Math.abs(cellZ - this.playerCell.z) <= this.radius
-    );
+    return isCellInBounds(this.gridWorld, cellX, cellZ) && this.gridWorld.hexDistance(this.playerCell, { q: cellX, r: cellZ }) <= this.radius;
   }
 
   private isEdgeCell(cellX: number, cellZ: number) {
-    return Math.max(Math.abs(cellX - this.playerCell.x), Math.abs(cellZ - this.playerCell.z)) >= this.radius - 1;
-  }
-
-  private canTraverseAdjacent(fromX: number, fromZ: number, toX: number, toZ: number) {
-    const dx = toX - fromX;
-    const dz = toZ - fromZ;
-    if (dx === 0 || dz === 0) {
-      return true;
-    }
-
-    return this.canOccupyCell(fromX + dx, fromZ) && this.canOccupyCell(fromX, fromZ + dz);
+    return this.gridWorld.hexDistance(this.playerCell, { q: cellX, r: cellZ }) >= this.radius - 1;
   }
 
   private canOccupyCell(cellX: number, cellZ: number) {
-    const key = cellKey(cellX, cellZ);
+    const key = this.gridWorld.cellKey(cellX, cellZ);
     const cached = this.walkableCache.get(key);
     if (cached !== undefined) {
       return cached;
@@ -203,8 +173,4 @@ export class EnemyFlowField {
     this.walkableCache.set(key, canOccupy);
     return canOccupy;
   }
-}
-
-function cellKey(cellX: number, cellZ: number) {
-  return `${cellX},${cellZ}`;
 }

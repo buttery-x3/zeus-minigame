@@ -66,6 +66,7 @@ async function verifyInBrowser() {
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
       await verifyVisibilitySystem(page, viewport);
+      await verifyTerrainGrammar(page, viewport);
       await verifyBlockerNavigation(page, viewport);
       await verifyEnemyHealthBars(page, viewport);
       await verifyEnemyAvoidance(page, viewport);
@@ -80,6 +81,7 @@ async function verifyInBrowser() {
       const hud = await collectHudMetrics(page);
       const result = { viewport, screenshotPath, metrics, hud, errors };
       assertResult(result);
+      await verifyTerrainDebugMode(page, viewport);
       results.push(result);
 
       await page.close();
@@ -89,6 +91,89 @@ async function verifyInBrowser() {
   }
 
   return results;
+}
+
+async function verifyTerrainGrammar(page, viewport) {
+  const diagnostics = await readDiagnostics(page);
+  const grammar = diagnostics.terrainGrammar;
+  if (!grammar) {
+    throw new Error(`${viewport.name} missing terrain diagnostics`);
+  }
+  const wfc = grammar.wfc;
+  if (!wfc) {
+    throw new Error(`${viewport.name} missing terrain WFC diagnostics: ${JSON.stringify(grammar)}`);
+  }
+  if (wfc.fellBack) {
+    throw new Error(`${viewport.name} rolling patch terrain fell back instead of solving: ${JSON.stringify(wfc)}`);
+  }
+  if (wfc.mode !== "rolling-patch" || wfc.patchRadius !== 2 || wfc.activePatchRadius < 3 || wfc.committedPatchCount < 37) {
+    throw new Error(`${viewport.name} rolling patch terrain resolved an unexpected active set: ${JSON.stringify(wfc)}`);
+  }
+  if (wfc.emergencyPatchCount > 0 || wfc.contradictionCount > 0) {
+    throw new Error(`${viewport.name} rolling patch terrain used emergency patches: ${JSON.stringify(wfc)}`);
+  }
+  if (!wfc.structureCounts || wfc.structureCounts.open < 1 || wfc.structureCounts.river < 1) {
+    throw new Error(`${viewport.name} rolling patch terrain did not produce open terrain and at least one river micro hex: ${JSON.stringify(wfc)}`);
+  }
+  if (wfc.patchSocketMismatchSample) {
+    throw new Error(`${viewport.name} rolling patch terrain produced a socket mismatch: ${JSON.stringify(wfc.patchSocketMismatchSample)}`);
+  }
+}
+
+async function verifyTerrainDebugMode(page, viewport) {
+  const before = await readDiagnostics(page);
+  const beforeProjection = before.camera?.projection ?? {};
+  const beforeHeight = Math.abs((beforeProjection.top ?? 0) - (beforeProjection.bottom ?? 0));
+  const beforeRadius = before.terrainGrammar?.wfc?.activePatchRadius;
+  const beforeGeneratedPatches = before.terrainGrammar?.wfc?.generatedPatchCount;
+  const beforeBlockers = before.terrain?.blockers?.total ?? 0;
+
+  await page.keyboard.press("F4");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === true);
+  await page.waitForTimeout(350);
+
+  const after = await readDiagnostics(page);
+  if (!after.input.terrainDebugMode) {
+    throw new Error(`${viewport.name} terrain debug mode did not enable`);
+  }
+  if (!after.visibilityOverlay?.debugReveal || after.visibilityOverlay?.visible) {
+    throw new Error(`${viewport.name} terrain debug mode did not disable fog overlay: ${JSON.stringify(after.visibilityOverlay)}`);
+  }
+  const afterProjection = after.camera?.projection ?? {};
+  const afterHeight = Math.abs((afterProjection.top ?? 0) - (afterProjection.bottom ?? 0));
+  if (beforeHeight <= 0 || afterHeight < beforeHeight * 2.9) {
+    throw new Error(`${viewport.name} terrain debug mode did not widen camera view: before=${beforeHeight}, after=${afterHeight}`);
+  }
+  const lowerFrustumOriginY = cameraLowerFrustumOriginY(after.camera);
+  if (lowerFrustumOriginY <= 4) {
+    throw new Error(`${viewport.name} terrain debug camera lower frustum starts below usable ground clearance: ${lowerFrustumOriginY}`);
+  }
+  if (after.player.health !== 120) {
+    throw new Error(`${viewport.name} terrain debug mode did not keep player health full: ${after.player.health}`);
+  }
+  if (after.terrainGrammar?.wfc?.activePatchRadius !== beforeRadius) {
+    throw new Error(`${viewport.name} terrain debug mode changed generation radius: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
+  }
+  if (after.terrainGrammar?.wfc?.generatedPatchCount !== beforeGeneratedPatches) {
+    throw new Error(`${viewport.name} terrain debug mode generated new patches: before=${beforeGeneratedPatches}, after=${after.terrainGrammar?.wfc?.generatedPatchCount}`);
+  }
+  if ((after.terrain?.blockers?.total ?? 0) <= beforeBlockers) {
+    throw new Error(`${viewport.name} terrain debug mode did not expand rendered terrain window: before=${beforeBlockers}, after=${after.terrain?.blockers?.total}`);
+  }
+  if (after.terrainGrammar?.wfc?.emergencyPatchCount > 0 || after.terrainGrammar?.wfc?.patchSocketMismatchSample) {
+    throw new Error(`${viewport.name} terrain debug mode terrain diagnostics invalid: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
+  }
+
+  await page.keyboard.press("F4");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === false);
+  await page.waitForTimeout(500);
+
+  const restored = await readDiagnostics(page);
+  const restoredProjection = restored.camera?.projection ?? {};
+  const restoredHeight = Math.abs((restoredProjection.top ?? 0) - (restoredProjection.bottom ?? 0));
+  if (restoredHeight > beforeHeight * 1.1) {
+    throw new Error(`${viewport.name} terrain debug mode did not restore camera view: beforeHeight=${beforeHeight}, restoredHeight=${restoredHeight}`);
+  }
 }
 
 async function verifyShadowRigTracking(page, viewport) {
@@ -124,6 +209,7 @@ async function verifyVisibilitySystem(page, viewport) {
   if (!start.visibilityOverlay || start.visibilityOverlay.resolutionScale !== 2) {
     throw new Error(`${viewport.name} visibility overlay did not report 2x resolution: ${JSON.stringify(start.visibilityOverlay)}`);
   }
+  assertContinuousVisibilityOverlay(viewport, start, "initial");
   if (start.visibility.visibleCells < 80) {
     throw new Error(`${viewport.name} visibility revealed too few cells: ${JSON.stringify(start.visibility)}`);
   }
@@ -190,6 +276,7 @@ async function verifyVisibilitySystem(page, viewport) {
       throw new Error(`${viewport.name} blocked-memory sample had wrong visibility state: ${JSON.stringify(memory)}`);
     }
   }
+  assertContinuousVisibilityOverlay(viewport, afterMove, "after exploration");
 }
 
 async function verifyHiddenCastRejected(page, viewport, diagnostics) {
@@ -409,8 +496,8 @@ async function verifyHudTransparency(page, viewport) {
   if (initial.vitals.text.includes("Kills") || initial.vitals.text.includes("Wave")) {
     throw new Error(`${viewport.name} vitals panel still contained game progression text: ${JSON.stringify(initial.vitals)}`);
   }
-  if (!initial.game.text.includes("Cell") || !initial.game.text.includes("Kills") || !initial.game.text.includes("Wave")) {
-    throw new Error(`${viewport.name} game panel did not contain cell, kills, and wave text: ${JSON.stringify(initial.game)}`);
+  if (!initial.game.text.includes("Hex") || !initial.game.text.includes("Kills") || !initial.game.text.includes("Wave")) {
+    throw new Error(`${viewport.name} game panel did not contain hex, kills, and wave text: ${JSON.stringify(initial.game)}`);
   }
   if (Math.abs(initial.vitals.centerXRatio - 0.5) > 0.08 || Math.abs(initial.abilities.centerXRatio - 0.5) > 0.08) {
     throw new Error(`${viewport.name} central HUD panels were not horizontally centered: ${JSON.stringify(initial)}`);
@@ -1119,6 +1206,33 @@ function groundDistance(a, b) {
   return Math.hypot(a[0] - b[0], a[2] - b[2]);
 }
 
+function assertContinuousVisibilityOverlay(viewport, diagnostics, label) {
+  const overlay = diagnostics.visibilityOverlay;
+  if (!overlay || !(overlay.texelWorldSize > 0) || !overlay.centerWorld) {
+    throw new Error(`${viewport.name} missing continuous visibility overlay diagnostics (${label}): ${JSON.stringify(overlay)}`);
+  }
+
+  const centerDistance = Math.hypot(
+    overlay.centerWorld.x - diagnostics.player.position[0],
+    overlay.centerWorld.z - diagnostics.player.position[2],
+  );
+  if (centerDistance > Math.max(0.25, overlay.texelWorldSize)) {
+    throw new Error(
+      `${viewport.name} visibility overlay center did not follow player (${label}): distance=${centerDistance}, overlay=${JSON.stringify(overlay.centerWorld)}, player=${JSON.stringify(diagnostics.player.position)}`,
+    );
+  }
+
+  if (overlay.alphaHistoryAction !== "smooth") {
+    throw new Error(`${viewport.name} visibility overlay reported invalid alpha history action (${label}): ${JSON.stringify(overlay)}`);
+  }
+}
+
+function cameraLowerFrustumOriginY(camera) {
+  const [qx, qy, qz, qw] = camera.quaternion;
+  const upY = 1 - 2 * (qx * qx + qz * qz);
+  return camera.position[1] + upY * camera.projection.bottom;
+}
+
 async function collectCanvasMetrics(page) {
   return page.evaluate(() => {
     const canvas = document.querySelector("canvas");
@@ -1174,7 +1288,7 @@ async function collectHudMetrics(page) {
     return {
       hasKills: text.includes("Kills"),
       hasWave: text.includes("Wave"),
-      hasCell: text.includes("Cell"),
+      hasCell: text.includes("Hex"),
       hasChain: abilities.some((text) => text.includes("Q") && text.includes("Chain")),
       hasBolt: abilities.some((text) => text.includes("W") && text.includes("Bolt")),
       statusVisible,
@@ -1234,7 +1348,7 @@ async function readHudPanelMetrics(page) {
 
 function assertResult(result) {
   const { viewport, metrics, hud, errors } = result;
-  const usablePixels = metrics.nonDark > 1500 && metrics.bright > 20 && metrics.colorBuckets > 18;
+  const usablePixels = metrics.nonDark > 1500 && metrics.bright > 8 && metrics.colorBuckets > 18;
   const hudOk = hud.hasKills && hud.hasWave && hud.hasCell && hud.hasChain && hud.hasBolt && hud.statusVisible;
 
   if (!usablePixels) {

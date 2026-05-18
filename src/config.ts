@@ -1,9 +1,6 @@
 import type { EnemyHealthBarVisibilityMode, SpellConfig, SpellId } from "./types";
 
 export const TILE_SIZE = 4;
-export const WORLD_CELLS = 180;
-export const WORLD_SIZE = TILE_SIZE * WORLD_CELLS;
-export const WORLD_HALF = WORLD_SIZE / 2;
 
 export const PLAYER_MAX_HEALTH = 120;
 export const PLAYER_MAX_MANA = 100;
@@ -24,6 +21,9 @@ export const ENEMY_UNIT_SEPARATION_STRENGTH = 1.15;
 export const ENEMY_UNIT_TANGENTIAL_STRENGTH = 0.78;
 export const ENEMY_UNIT_MAX_STEERING_FRACTION = 0.9;
 export const PATHFINDING_MAX_ITERATIONS = 900;
+export const PLAYER_PATHFINDING_BUDGET_MS = 16;
+export const PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS = 4;
+export const ROLLING_TERRAIN_PATCH_RADIUS = 3;
 export const ENEMY_FLOW_FIELD_RADIUS_CELLS = 24;
 export const ENEMY_FALLBACK_PATH_BUDGET_MS = 1.8;
 export const ENEMY_STALL_FALLBACK_SECONDS = 0.7;

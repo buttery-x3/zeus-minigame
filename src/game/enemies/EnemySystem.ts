@@ -6,9 +6,8 @@ import {
   INITIAL_NEXT_WAVE_AT,
   INITIAL_SPAWN_INTERVAL,
   PLAYER_MAX_MANA,
-  WORLD_HALF,
 } from "../../config";
-import { clamp, distance2D, randomBetween } from "../../lib/math";
+import { distance2D, randomBetween } from "../../lib/math";
 import type { GameEffects } from "../../render/GameEffects";
 import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
@@ -309,8 +308,8 @@ export class EnemySystem {
   private sampleSpawnPoint(playerPosition: THREE.Vector3, initial: boolean) {
     const angle = randomBetween(0, Math.PI * 2);
     const distance = initial ? randomBetween(20, 34) : randomBetween(42, 56);
-    const x = clamp(playerPosition.x + Math.cos(angle) * distance, -WORLD_HALF + 5, WORLD_HALF - 5);
-    const z = clamp(playerPosition.z + Math.sin(angle) * distance, -WORLD_HALF + 5, WORLD_HALF - 5);
+    const x = playerPosition.x + Math.cos(angle) * distance;
+    const z = playerPosition.z + Math.sin(angle) * distance;
     return new THREE.Vector3(x, 0, z);
   }
 

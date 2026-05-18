@@ -44,7 +44,7 @@ export class ZeusGame {
   };
 
   private readonly scene = new GameScene();
-  private readonly visibilityOverlay = new VisibilityOverlay();
+  private readonly visibilityOverlay = new VisibilityOverlay(this.gridWorld);
   private readonly effects = new GameEffects(this.groups.effects);
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
   private readonly diagnostics = new GameDiagnostics(
@@ -60,6 +60,7 @@ export class ZeusGame {
   private quickCastEnabled = true;
   private allowMaxRangeTargetSnap = true;
   private unlockUiEnabled = false;
+  private terrainDebugMode = false;
   private readonly ui = new GameUi({
     resume: () => this.setPaused(false),
     togglePause: () => this.setPaused(!this.state.paused),
@@ -71,6 +72,8 @@ export class ZeusGame {
     setAllowMaxRangeTargetSnap: (enabled) => this.setAllowMaxRangeTargetSnap(enabled),
     unlockUiEnabled: this.unlockUiEnabled,
     setUnlockUiEnabled: (enabled) => this.setUnlockUiEnabled(enabled),
+    terrainDebugMode: this.terrainDebugMode,
+    setTerrainDebugMode: (enabled) => this.setTerrainDebugMode(enabled),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(
@@ -108,6 +111,7 @@ export class ZeusGame {
     handleEscape: () => this.handleEscape(),
     toggleDiagnostics: () => this.ui.toggleDiagnostics(),
     toggleEnemyHealthBarMode: () => this.toggleEnemyHealthBarMode(),
+    toggleTerrainDebugMode: () => this.setTerrainDebugMode(!this.terrainDebugMode),
   });
 
   private state = createInitialState();
@@ -135,6 +139,7 @@ export class ZeusGame {
     window.addEventListener("resize", this.cameraRig.resize);
     this.cameraRig.resize();
     this.enemies.spawnInitial(this.state, this.player.object.position);
+    this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
 
     this.animationId = window.requestAnimationFrame(this.tick);
   }
@@ -155,6 +160,7 @@ export class ZeusGame {
         quickCastEnabled: this.quickCastEnabled,
         allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
         unlockUiEnabled: this.unlockUiEnabled,
+        terrainDebugMode: this.terrainDebugMode,
         pointerWorld: this.input.pointerWorld.toArray(),
       },
       spells: {
@@ -188,6 +194,11 @@ export class ZeusGame {
   private update(dt: number) {
     const playerPosition = this.player.object.position;
 
+    if (this.terrainDebugMode) {
+      this.state.health = PLAYER_MAX_HEALTH;
+    }
+
+    this.profiler.measure("terrainGeneration", () => this.gridWorld.ensureTerrainGeneratedAroundWorld(playerPosition));
     this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
     this.profiler.measure("input", () => this.input.update(dt));
     if (!this.state.gameOver && !this.state.paused) {
@@ -202,8 +213,8 @@ export class ZeusGame {
     }
 
     this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
-    this.profiler.measure("terrain", () => this.terrain.update(playerPosition, this.visibility));
-    this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, dt));
+    this.profiler.measure("terrain", () => this.terrain.update(playerPosition, this.visibility, this.terrainDebugMode));
+    this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, dt, playerPosition));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,
       spells: this.spells.spells,
@@ -241,6 +252,9 @@ export class ZeusGame {
     }
 
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
+    if (this.terrainDebugMode) {
+      this.state.health = PLAYER_MAX_HEALTH;
+    }
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("enemyVisibility", () => this.enemies.updateVisibility((enemy) => this.isEnemyVisible(enemy)));
     this.profiler.measure("enemyHealthBars", () =>
@@ -258,6 +272,11 @@ export class ZeusGame {
   }
 
   private damagePlayer(amount: number) {
+    if (this.terrainDebugMode) {
+      this.state.health = PLAYER_MAX_HEALTH;
+      return;
+    }
+
     this.state.health = Math.max(0, this.state.health - amount);
     this.player.flash(0xff5c66, () => !this.state.gameOver);
     this.effects.createShockwave(this.player.object.position, 0xff5c66, 2.5);
@@ -270,18 +289,22 @@ export class ZeusGame {
   }
 
   private requestMoveTarget(x: number, z: number, force = true) {
-    if (!this.visibility.isDiscoveredWorld(x, z)) {
+    if (!this.terrainDebugMode && !this.visibility.isDiscoveredWorld(x, z)) {
       this.player.flash(0x657172);
       return;
     }
 
     this.player.setMoveTarget(x, z, {
       force,
-      canUseDestination: (destination) => this.visibility.isDiscoveredWorld(destination.x, destination.z),
+      canUseDestination: (destination) => this.terrainDebugMode || this.visibility.isDiscoveredWorld(destination.x, destination.z),
     });
   }
 
   private canCastAt(target: THREE.Vector3) {
+    if (this.terrainDebugMode) {
+      return true;
+    }
+
     return this.visibility.isVisibleWorld(target.x, target.z) && this.visibility.getLightWorld(target.x, target.z) > VISIBILITY_LIGHT_EPSILON;
   }
 
@@ -294,6 +317,7 @@ export class ZeusGame {
     this.ui.setPaused(false);
     this.spells.reset();
     this.player.reset();
+    this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
     this.visibility.reset();
     this.visibility.update(this.player.object.position);
     this.enemies.reset(this.state, this.player.object.position);
@@ -335,6 +359,16 @@ export class ZeusGame {
   private setUnlockUiEnabled(enabled: boolean) {
     this.unlockUiEnabled = enabled;
     this.ui.setUnlockUiEnabled(enabled);
+  }
+
+  private setTerrainDebugMode(enabled: boolean) {
+    this.terrainDebugMode = enabled;
+    this.cameraRig.setZoomMultiplier(enabled ? 3 : 1);
+    this.visibilityOverlay.setDebugReveal(enabled);
+    if (enabled) {
+      this.state.health = PLAYER_MAX_HEALTH;
+    }
+    this.ui.setTerrainDebugMode(enabled);
   }
 
   private toggleEnemyHealthBarMode() {

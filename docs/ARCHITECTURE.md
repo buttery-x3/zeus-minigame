@@ -6,7 +6,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 1. `src/main.ts` imports CSS and boots `ZeusGame`.
 2. `ZeusGame` owns the Three.js scene, camera, input loop, high-level gameplay state, and system update order.
-3. The game loop records performance timings while updating camera, terrain window, targeting visuals, HUD, movement, enemies, spawning, and effects.
+3. The game loop records performance timings while updating camera, rolling terrain generation, terrain window, targeting visuals, HUD, movement, enemies, spawning, and effects.
 4. Three.js renders the scene; HUD, pause, and diagnostics are regular DOM windows over the canvas.
 
 ## Module Map
@@ -15,7 +15,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/types.ts`: shared TypeScript types for gameplay and effects.
 - `src/game/ZeusGame.ts`: composition root, shared runtime state, and update order.
 - `src/game/camera/CameraRig.ts`: orthographic camera follow and resize behavior.
-- `src/game/collision`: blocker occupancy, grid linecasts, Theta* individual pathfinding, and movement collision helpers.
+- `src/game/collision`: hex occupancy, hex linecasts, Theta* individual pathfinding, and movement collision helpers.
 - `src/game/diagnostics/GameDiagnostics.ts`: dev/test diagnostics snapshot and world-to-screen probes.
 - `src/game/enemies/EnemySystem.ts`: enemy spawning, movement, contact damage, kill handling, and wave spawn timing.
 - `src/game/enemies/EnemyHealthBars.ts`: in-world enemy health bar lifecycle, visibility modes, and diagnostics.
@@ -27,8 +27,15 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, shadow rig, and ground setup.
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
-- `src/game/terrain/TerrainSystem.ts`: visible terrain window rendering.
-- `src/world/GridWorld.ts`: grid-to-world mapping and deterministic terrain cell generation.
+- `src/game/terrain/TerrainSystem.ts`: visible hex terrain window rendering.
+- `src/world/GridWorld.ts`: unbounded axial hex-to-world mapping, cached terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
+- `src/world/HexTerrainCatalog.ts`: patch tile catalog, canonical patch micro-hex coordinates, and patch edge ordering.
+- `src/world/HexTerrainRules.ts`: patch edge compatibility, diagnostics validation, and surface/blocking helper rules.
+- `src/world/HexTerrainWfcSolver.ts`: finite axial patch WFC solver kept as a reference for patch solving experiments.
+- `src/world/TerrainProvider.ts`: terrain provider interface and shared `TerrainCell` construction helpers.
+- `src/world/WfcTerrainProvider.ts`: default terrain provider that wraps the grammar/WFC pipeline.
+- `src/world/SeedTerrainProvider.ts`: cheap deterministic hash terrain provider for fallback/debug use.
+- `src/world/hexCoordinates.ts`: shared axial hex coordinate types, directions, keys, and distance helpers.
 - `src/render/GameEffects.ts`: short-lived lightning and shockwave effects.
 - `src/render/materials.ts`: shared Three.js material creation.
 - `src/render/meshes.ts`: player, enemy, and terrain glyph mesh factories.
@@ -48,8 +55,30 @@ The prototype is intentionally small, but the code is split by responsibility so
 - UI windows should consume their own pointer events so game movement clicks do not leak through, except locked transparent HUD panels while Unlock UI is off; those are intentionally click-through.
 - Rendering helpers should create reusable `THREE.Object3D` instances and avoid owning gameplay state.
 - `ZeusGame` can coordinate systems, but new large systems should become their own modules.
-- Navigation and future vision checks should share the grid linecast helper so blocker semantics stay consistent.
+- Navigation and future vision checks should share the hex linecast helper so blocker semantics stay consistent.
 - Normal melee enemies should not call Theta* directly during frame update; shared flow fields handle swarm chase and the path queue handles rare fallback paths.
+
+## Hex World
+
+Gameplay grid coordinates are axial hex coordinates named `q/r`. Three.js world space still uses the `X/Z` ground plane and `Y` as vertical height. `GridWorld` owns unbounded coordinate conversion, cached cell access, neighbors, rings, ranges, line samples, and cell keys. Terrain generation is delegated to a `TerrainProvider`.
+
+The default provider is `WfcTerrainProvider`, which uses the explicit patch tile catalog for rolling patch-by-patch terrain generation. `SeedTerrainProvider` is a deterministic hash-based provider kept for fallback/debug use and future generation-mode selection.
+
+Terrain starts with a declarative patch grammar. A micro hex is an actual gameplay terrain cell. A patch tile is a non-overlapping radius-2 group of micro hexes used as one generation unit. A patch edge signature is an ordered list of socket values along one patch side. The patch generator creates internally valid patch variants before runtime selection; the world is not stamped or mutated after selection.
+
+`WfcTerrainProvider` commits terrain one patch at a time as the player moves. It keeps committed patch variants by patch coordinate and expanded micro cells by micro coordinate. The active generation radius is measured in patch coordinates around the player's current patch. Missing patches are generated in deterministic ring order, filtered against already-committed neighbor edge signatures, then committed permanently. Existing patches are never regenerated.
+
+The origin starts with a small open safe patch radius. Runtime patch selection uses local edge compatibility rather than solving a precomputed finite island. If a requested micro hex belongs to an uncommitted patch, the provider lazily commits that containing patch before returning the terrain cell.
+
+The world no longer has a gameplay boundary. The old finite-world `WORLD_CELLS`, `WORLD_SIZE`, and related constants have been removed from runtime config; if future diagnostics need fixed windows, they should define local active-window sizes instead of gameplay bounds. Visibility state is sparse-map backed so discovered memory can grow with generated terrain instead of being limited to a fixed array.
+
+Terrain is split into structural cells and derived surfaces:
+
+- Structures: `open`, `wall`, `bank`, `lake`, `river`; the active rolling catalog currently emits `open`, `wall`, and `river`.
+- Surfaces: `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, `charged`.
+- Edge/socket vocabulary: `open`, `closed`, `river`, `lake`.
+
+`open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Only `wall` blocks visibility; water is a movement obstacle but not an occluder. The current rolling catalog includes open patches, blocker patches, and river lines/bends/forks/sources. Bank and lake variants remain reserved for a later pass.
 
 ## Future Splits
 

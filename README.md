@@ -30,8 +30,8 @@ This runs the production build and a headless browser smoke test for rendering, 
 
 ## Current Shape
 
-- Orthographic isometric camera following the player in a larger grid-based world.
-- Three.js mesh player, enemies, terrain cells, obstacle blocks, and lightning effects.
-- Procedural terrain cells with a reserved blocker terrain type for future obstacle/pathing work.
+- Orthographic isometric camera following the player in a larger axial hex world.
+- Three.js mesh player, enemies, hex terrain cells, wall blockers, water tiles, and lightning effects.
+- Local-pattern procedural hex terrain with structural cells (`open`, `wall`, `bank`, `lake`, `river`) and derived surfaces prepared for future WFC generation.
 - Simple melee chaser enemies that spawn around the player.
-- HTML/CSS health, mana, cooldowns, wave counter, kill counter, and grid cell readout.
+- HTML/CSS health, mana, cooldowns, wave counter, kill counter, and hex coordinate readout.

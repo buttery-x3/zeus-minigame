@@ -10,8 +10,8 @@ type HudState = {
   mana: number;
   kills: number;
   wave: number;
-  cellX: number;
-  cellZ: number;
+  cellQ: number;
+  cellR: number;
   castMode: SpellId | null;
   cooldowns: Record<SpellId, number>;
   spells: Record<SpellId, SpellConfig>;
@@ -48,7 +48,7 @@ export class Hud {
     const status = this.createContent(`<div class="hud__status" data-status></div>`);
     const game = this.createContent(`
       <div class="hud__game">
-        <div class="hud__cell"><i></i><span data-cell>Cell 90, 90</span></div>
+        <div class="hud__cell"><i></i><span data-cell>Hex 0, 0</span></div>
         <div class="hud__line"><strong data-wave>1</strong><span>Wave</span></div>
         <div class="hud__line"><strong data-kills>0</strong><span>Kills</span></div>
       </div>
@@ -142,7 +142,7 @@ export class Hud {
     this.manaFill.style.transform = `scaleX(${clamp(state.mana / PLAYER_MAX_MANA, 0, 1)})`;
     this.kills.textContent = `${state.kills}`;
     this.wave.textContent = `${state.wave}`;
-    this.cell.textContent = `Cell ${state.cellX}, ${state.cellZ}`;
+    this.cell.textContent = `Hex ${state.cellQ}, ${state.cellR}`;
 
     if (state.gameOver) {
       this.status.textContent = "Storm spent. Press R.";

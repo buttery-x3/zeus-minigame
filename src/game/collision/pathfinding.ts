@@ -12,8 +12,8 @@ export type PathResult = {
 };
 
 type PathNode = {
-  x: number;
-  z: number;
+  q: number;
+  r: number;
   key: string;
   g: number;
   f: number;
@@ -23,18 +23,8 @@ type PathNode = {
 type FindPathOptions = {
   radius: number;
   maxIterations?: number;
+  maxMs?: number;
 };
-
-const NEIGHBORS = [
-  { x: -1, z: -1 },
-  { x: 0, z: -1 },
-  { x: 1, z: -1 },
-  { x: -1, z: 0 },
-  { x: 1, z: 0 },
-  { x: -1, z: 1 },
-  { x: 0, z: 1 },
-  { x: 1, z: 1 },
-];
 
 export function findPath(gridWorld: GridWorld, start: THREE.Vector3, goal: THREE.Vector3, options: FindPathOptions) {
   const radius = options.radius;
@@ -51,24 +41,29 @@ export function findPath(gridWorld: GridWorld, start: THREE.Vector3, goal: THREE
 
   const startCell = gridWorld.worldToCell(startPoint.x, startPoint.z);
   const goalCell = gridWorld.worldToCell(goalPoint.x, goalPoint.z);
-  const startKey = cellKey(startCell.x, startCell.z);
-  const goalKey = cellKey(goalCell.x, goalCell.z);
+  const startKey = gridWorld.cellKey(startCell.q, startCell.r);
+  const goalKey = gridWorld.cellKey(goalCell.q, goalCell.r);
   const nodes = new Map<string, PathNode>();
   const openKeys = [startKey];
   const openSet = new Set(openKeys);
   const closedSet = new Set<string>();
   const maxIterations = options.maxIterations ?? PATHFINDING_MAX_ITERATIONS;
+  const deadline = options.maxMs ? performance.now() + options.maxMs : Number.POSITIVE_INFINITY;
 
   nodes.set(startKey, {
-    x: startCell.x,
-    z: startCell.z,
+    q: startCell.q,
+    r: startCell.r,
     key: startKey,
     g: 0,
-    f: heuristic(gridWorld, startCell.x, startCell.z, goalPoint),
+    f: heuristic(gridWorld, startCell.q, startCell.r, goalPoint),
     parentKey: null,
   });
 
   for (let iterations = 1; openKeys.length > 0 && iterations <= maxIterations; iterations += 1) {
+    if (performance.now() >= deadline) {
+      break;
+    }
+
     const current = takeBestOpenNode(openKeys, openSet, nodes);
     if (!current) {
       break;
@@ -81,20 +76,17 @@ export function findPath(gridWorld: GridWorld, start: THREE.Vector3, goal: THREE
 
     closedSet.add(current.key);
 
-    for (const offset of NEIGHBORS) {
-      const neighborX = current.x + offset.x;
-      const neighborZ = current.z + offset.z;
-
-      if (!isCellInBounds(gridWorld, neighborX, neighborZ)) {
+    for (const neighbor of gridWorld.getNeighbors(current.q, current.r)) {
+      if (!isCellInBounds(gridWorld, neighbor.q, neighbor.r)) {
         continue;
       }
 
-      const neighborPoint = getCellCenter(gridWorld, neighborX, neighborZ);
+      const neighborPoint = getCellCenter(gridWorld, neighbor.q, neighbor.r);
       if (!canOccupyWorld(gridWorld, neighborPoint.x, neighborPoint.z, radius)) {
         continue;
       }
 
-      const neighborKey = cellKey(neighborX, neighborZ);
+      const neighborKey = gridWorld.cellKey(neighbor.q, neighbor.r);
       if (closedSet.has(neighborKey)) {
         continue;
       }
@@ -117,11 +109,11 @@ export function findPath(gridWorld: GridWorld, start: THREE.Vector3, goal: THREE
       }
 
       nodes.set(neighborKey, {
-        x: neighborX,
-        z: neighborZ,
+        q: neighbor.q,
+        r: neighbor.r,
         key: neighborKey,
         g: tentativeG,
-        f: tentativeG + heuristic(gridWorld, neighborX, neighborZ, goalPoint),
+        f: tentativeG + heuristic(gridWorld, neighbor.q, neighbor.r, goalPoint),
         parentKey: pathParent.key,
       });
 
@@ -171,7 +163,7 @@ function reconstructPath(
     if (!node) {
       break;
     }
-    points.push(node.parentKey ? getCellCenter(gridWorld, node.x, node.z) : startPoint.clone());
+    points.push(node.parentKey ? getCellCenter(gridWorld, node.q, node.r) : startPoint.clone());
     key = node.parentKey;
   }
 
@@ -210,14 +202,10 @@ function pathResult(points: THREE.Vector3[], iterations: number): PathResult {
 }
 
 function nodePoint(gridWorld: GridWorld, node: PathNode, startKey: string, startPoint: THREE.Vector3) {
-  return node.key === startKey ? startPoint : getCellCenter(gridWorld, node.x, node.z);
+  return node.key === startKey ? startPoint : getCellCenter(gridWorld, node.q, node.r);
 }
 
-function heuristic(gridWorld: GridWorld, cellX: number, cellZ: number, goal: THREE.Vector3) {
-  const point = getCellCenter(gridWorld, cellX, cellZ);
+function heuristic(gridWorld: GridWorld, q: number, r: number, goal: THREE.Vector3) {
+  const point = getCellCenter(gridWorld, q, r);
   return distance2D(point.x, point.z, goal.x, goal.z);
-}
-
-function cellKey(cellX: number, cellZ: number) {
-  return `${cellX},${cellZ}`;
 }
