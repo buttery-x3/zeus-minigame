@@ -364,6 +364,7 @@ export class ZeusGame {
   private setTerrainDebugMode(enabled: boolean) {
     this.terrainDebugMode = enabled;
     this.cameraRig.setZoomMultiplier(enabled ? 3 : 1);
+    this.cameraRig.setVerticalFramingBias(enabled ? -0.22 : 0);
     this.visibilityOverlay.setDebugReveal(enabled);
     if (enabled) {
       this.state.health = PLAYER_MAX_HEALTH;

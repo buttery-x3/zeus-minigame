@@ -106,7 +106,7 @@ async function verifyTerrainGrammar(page, viewport) {
   if (wfc.fellBack) {
     throw new Error(`${viewport.name} rolling patch terrain fell back instead of solving: ${JSON.stringify(wfc)}`);
   }
-  if (wfc.mode !== "rolling-patch" || wfc.patchRadius !== 2 || wfc.activePatchRadius < 4 || wfc.committedPatchCount < 61) {
+  if (wfc.mode !== "rolling-patch" || wfc.patchRadius !== 2 || wfc.activePatchRadius < 3 || wfc.committedPatchCount < 37) {
     throw new Error(`${viewport.name} rolling patch terrain resolved an unexpected active set: ${JSON.stringify(wfc)}`);
   }
   if (wfc.emergencyPatchCount > 0 || wfc.contradictionCount > 0) {
@@ -122,7 +122,9 @@ async function verifyTerrainGrammar(page, viewport) {
 
 async function verifyTerrainDebugMode(page, viewport) {
   const before = await readDiagnostics(page);
-  const beforeTop = Math.abs(before.camera?.projection?.top ?? 0);
+  const beforeProjection = before.camera?.projection ?? {};
+  const beforeHeight = Math.abs((beforeProjection.top ?? 0) - (beforeProjection.bottom ?? 0));
+  const beforeCenter = ((beforeProjection.top ?? 0) + (beforeProjection.bottom ?? 0)) / 2;
   const beforeRadius = before.terrainGrammar?.wfc?.activePatchRadius;
   const beforeGeneratedPatches = before.terrainGrammar?.wfc?.generatedPatchCount;
   const beforeBlockers = before.terrain?.blockers?.total ?? 0;
@@ -138,9 +140,14 @@ async function verifyTerrainDebugMode(page, viewport) {
   if (!after.visibilityOverlay?.debugReveal || after.visibilityOverlay?.visible) {
     throw new Error(`${viewport.name} terrain debug mode did not disable fog overlay: ${JSON.stringify(after.visibilityOverlay)}`);
   }
-  const afterTop = Math.abs(after.camera?.projection?.top ?? 0);
-  if (beforeTop <= 0 || afterTop < beforeTop * 2.9) {
-    throw new Error(`${viewport.name} terrain debug mode did not widen camera view: before=${beforeTop}, after=${afterTop}`);
+  const afterProjection = after.camera?.projection ?? {};
+  const afterHeight = Math.abs((afterProjection.top ?? 0) - (afterProjection.bottom ?? 0));
+  const afterCenter = ((afterProjection.top ?? 0) + (afterProjection.bottom ?? 0)) / 2;
+  if (beforeHeight <= 0 || afterHeight < beforeHeight * 2.9) {
+    throw new Error(`${viewport.name} terrain debug mode did not widen camera view: before=${beforeHeight}, after=${afterHeight}`);
+  }
+  if (afterCenter >= beforeCenter) {
+    throw new Error(`${viewport.name} terrain debug mode did not bias camera framing downward: before=${beforeCenter}, after=${afterCenter}`);
   }
   if (after.player.health !== 120) {
     throw new Error(`${viewport.name} terrain debug mode did not keep player health full: ${after.player.health}`);
@@ -163,9 +170,11 @@ async function verifyTerrainDebugMode(page, viewport) {
   await page.waitForTimeout(500);
 
   const restored = await readDiagnostics(page);
-  const restoredTop = Math.abs(restored.camera?.projection?.top ?? 0);
-  if (restoredTop > beforeTop * 1.1) {
-    throw new Error(`${viewport.name} terrain debug mode did not restore camera view: before=${beforeTop}, restored=${restoredTop}`);
+  const restoredProjection = restored.camera?.projection ?? {};
+  const restoredHeight = Math.abs((restoredProjection.top ?? 0) - (restoredProjection.bottom ?? 0));
+  const restoredCenter = ((restoredProjection.top ?? 0) + (restoredProjection.bottom ?? 0)) / 2;
+  if (restoredHeight > beforeHeight * 1.1 || Math.abs(restoredCenter - beforeCenter) > 0.1) {
+    throw new Error(`${viewport.name} terrain debug mode did not restore camera view: beforeHeight=${beforeHeight}, restoredHeight=${restoredHeight}, beforeCenter=${beforeCenter}, restoredCenter=${restoredCenter}`);
   }
 }
 

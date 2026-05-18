@@ -14,7 +14,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Press backtick or `F3` to toggle diagnostics.
 - Press `V` to toggle enemy health bars between smart and always visible.
 - Press `R` after defeat to restart.
-- Press `F4` or use the pause menu to toggle Terrain Debug, which removes fog, zooms the camera out 3x, bypasses visibility-gated movement/cast checks, and keeps Zeus at full HP for terrain inspection.
+- Press `F4` or use the pause menu to toggle Terrain Debug, which removes fog, zooms the camera out 3x with debug framing, renders a wider window of already-generated terrain, bypasses visibility-gated movement/cast checks, and keeps Zeus at full HP for terrain inspection.
 - Use the top-right controls to pause or open diagnostics.
 
 ## Player

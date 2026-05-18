@@ -5,6 +5,7 @@ export class CameraRig {
   private readonly followFocus = new THREE.Vector3();
   private readonly cameraOffset = new THREE.Vector3(32, 36, 32);
   private zoomMultiplier = 1;
+  private verticalFramingBias = 0;
 
   constructor(
     private readonly camera: THREE.OrthographicCamera,
@@ -24,16 +25,22 @@ export class CameraRig {
     this.resize();
   }
 
+  setVerticalFramingBias(bias: number) {
+    this.verticalFramingBias = bias;
+    this.resize();
+  }
+
   resize = () => {
     const width = window.innerWidth;
     const height = window.innerHeight;
     const aspect = width / Math.max(1, height);
 
     const zoom = this.cameraZoom * this.zoomMultiplier;
+    const verticalCenter = zoom * this.verticalFramingBias;
     this.camera.left = -zoom * aspect;
     this.camera.right = zoom * aspect;
-    this.camera.top = zoom;
-    this.camera.bottom = -zoom;
+    this.camera.top = verticalCenter + zoom;
+    this.camera.bottom = verticalCenter - zoom;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
   };

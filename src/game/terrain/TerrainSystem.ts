@@ -14,7 +14,7 @@ type BlockerRecord = {
 };
 
 const NORMAL_RENDER_RADIUS = 18;
-const DEBUG_RENDER_RADIUS = 30;
+const DEBUG_RENDER_RADIUS = 56;
 
 export class TerrainSystem {
   private terrainWindowKey = "";
