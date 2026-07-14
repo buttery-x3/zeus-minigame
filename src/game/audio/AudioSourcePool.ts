@@ -18,12 +18,13 @@ export class AudioSourcePool {
     return this.active.size;
   }
 
-  play(cueId: AudioCueId, buffer: AudioBuffer, volume: number, loop: boolean, maxVoices: number) {
+  play(cueId: AudioCueId, buffer: AudioBuffer, volume: number, loop: boolean, maxVoices: number, detuneCents = 0) {
     this.enforceVoiceLimit(cueId, maxVoices);
     const source = this.context.createBufferSource();
     const gain = this.context.createGain();
     source.buffer = buffer;
     source.loop = loop;
+    source.detune.value = detuneCents;
     gain.gain.value = volume;
     source.connect(gain);
     gain.connect(this.output);

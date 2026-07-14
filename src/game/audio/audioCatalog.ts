@@ -3,12 +3,12 @@ import type { AudioCueDefinition, AudioCueId } from "./audioTypes";
 export const AUDIO_CATALOG: Record<AudioCueId, AudioCueDefinition> = {
   "spell-chain-cast": {
     urls: ["/assets/audio/sfx/spells/chain_lightning.wav"],
-    volume: 0.72,
+    volume: 0.576,
     maxVoices: 2,
   },
   "spell-bolt-cast": {
     urls: ["/assets/audio/sfx/spells/lightning_bolt.wav"],
-    volume: 0.72,
+    volume: 0.576,
     maxVoices: 2,
   },
   "spell-cast-failed": {
@@ -34,24 +34,24 @@ export const AUDIO_CATALOG: Record<AudioCueId, AudioCueDefinition> = {
       "/assets/audio/sfx/enemies/minion_death3.wav",
       "/assets/audio/sfx/enemies/minion_death4.wav",
     ],
-    volume: 0.62,
+    volume: 0.651,
     maxVoices: 5,
     minIntervalMs: 35,
   },
   "new-wave-announce": {
     urls: ["/assets/audio/sfx/UX/new_wave_announce.wav"],
-    volume: 0.7,
+    volume: 0.455,
     maxVoices: 1,
   },
   "charged-tile-channeling": {
     urls: ["/assets/audio/sfx/UX/channeling_charged_tile.wav"],
-    volume: 0.48,
+    volume: 0.528,
     maxVoices: 1,
     loop: true,
   },
   "cursed-tile-channeling": {
     urls: ["/assets/audio/sfx/UX/channeling_cursed_tile.wav"],
-    volume: 0.48,
+    volume: 0.456,
     maxVoices: 1,
     loop: true,
   },

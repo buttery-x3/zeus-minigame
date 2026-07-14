@@ -108,6 +108,25 @@ async function verifyAudioSystem(page, viewport) {
   ) {
     throw new Error(`${viewport.name} audio catalog did not preload correctly: ${JSON.stringify(initial.audio)}`);
   }
+  const expectedVolumes = {
+    "spell-chain-cast": 0.576,
+    "spell-bolt-cast": 0.576,
+    "minion-death": 0.651,
+    "new-wave-announce": 0.455,
+    "charged-tile-channeling": 0.528,
+    "cursed-tile-channeling": 0.456,
+  };
+  for (const [cueId, expectedVolume] of Object.entries(expectedVolumes)) {
+    if (Math.abs(initial.audio.cueVolumes[cueId] - expectedVolume) > 0.0001) {
+      throw new Error(`${viewport.name} ${cueId} had the wrong mix volume: ${JSON.stringify(initial.audio.cueVolumes)}`);
+    }
+  }
+  if (
+    initial.audio.cooldownFailurePitch.detuneCents !== -1200 ||
+    initial.audio.cooldownFailurePitch.randomDetuneCents !== 45
+  ) {
+    throw new Error(`${viewport.name} cooldown failure pitch was not configured correctly: ${JSON.stringify(initial.audio)}`);
+  }
 
   const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
   await page.mouse.move(target.x, target.y);
@@ -126,7 +145,13 @@ async function verifyAudioSystem(page, viewport) {
   await page.waitForFunction(
     (before) => {
       const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
-      return audio?.lastCastFailureReason === "cooldown" && audio.playCounts["spell-cast-failed"] > before;
+      const detune = audio?.lastDetuneCents?.["spell-cast-failed"];
+      return (
+        audio?.lastCastFailureReason === "cooldown" &&
+        audio.playCounts["spell-cast-failed"] > before &&
+        detune >= -1245 &&
+        detune <= -1155
+      );
     },
     beforeCooldownFailure.audio.playCounts["spell-cast-failed"],
   );

@@ -3,6 +3,14 @@ import type { SpellCastFailureReason } from "../spells/spellTypes";
 import type { AudioCueId, AudioLoadState, AudioSuspensionReason } from "./audioTypes";
 import { AudioSourcePool, type AudioSourceHandle } from "./AudioSourcePool";
 
+type PlayOptions = {
+  detuneCents?: number;
+  randomDetuneCents?: number;
+};
+
+const COOLDOWN_FAILURE_DETUNE_CENTS = -1200;
+const COOLDOWN_FAILURE_RANDOM_DETUNE_CENTS = 45;
+
 export class AudioSystem {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -15,6 +23,7 @@ export class AudioSystem {
   private readonly lastVariantByCue = new Map<AudioCueId, number>();
   private readonly lastPlayedAt = new Map<AudioCueId, number>();
   private readonly playCounts = createCueCounter();
+  private readonly lastDetuneByCue = new Map<AudioCueId, number>();
   private readonly optionalUnavailable = new Set<AudioCueId>();
   private readonly suspensionReasons = new Set<AudioSuspensionReason>();
   private desiredLoop: AudioCueId | null = null;
@@ -27,7 +36,7 @@ export class AudioSystem {
     void this.preload();
   }
 
-  play(cueId: AudioCueId) {
+  play(cueId: AudioCueId, options: PlayOptions = {}) {
     if (this.disposed) {
       return false;
     }
@@ -47,13 +56,23 @@ export class AudioSystem {
 
     this.lastPlayedAt.set(cueId, now);
     this.playCounts[cueId] += 1;
-    this.sourcePool?.play(cueId, buffer, definition.volume, false, definition.maxVoices);
+    const detuneCents = getRandomDetune(options.detuneCents ?? 0, options.randomDetuneCents ?? 0);
+    this.lastDetuneByCue.set(cueId, detuneCents);
+    this.sourcePool?.play(cueId, buffer, definition.volume, false, definition.maxVoices, detuneCents);
     return true;
   }
 
   playSpellCastFailed(reason: SpellCastFailureReason) {
     this.lastCastFailureReason = reason;
-    this.play("spell-cast-failed");
+    this.play(
+      "spell-cast-failed",
+      reason === "cooldown"
+        ? {
+            detuneCents: COOLDOWN_FAILURE_DETUNE_CENTS,
+            randomDetuneCents: COOLDOWN_FAILURE_RANDOM_DETUNE_CENTS,
+          }
+        : undefined,
+    );
   }
 
   startLoop(cueId: AudioCueId) {
@@ -99,6 +118,7 @@ export class AudioSystem {
     this.stopAllSources();
     this.lastVariantByCue.clear();
     this.lastPlayedAt.clear();
+    this.lastDetuneByCue.clear();
     this.lastCastFailureReason = null;
   }
 
@@ -113,6 +133,12 @@ export class AudioSystem {
       activeLoop: this.desiredLoop,
       loopPlaying: this.loopSource !== null,
       playCounts: { ...this.playCounts },
+      cueVolumes: Object.fromEntries(AUDIO_CUE_IDS.map((cueId) => [cueId, AUDIO_CATALOG[cueId].volume])),
+      lastDetuneCents: Object.fromEntries(this.lastDetuneByCue),
+      cooldownFailurePitch: {
+        detuneCents: COOLDOWN_FAILURE_DETUNE_CENTS,
+        randomDetuneCents: COOLDOWN_FAILURE_RANDOM_DETUNE_CENTS,
+      },
       lastCastFailureReason: this.lastCastFailureReason,
       optionalUnavailable: [...this.optionalUnavailable],
       suspensionReasons: [...this.suspensionReasons],
@@ -255,4 +281,8 @@ export class AudioSystem {
 
 function createCueCounter(): Record<AudioCueId, number> {
   return Object.fromEntries(AUDIO_CUE_IDS.map((cueId) => [cueId, 0])) as Record<AudioCueId, number>;
+}
+
+function getRandomDetune(baseCents: number, randomCents: number) {
+  return baseCents + (Math.random() * 2 - 1) * randomCents;
 }
