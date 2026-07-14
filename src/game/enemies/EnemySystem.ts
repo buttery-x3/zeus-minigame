@@ -23,6 +23,7 @@ import { EnemyNavigation } from "./navigation/EnemyNavigation";
 
 type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
+  enemyDied: (position: THREE.Vector3) => void;
 };
 
 type EnemyMovePlan = {
@@ -188,6 +189,7 @@ export class EnemySystem {
     state.kills += 1;
     state.mana = Math.min(PLAYER_MAX_MANA, state.mana + 4);
     this.effects.createShockwave(deathPosition, 0x67e3c0, 3);
+    this.callbacks.enemyDied(deathPosition);
   }
 
   findClosest(
@@ -284,6 +286,15 @@ export class EnemySystem {
       return false;
     }
     enemy.character.playAttack();
+    return true;
+  }
+
+  defeatEnemyForVerification(state: GameRuntimeState) {
+    const enemy = this.enemies[0];
+    if (!enemy) {
+      return false;
+    }
+    this.damageEnemy(enemy, enemy.hp, state);
     return true;
   }
 

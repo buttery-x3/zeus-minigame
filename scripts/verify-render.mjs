@@ -56,7 +56,9 @@ async function verifyInBrowser() {
       await waitForPlayerModel(page, viewport);
       await verifyPlayerAnimationLifecycle(page, viewport);
       await verifyEnemyAnimationLifecycle(page, viewport);
+      await verifyAudioSystem(page, viewport);
 
+      await reloadGame(page);
       await verifyHudTransparency(page, viewport);
       await reloadGame(page);
       await verifyFrameTiming(page, viewport);
@@ -88,6 +90,67 @@ async function verifyInBrowser() {
   }
 
   return results;
+}
+
+async function verifyAudioSystem(page, viewport) {
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().audio?.loadState === "ready");
+  await page.mouse.click(viewport.width * 0.5, viewport.height * 0.5);
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return audio?.unlocked && audio.contextState === "running";
+  });
+
+  const initial = await readDiagnostics(page);
+  if (
+    initial.audio.configuredCueCount !== 7 ||
+    initial.audio.loadedVariantCount !== 12 ||
+    initial.audio.optionalUnavailable.length !== 0
+  ) {
+    throw new Error(`${viewport.name} audio catalog did not preload correctly: ${JSON.stringify(initial.audio)}`);
+  }
+
+  const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
+  await page.mouse.move(target.x, target.y);
+  await releaseSpellKeys(page);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.up("KeyQ");
+  await waitForSpellCooldown(page, "chain");
+  await page.waitForFunction(
+    (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["spell-chain-cast"] > before,
+    initial.audio.playCounts["spell-chain-cast"],
+  );
+
+  const beforeCooldownFailure = await readDiagnostics(page);
+  await page.keyboard.press("KeyQ");
+  await page.waitForFunction(
+    (before) => {
+      const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+      return audio?.lastCastFailureReason === "cooldown" && audio.playCounts["spell-cast-failed"] > before;
+    },
+    beforeCooldownFailure.audio.playCounts["spell-cast-failed"],
+  );
+
+  await page.evaluate(() => window.__ZEUS_GAME__?.setPlayerManaForVerification(0));
+  await page.keyboard.press("KeyW");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().audio?.lastCastFailureReason === "out-of-mana");
+
+  const beforeEnemyDeath = await readDiagnostics(page);
+  const defeatedEnemy = await page.evaluate(() => window.__ZEUS_GAME__?.defeatEnemyForVerification());
+  if (!defeatedEnemy) {
+    throw new Error(`${viewport.name} could not defeat an enemy for audio verification`);
+  }
+  await page.waitForFunction(
+    (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["minion-death"] > before,
+    beforeEnemyDeath.audio.playCounts["minion-death"],
+  );
+
+  const beforePlayerHit = await readDiagnostics(page);
+  await page.evaluate(() => window.__ZEUS_GAME__?.defeatPlayerForVerification());
+  await page.waitForFunction(
+    (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["player-hit"] > before,
+    beforePlayerHit.audio.playCounts["player-hit"],
+  );
 }
 
 async function verifyFrameTiming(page, viewport) {
@@ -279,6 +342,11 @@ async function verifyGroundEffects(page, viewport) {
       { timeout: 6000 },
     );
 
+    const chargedAudio = (await readDiagnostics(page)).audio;
+    if (chargedAudio.activeLoop !== "charged-tile-channeling" || !chargedAudio.loopPlaying) {
+      throw new Error(`${viewport.name} charged ground did not start the channeling cue: ${JSON.stringify(chargedAudio)}`);
+    }
+
     const chargedKey = `${charged.cell.q},${charged.cell.r}`;
     const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
     await page.mouse.move(target.x, target.y);
@@ -332,7 +400,8 @@ async function verifyGroundEffects(page, viewport) {
       Math.abs(usedWhileAway - usedBeforeWaitingAway) > 0.03 ||
       away.groundEffects.cooldownRecoveryMultiplier !== 1 ||
       away.terrain?.specialGround?.activeParticleSystems !== 0 ||
-      away.terrain?.specialGround?.animatedTileCount !== 0
+      away.terrain?.specialGround?.animatedTileCount !== 0 ||
+      away.audio.activeLoop !== null
     ) {
       throw new Error(`${viewport.name} charged-ground capacity did not pause after leaving: before=${usedBeforeWaitingAway}, away=${usedWhileAway}`);
     }
@@ -361,7 +430,11 @@ async function verifyGroundEffects(page, viewport) {
       { timeout: 5000 },
     );
     diagnostics = await readDiagnostics(page);
-    if (diagnostics.groundEffects.cooldownRecoveryMultiplier !== 1 || diagnostics.groundEffects.energyRecoveryMultiplier !== 1) {
+    if (
+      diagnostics.groundEffects.cooldownRecoveryMultiplier !== 1 ||
+      diagnostics.groundEffects.energyRecoveryMultiplier !== 1 ||
+      diagnostics.audio.activeLoop !== null
+    ) {
       throw new Error(`${viewport.name} depleted charged ground still granted recovery: ${JSON.stringify(diagnostics.groundEffects)}`);
     }
 
@@ -383,13 +456,16 @@ async function verifyGroundEffects(page, viewport) {
       diagnostics.terrain?.specialGround?.activeParticleSystems !== 1 ||
       diagnostics.terrain?.specialGround?.activeParticleKind !== "cursed" ||
       diagnostics.terrain?.specialGround?.animatedTileCount !== 1 ||
-      diagnostics.player?.navigation?.groundAuraColor !== "#d475ff"
+      diagnostics.player?.navigation?.groundAuraColor !== "#d475ff" ||
+      diagnostics.audio.activeLoop !== "cursed-tile-channeling" ||
+      !diagnostics.audio.loopPlaying
     ) {
       throw new Error(`${viewport.name} cursed ground did not activate focused particles: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
     }
 
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === true);
+    await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().audio?.suspensionReasons.includes("pause"));
     const pausedStart = await readDiagnostics(page);
     await page.waitForTimeout(360);
     const pausedEnd = await readDiagnostics(page);
@@ -397,7 +473,10 @@ async function verifyGroundEffects(page, viewport) {
       throw new Error(`${viewport.name} curse cleansing advanced while paused`);
     }
     await page.keyboard.press("Escape");
-    await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+    await page.waitForFunction(() => {
+      const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+      return diagnostics && !diagnostics.paused && !diagnostics.audio.suspensionReasons.includes("pause");
+    });
 
     const cursedCell = cursed.cell;
     await clickVisibleMoveCell(page, viewport, 0.67, 0.54);
@@ -410,7 +489,7 @@ async function verifyGroundEffects(page, viewport) {
       { timeout: 6000 },
     );
     const leftCurse = await readDiagnostics(page);
-    if (leftCurse.groundEffects.curseProgress !== 0) {
+    if (leftCurse.groundEffects.curseProgress !== 0 || leftCurse.audio.activeLoop !== null) {
       throw new Error(`${viewport.name} curse progress did not reset after leaving`);
     }
 
@@ -434,7 +513,8 @@ async function verifyGroundEffects(page, viewport) {
       currencyText?.trim() !== "1" ||
       diagnostics.groundEffects.phase !== "cleansed" ||
       diagnostics.terrain?.specialGround?.activeParticleSystems !== 0 ||
-      diagnostics.terrain?.specialGround?.animatedTileCount !== 0
+      diagnostics.terrain?.specialGround?.animatedTileCount !== 0 ||
+      diagnostics.audio.activeLoop !== null
     ) {
       throw new Error(`${viewport.name} cursed-ground reward or HUD currency did not update: ${currencyText}, ${JSON.stringify(diagnostics.groundEffects)}`);
     }
@@ -631,6 +711,9 @@ async function verifyHiddenCastRejected(page, viewport, diagnostics) {
   if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
     throw new Error(`${viewport.name} cast into hidden blocker shadow was not rejected`);
   }
+  if (after.audio.lastCastFailureReason !== "hidden-target") {
+    throw new Error(`${viewport.name} hidden cast reported the wrong audio failure reason: ${JSON.stringify(after.audio)}`);
+  }
 }
 
 async function verifyUndiscoveredMoveRejected(page, viewport, diagnostics) {
@@ -692,6 +775,9 @@ async function verifyOutOfRangeCastRejected(page, viewport) {
   const after = await readDiagnostics(page);
   if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
     throw new Error(`${viewport.name} out-of-range raw cast target was not rejected when target snap was disabled`);
+  }
+  if (after.audio.lastCastFailureReason !== "out-of-range") {
+    throw new Error(`${viewport.name} strict-range cast reported the wrong audio failure reason: ${JSON.stringify(after.audio)}`);
   }
 }
 
@@ -1308,6 +1394,7 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
     expectedClip,
   );
   const duringCast = await readDiagnostics(page);
+  const audioCue = spellId === "chain" ? "spell-chain-cast" : "spell-bolt-cast";
   const castTarget = beforeCast.input.pointerWorld;
   const castOrigin = beforeCast.player.position;
   const expectedRotation = Math.atan2(castTarget[0] - castOrigin[0], castTarget[2] - castOrigin[2]);
@@ -1318,6 +1405,9 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
     throw new Error(
       `${viewport.name} ${spellId} cast did not face its target: rotation=${duringCast.player.rotationY}, expected=${expectedRotation}`,
     );
+  }
+  if (duringCast.audio.playCounts[audioCue] !== beforeCast.audio.playCounts[audioCue] + 1) {
+    throw new Error(`${viewport.name} ${spellId} cast did not play exactly one cast cue: ${JSON.stringify(duringCast.audio)}`);
   }
   await verifyAbilityCooldownUi(page, viewport, spellId);
 }

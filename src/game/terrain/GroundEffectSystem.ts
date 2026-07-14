@@ -32,6 +32,8 @@ export type GroundEffectSnapshot = {
 
 type GroundEffectCallbacks = {
   onCursedCleared: (cell: HexCoord, reward: number) => void;
+  onSpecialTileInteractionStarted: (surface: "charged" | "cursed", cell: HexCoord) => void;
+  onSpecialTileInteractionStopped: (surface: "charged" | "cursed", cell: HexCoord) => void;
 };
 
 const REWARD_FEEDBACK_SECONDS = 1.6;
@@ -41,6 +43,7 @@ export class GroundEffectSystem {
   private readonly cleansedCurses = new Set<string>();
   private currentCurseKey: string | null = null;
   private currentCurseProgress = 0;
+  private currentInteraction: { key: string; surface: "charged" | "cursed"; cell: HexCoord } | null = null;
   private stateVersion = 0;
   private rewardFeedbackSeconds = 0;
   private snapshot: GroundEffectSnapshot = {
@@ -69,6 +72,7 @@ export class GroundEffectSystem {
     const key = this.gridWorld.cellKey(cell.q, cell.r);
     let cooldownRecoveryMultiplier = 1;
     let energyRecoveryMultiplier = 1;
+    let activeInteraction: { key: string; surface: "charged" | "cursed"; cell: HexCoord } | null = null;
 
     if (terrain.surface === "charged") {
       this.resetCurseProgress();
@@ -84,6 +88,9 @@ export class GroundEffectSystem {
         const multiplier = 1 + (CHARGED_GROUND_RECOVERY_MULTIPLIER - 1) * boostedShare;
         cooldownRecoveryMultiplier = multiplier;
         energyRecoveryMultiplier = multiplier;
+      }
+      if (nextUsed < CHARGED_GROUND_CAPACITY_SECONDS) {
+        activeInteraction = { key, surface: "charged", cell: { ...cell } };
       }
       if (used < CHARGED_GROUND_CAPACITY_SECONDS && nextUsed >= CHARGED_GROUND_CAPACITY_SECONDS) {
         this.stateVersion += 1;
@@ -101,10 +108,14 @@ export class GroundEffectSystem {
         this.rewardFeedbackSeconds = REWARD_FEEDBACK_SECONDS;
         this.stateVersion += 1;
         this.callbacks.onCursedCleared(cell, CURSED_GROUND_REWARD);
+      } else {
+        activeInteraction = { key, surface: "cursed", cell: { ...cell } };
       }
     } else {
       this.resetCurseProgress();
     }
+
+    this.syncSpecialTileInteraction(activeInteraction);
 
     const visual = this.getCellVisualState(terrain);
     const chargedUsed = terrain.surface === "charged" ? this.chargedUsage.get(key) ?? 0 : 0;
@@ -168,6 +179,7 @@ export class GroundEffectSystem {
   }
 
   reset() {
+    this.syncSpecialTileInteraction(null);
     this.chargedUsage.clear();
     this.cleansedCurses.clear();
     this.currentCurseKey = null;
@@ -191,6 +203,21 @@ export class GroundEffectSystem {
   private resetCurseProgress() {
     this.currentCurseKey = null;
     this.currentCurseProgress = 0;
+  }
+
+  private syncSpecialTileInteraction(next: typeof this.currentInteraction) {
+    const current = this.currentInteraction;
+    if (current?.key === next?.key && current?.surface === next?.surface) {
+      return;
+    }
+
+    if (current) {
+      this.callbacks.onSpecialTileInteractionStopped(current.surface, current.cell);
+    }
+    this.currentInteraction = next;
+    if (next) {
+      this.callbacks.onSpecialTileInteractionStarted(next.surface, next.cell);
+    }
   }
 
   private countDepletedChargedTiles() {
