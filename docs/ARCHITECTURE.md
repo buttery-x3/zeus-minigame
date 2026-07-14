@@ -38,6 +38,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/world/SeedTerrainProvider.ts`: cheap deterministic hash terrain provider for fallback/debug use.
 - `src/world/hexCoordinates.ts`: shared axial hex coordinate types, directions, keys, and distance helpers.
 - `src/render/GameEffects.ts`: short-lived lightning and shockwave effects.
+- `src/render/SpecialGroundEffects.ts`: low-cost charged/cursed glyph animation and the single occupied-tile particle system.
 - `src/render/materials.ts`: shared Three.js material creation.
 - `src/render/meshes.ts`: player, enemy, and terrain glyph mesh factories.
 - `src/render/primitives.ts`: reusable Three.js line/ring/lightning helper primitives.
@@ -82,6 +83,8 @@ Terrain is split into structural cells and derived surfaces:
 `open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Only `wall` blocks visibility; water is a movement obstacle but not an occluder. The current rolling catalog includes open patches, blocker patches, and river lines/bends/forks/sources. Bank and lake variants remain reserved for a later pass.
 
 Charged and cursed surfaces are assigned deterministically to a small share of open micro cells as patches are expanded. They are surface decorations rather than patch socket types, so they do not affect WFC compatibility or structural generation. `GroundEffectSystem` keeps mutable per-run state separate from the immutable procedural cells: charged usage accumulates per coordinate, while cleansed cursed coordinates are recorded as scarred display overrides. `TerrainSystem` reads these runtime states when rebuilding its rolling render window.
+
+Special-ground rendering deliberately avoids per-tile particles. Each tile owns only its rune/ring lines, with subdued ambient animation throttled to 5 Hz. The occupied tile still updates every frame. `SpecialGroundEffects` creates at most one `THREE.Points` particle object, positioned on the occupied active tile and rendered in one draw call; it is removed as soon as Zeus leaves or the interaction completes.
 
 The HUD's Currencies window uses a reusable currency-row layout. It participates in the same lock, hover-reveal, click-through, and movement system as the other minimal HUD windows so later currencies can be added without creating additional panels.
 

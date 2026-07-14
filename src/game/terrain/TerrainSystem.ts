@@ -2,8 +2,7 @@ import * as THREE from "three";
 import { VISIBILITY_LIGHT_EPSILON } from "../../config";
 import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
-import { createChargedGlyph, createCursedGlyph, type GroundGlyphModel } from "../../render/meshes";
-import { setLineOpacity } from "../../render/primitives";
+import { SpecialGroundEffects } from "../../render/SpecialGroundEffects";
 import type { GridWorld } from "../../world/GridWorld";
 import type { TerrainCell, TerrainSurface } from "../../types";
 import type { VisibilitySystem } from "../visibility/VisibilitySystem";
@@ -15,22 +14,14 @@ type BlockerRecord = {
   mesh: THREE.Mesh;
 };
 
-type SpecialGroundRecord = {
-  q: number;
-  r: number;
-  kind: "charged" | "cursed";
-  model: GroundGlyphModel;
-};
-
 const NORMAL_RENDER_RADIUS = 18;
 const DEBUG_RENDER_RADIUS = 56;
 
 export class TerrainSystem {
   private terrainWindowKey = "";
   private readonly blockers: BlockerRecord[] = [];
-  private readonly specialGround: SpecialGroundRecord[] = [];
+  private readonly specialEffects: SpecialGroundEffects;
   private visibilityVersion = -1;
-  private elapsed = 0;
   private blockerVisibility = {
     total: 0,
     visible: 0,
@@ -43,10 +34,11 @@ export class TerrainSystem {
     private readonly blockerGroup: THREE.Group,
     private readonly materials: GameMaterials,
     private readonly groundEffects: GroundEffectSystem,
-  ) {}
+  ) {
+    this.specialEffects = new SpecialGroundEffects(gridWorld, terrainGroup, materials, groundEffects);
+  }
 
   update(dt: number, playerPosition: THREE.Vector3, visibility: VisibilitySystem, revealAll = false) {
-    this.elapsed += dt;
     const center = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
     const radius = revealAll ? DEBUG_RENDER_RADIUS : NORMAL_RENDER_RADIUS;
     const generationVersion = this.gridWorld.getTerrainGenerationVersion();
@@ -60,16 +52,13 @@ export class TerrainSystem {
     if (visibility.getVersion() !== this.visibilityVersion) {
       this.applyVisibility(visibility, revealAll);
     }
-    this.animateSpecialGround();
+    this.specialEffects.update(dt);
   }
 
   getDiagnostics() {
     return {
       blockers: { ...this.blockerVisibility },
-      specialGround: {
-        total: this.specialGround.length,
-        visible: this.specialGround.filter((record) => record.model.group.visible).length,
-      },
+      specialGround: this.specialEffects.getDiagnostics(),
     };
   }
 
@@ -77,7 +66,7 @@ export class TerrainSystem {
     this.terrainWindowKey = key;
     this.visibilityVersion = -1;
     this.blockers.length = 0;
-    this.specialGround.length = 0;
+    this.specialEffects.resetForRebuild();
     disposeObject3D(this.terrainGroup, { preserveMaterials: Object.values(this.materials) });
     disposeObject3D(this.blockerGroup, { preserveMaterials: Object.values(this.materials) });
     this.terrainGroup.clear();
@@ -101,15 +90,7 @@ export class TerrainSystem {
       tile.receiveShadow = true;
       this.terrainGroup.add(tile);
 
-      if (visual.phase === "charged" || visual.phase === "depleted") {
-        const model = createChargedGlyph(world.x, world.z);
-        this.specialGround.push({ q: cell.q, r: cell.r, kind: "charged", model });
-        this.terrainGroup.add(model.group);
-      } else if (visual.phase === "cursed") {
-        const model = createCursedGlyph(world.x, world.z);
-        this.specialGround.push({ q: cell.q, r: cell.r, kind: "cursed", model });
-        this.terrainGroup.add(model.group);
-      }
+      this.specialEffects.addCell(cell, world, visual.phase);
 
       if (cell.structure === "wall") {
         const blocker = new THREE.Mesh(wallGeometry, this.materials.blocker);
@@ -191,51 +172,7 @@ export class TerrainSystem {
       hidden,
     };
 
-    for (const record of this.specialGround) {
-      record.model.group.visible = revealAll || visibility.isVisibleCell(record.q, record.r);
-    }
-  }
-
-  private animateSpecialGround() {
-    const chargedPulse = 0.9 + Math.sin(this.elapsed * 3.6) * 0.1;
-    const cursedPulse = 0.92 + Math.sin(this.elapsed * 2.4) * 0.08;
-    this.materials.charged.emissiveIntensity = 0.42 + chargedPulse * 0.2;
-    this.materials.cursed.emissiveIntensity = 0.46 + cursedPulse * 0.24;
-
-    for (const record of this.specialGround) {
-      const cell = this.gridWorld.getCell(record.q, record.r);
-      const visual = this.groundEffects.getCellVisualState(cell);
-      if (record.kind === "charged") {
-        const depleted = visual.phase === "depleted";
-        const strength = depleted ? 0.14 : 1 - visual.progress * 0.48;
-        record.model.rune.rotation.y = this.elapsed * (depleted ? 0.08 : 0.55);
-        record.model.ring.rotation.y = -this.elapsed * (depleted ? 0.05 : 0.38);
-        record.model.group.scale.setScalar(depleted ? 0.88 : chargedPulse);
-        setLineOpacity(record.model.rune, 0.72 * strength);
-        setLineOpacity(record.model.ring, 0.34 * strength);
-        this.animateMotes(record.model.motes, strength, depleted ? 0 : 1.25);
-      } else {
-        const strength = 1 - visual.progress * 0.58;
-        record.model.rune.rotation.y = -this.elapsed * 0.34;
-        record.model.ring.rotation.y = this.elapsed * 0.22;
-        record.model.rune.scale.setScalar(Math.max(0.48, 1 - visual.progress * 0.45));
-        record.model.group.scale.setScalar(cursedPulse);
-        setLineOpacity(record.model.rune, 0.8 * strength);
-        setLineOpacity(record.model.ring, 0.42 * strength);
-        this.animateMotes(record.model.motes, strength, 0.76);
-      }
-    }
-  }
-
-  private animateMotes(motes: THREE.Mesh[], strength: number, speed: number) {
-    motes.forEach((mote, index) => {
-      mote.visible = strength > 0.2 && speed > 0;
-      mote.position.y = 0.18 + ((this.elapsed * speed + index * 0.31) % 0.92);
-      const material = mote.material;
-      if (material instanceof THREE.MeshBasicMaterial) {
-        material.opacity = strength * (0.34 + Math.sin(this.elapsed * 4 + index) * 0.14);
-      }
-    });
+    this.specialEffects.applyVisibility(visibility, revealAll);
   }
 }
 

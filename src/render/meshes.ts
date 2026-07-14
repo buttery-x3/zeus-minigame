@@ -16,7 +16,12 @@ export type GroundGlyphModel = {
   group: THREE.Group;
   rune: THREE.Object3D;
   ring: THREE.Object3D;
-  motes: THREE.Mesh[];
+};
+
+export type GroundParticleModel = {
+  points: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+  positions: Float32Array;
+  count: number;
 };
 
 export function createPlayerModel(playerMaterial: THREE.Material): PlayerModel {
@@ -66,10 +71,9 @@ export function createChargedGlyph(x: number, z: number): GroundGlyphModel {
     0.7,
   );
   const ring = createRing(1.34, 0x67e3c0, 0.34);
-  const motes = createGroundMotes(0x8ffff0, 3);
-  group.add(rune, ring, ...motes);
+  group.add(rune, ring);
   group.position.set(x, 0.11, z);
-  return { group, rune, ring, motes };
+  return { group, rune, ring };
 }
 
 export function createCursedGlyph(x: number, z: number): GroundGlyphModel {
@@ -96,29 +100,27 @@ export function createCursedGlyph(x: number, z: number): GroundGlyphModel {
     ),
   );
   const ring = createRing(1.42, 0xb65be2, 0.42);
-  const motes = createGroundMotes(0xd993ff, 4);
-  group.add(rune, ring, ...motes);
+  group.add(rune, ring);
   group.position.set(x, 0.11, z);
-  return { group, rune, ring, motes };
+  return { group, rune, ring };
 }
 
-function createGroundMotes(color: THREE.ColorRepresentation, count: number) {
-  const geometry = new THREE.SphereGeometry(0.075, 6, 6);
-  const motes: THREE.Mesh[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const material = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.56,
-      depthWrite: false,
-    });
-    const mote = new THREE.Mesh(geometry, material);
-    const angle = (index / count) * Math.PI * 2 + 0.35;
-    const radius = 0.72 + (index % 2) * 0.34;
-    mote.position.set(Math.cos(angle) * radius, 0.18 + index * 0.08, Math.sin(angle) * radius);
-    motes.push(mote);
-  }
-  return motes;
+export function createGroundActivityParticles(count = 7): GroundParticleModel {
+  const positions = new Float32Array(count * 3);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const material = new THREE.PointsMaterial({
+    color: 0x8ffff0,
+    size: 0.26,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.82,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+  return { points, positions, count };
 }
 
 function createLightningMark() {

@@ -134,6 +134,13 @@ async function verifyGroundEffects(page, viewport) {
 
   try {
     let diagnostics = await readDiagnostics(page);
+    if (
+      diagnostics.terrain?.specialGround?.activeParticleSystems !== 0 ||
+      diagnostics.terrain?.specialGround?.activeParticleCount !== 0 ||
+      diagnostics.terrain?.specialGround?.ambientUpdatesPerSecond !== 5
+    ) {
+      throw new Error(`${viewport.name} special ground created ambient particle systems: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
+    }
     let charged = diagnostics.groundSamples?.nearestChargedCell;
     if (!charged?.screen?.visible) {
       throw new Error(`${viewport.name} missing a reachable charged-ground sample: ${JSON.stringify(diagnostics.terrainGrammar?.wfc?.surfaceCounts)}`);
@@ -172,6 +179,13 @@ async function verifyGroundEffects(page, viewport) {
     ) {
       throw new Error(`${viewport.name} charged recovery multipliers were not active: ${JSON.stringify(recoveryEnd.groundEffects)}`);
     }
+    if (
+      recoveryEnd.terrain?.specialGround?.activeParticleSystems !== 1 ||
+      recoveryEnd.terrain?.specialGround?.activeParticleCount !== 7 ||
+      recoveryEnd.terrain?.specialGround?.activeParticleKind !== "charged"
+    ) {
+      throw new Error(`${viewport.name} charged ground did not use the single active particle system: ${JSON.stringify(recoveryEnd.terrain?.specialGround)}`);
+    }
 
     await clickVisibleMoveCell(page, viewport, 0.34, 0.55);
     await page.waitForFunction(
@@ -187,7 +201,11 @@ async function verifyGroundEffects(page, viewport) {
     await page.waitForTimeout(360);
     const away = await readDiagnostics(page);
     const usedWhileAway = chargedUsageFor(away, chargedKey);
-    if (Math.abs(usedWhileAway - usedBeforeWaitingAway) > 0.03 || away.groundEffects.cooldownRecoveryMultiplier !== 1) {
+    if (
+      Math.abs(usedWhileAway - usedBeforeWaitingAway) > 0.03 ||
+      away.groundEffects.cooldownRecoveryMultiplier !== 1 ||
+      away.terrain?.specialGround?.activeParticleSystems !== 0
+    ) {
       throw new Error(`${viewport.name} charged-ground capacity did not pause after leaving: before=${usedBeforeWaitingAway}, away=${usedWhileAway}`);
     }
 
@@ -232,6 +250,13 @@ async function verifyGroundEffects(page, viewport) {
       cursed.cell,
       { timeout: 6000 },
     );
+    diagnostics = await readDiagnostics(page);
+    if (
+      diagnostics.terrain?.specialGround?.activeParticleSystems !== 1 ||
+      diagnostics.terrain?.specialGround?.activeParticleKind !== "cursed"
+    ) {
+      throw new Error(`${viewport.name} cursed ground did not activate focused particles: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
+    }
 
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === true);
@@ -275,7 +300,11 @@ async function verifyGroundEffects(page, viewport) {
     );
     diagnostics = await readDiagnostics(page);
     const currencyText = await page.$eval('[data-window-id="hud-currencies"] [data-cursed-energy]', (element) => element.textContent);
-    if (currencyText?.trim() !== "1" || diagnostics.groundEffects.phase !== "cleansed") {
+    if (
+      currencyText?.trim() !== "1" ||
+      diagnostics.groundEffects.phase !== "cleansed" ||
+      diagnostics.terrain?.specialGround?.activeParticleSystems !== 0
+    ) {
       throw new Error(`${viewport.name} cursed-ground reward or HUD currency did not update: ${currencyText}, ${JSON.stringify(diagnostics.groundEffects)}`);
     }
   } finally {
@@ -1560,7 +1589,7 @@ async function readHudPanelMetrics(page) {
 
 function assertResult(result) {
   const { viewport, metrics, hud, errors } = result;
-  const usablePixels = metrics.nonDark > 1500 && metrics.bright > 8 && metrics.colorBuckets > 18;
+  const usablePixels = metrics.nonDark > 1500 && metrics.bright >= 6 && metrics.colorBuckets > 18;
   const hudOk = hud.hasKills && hud.hasWave && hud.hasCell && hud.hasChain && hud.hasBolt && hud.hasCursedEnergy && hud.statusVisible;
 
   if (!usablePixels) {
