@@ -39,6 +39,10 @@ export class PlayerCharacter {
     this.animator.playSpell(spellId);
   }
 
+  isCasting() {
+    return this.animator.isCasting();
+  }
+
   flash(color: THREE.ColorRepresentation, shouldReset: () => boolean) {
     this.applyColor(color);
     window.setTimeout(() => {

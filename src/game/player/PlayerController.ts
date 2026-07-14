@@ -84,7 +84,9 @@ export class PlayerController {
     this.object.position.x = nextPosition.x;
     this.object.position.z = nextPosition.z;
     this.syncGroundCell();
-    this.object.rotation.y = Math.atan2(actualX, actualZ);
+    if (!this.character.isCasting()) {
+      this.object.rotation.y = Math.atan2(actualX, actualZ);
+    }
     this.moveMarker.position.set(this.moveTarget.x, 0.08, this.moveTarget.z);
 
     if (this.path[0] && distance2D(this.object.position.x, this.object.position.z, this.path[0].x, this.path[0].z) < 0.24) {
@@ -99,7 +101,12 @@ export class PlayerController {
     this.character.update(dt);
   }
 
-  playSpellCast(spellId: SpellId) {
+  playSpellCast(spellId: SpellId, target: THREE.Vector3) {
+    const targetX = target.x - this.object.position.x;
+    const targetZ = target.z - this.object.position.z;
+    if (targetX * targetX + targetZ * targetZ > 0.0001) {
+      this.object.rotation.y = Math.atan2(targetX, targetZ);
+    }
     this.character.playSpell(spellId);
   }
 

@@ -8,6 +8,7 @@ const CLIP_NAMES = {
   bolt: "mage_soell_cast",
   dead: "Dead",
 } as const;
+const SPELL_CAST_TIME_SCALE = 5;
 
 type AnimationState = "idle" | "run" | "cast-chain" | "cast-bolt" | "dead";
 type LoadState = "loading" | "ready" | "error";
@@ -68,6 +69,10 @@ export class PlayerAnimator {
     this.playState(spellId === "chain" ? "cast-chain" : "cast-bolt", 0.1, true);
   }
 
+  isCasting() {
+    return this.activeState === "cast-chain" || this.activeState === "cast-bolt";
+  }
+
   setDefeated() {
     this.defeated = true;
     if (this.loadState === "ready") {
@@ -94,6 +99,7 @@ export class PlayerAnimator {
       activeState: this.activeState,
       activeClip: activeAction?.getClip().name ?? null,
       animationTime: activeAction?.time ?? 0,
+      timeScale: activeAction?.getEffectiveTimeScale() ?? 0,
       moving: this.moving,
       defeated: this.defeated,
     };
@@ -133,10 +139,10 @@ export class PlayerAnimator {
       return;
     }
 
-    next.enabled = true;
-    next.setEffectiveTimeScale(1);
+    next.reset();
+    next.setEffectiveTimeScale(this.isCastState(nextState) ? SPELL_CAST_TIME_SCALE : 1);
     next.setEffectiveWeight(1);
-    next.reset().play();
+    next.play();
 
     if (previous && previous !== next && fadeSeconds > 0) {
       next.crossFadeFrom(previous, fadeSeconds, false);
@@ -145,6 +151,10 @@ export class PlayerAnimator {
     }
 
     this.activeState = nextState;
+  }
+
+  private isCastState(state: AnimationState) {
+    return state === "cast-chain" || state === "cast-bolt";
   }
 
   private readonly handleFinished = (event: { action: THREE.AnimationAction }) => {

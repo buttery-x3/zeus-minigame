@@ -103,7 +103,7 @@ export class ZeusGame {
   );
   private readonly spells = new SpellSystem(this.effects, this.enemies, {
     invalidCast: () => this.player.flash(0x657172),
-    castSucceeded: (spellId) => this.player.playSpellCast(spellId),
+    castSucceeded: (spellId, target) => this.player.playSpellCast(spellId, target),
     canCastAt: (target) => this.canCastAt(target),
     canAffectEnemy: (enemy) => this.isEnemyVisible(enemy),
   });

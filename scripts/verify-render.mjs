@@ -1295,6 +1295,7 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
   await waitForSpellReady(page, spellId);
   const target = await getVisibleInteractionPoint(page, viewport, xRatio, yRatio);
   await page.mouse.move(target.x, target.y);
+  const beforeCast = await readDiagnostics(page);
   await releaseSpellKeys(page);
   await page.keyboard.down(key);
   await waitForCastMode(page, spellId);
@@ -1305,6 +1306,18 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
     (clip) => window.__ZEUS_GAME__?.getDiagnostics().player.animation.activeClip === clip,
     expectedClip,
   );
+  const duringCast = await readDiagnostics(page);
+  const castTarget = beforeCast.input.pointerWorld;
+  const castOrigin = beforeCast.player.position;
+  const expectedRotation = Math.atan2(castTarget[0] - castOrigin[0], castTarget[2] - castOrigin[2]);
+  if (duringCast.player.animation.timeScale !== 5) {
+    throw new Error(`${viewport.name} ${spellId} cast animation did not run at 5x: ${JSON.stringify(duringCast.player.animation)}`);
+  }
+  if (angleDistance(duringCast.player.rotationY, expectedRotation) > 0.08) {
+    throw new Error(
+      `${viewport.name} ${spellId} cast did not face its target: rotation=${duringCast.player.rotationY}, expected=${expectedRotation}`,
+    );
+  }
   await verifyAbilityCooldownUi(page, viewport, spellId);
 }
 
@@ -1640,6 +1653,10 @@ function quaternionDistance(a, b) {
 
 function groundDistance(a, b) {
   return Math.hypot(a[0] - b[0], a[2] - b[2]);
+}
+
+function angleDistance(a, b) {
+  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 }
 
 function assertContinuousVisibilityOverlay(viewport, diagnostics, label) {
