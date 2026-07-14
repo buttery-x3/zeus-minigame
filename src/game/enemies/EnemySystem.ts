@@ -24,6 +24,7 @@ import { EnemyNavigation } from "./navigation/EnemyNavigation";
 type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
   enemyDied: (position: THREE.Vector3) => void;
+  waveStarted: (wave: number) => void;
 };
 
 type EnemyMovePlan = {
@@ -135,6 +136,7 @@ export class EnemySystem {
       state.nextWaveAt += 12 + state.wave * 5;
       state.spawnInterval = Math.max(0.46, state.spawnInterval - 0.12);
       this.effects.createShockwave(playerPosition, 0xb184ff, 10);
+      this.callbacks.waveStarted(state.wave);
     }
 
     if (state.spawnTimer <= 0) {

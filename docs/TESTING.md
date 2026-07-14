@@ -30,7 +30,7 @@ npm run verify
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Loads the skinned Zeus GLB and checks its exact animation inventory, `Idle_8` default, `Run_03` movement, 5x Q/W cast clips facing their resolved targets, pause freeze, `Dead` defeat, and restart back to idle through runtime diagnostics.
 - Loads the shared skinned melee-enemy GLB for every spawned enemy, checks its exact animation inventory, verifies `Walking_Woman` is the default loop, triggers `Stylish_Walk_inplace`, and confirms the enemy returns to walking.
-- Preloads the required Web Audio cue catalog, unlocks playback from a user gesture, and checks Chain Lightning, Lightning Bolt, failed-cast, player-hit, and minion-death routing through deterministic audio diagnostics rather than speaker output.
+- Preloads the required Web Audio cue catalog, unlocks playback from a user gesture, and checks Chain Lightning, Lightning Bolt, failed-cast, player-hit, minion-death, and new-wave routing through deterministic audio diagnostics rather than speaker output.
 - Checks that failed casts preserve distinct cooldown, out-of-mana, hidden-target, and strict out-of-range reasons while sharing the current failure cue.
 - Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
 - Checks rolling patch terrain diagnostics, including active patch-radius generation, at least one river micro hex, no emergency patches, and ordered patch edge socket agreement.

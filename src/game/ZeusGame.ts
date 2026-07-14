@@ -106,6 +106,7 @@ export class ZeusGame {
     {
       damagePlayer: (amount) => this.damagePlayer(amount),
       enemyDied: () => this.audio.play("minion-death"),
+      waveStarted: () => this.audio.play("new-wave-announce"),
     },
   );
   private readonly spells = new SpellSystem(this.effects, this.enemies, {
@@ -243,6 +244,17 @@ export class ZeusGame {
     if (import.meta.env.DEV) {
       this.state.mana = Math.max(0, Math.min(PLAYER_MAX_MANA, mana));
     }
+  }
+
+  startNextWaveForVerification() {
+    if (!import.meta.env.DEV) {
+      return false;
+    }
+
+    const previousWave = this.state.wave;
+    this.state.kills = this.state.nextWaveAt;
+    this.enemies.updateSpawner(0, this.state, this.player.object.position);
+    return this.state.wave === previousWave + 1;
   }
 
   private readonly tick = (time: number) => {

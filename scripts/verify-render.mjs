@@ -102,8 +102,8 @@ async function verifyAudioSystem(page, viewport) {
 
   const initial = await readDiagnostics(page);
   if (
-    initial.audio.configuredCueCount !== 7 ||
-    initial.audio.loadedVariantCount !== 12 ||
+    initial.audio.configuredCueCount !== 8 ||
+    initial.audio.loadedVariantCount !== 13 ||
     initial.audio.optionalUnavailable.length !== 0
   ) {
     throw new Error(`${viewport.name} audio catalog did not preload correctly: ${JSON.stringify(initial.audio)}`);
@@ -143,6 +143,16 @@ async function verifyAudioSystem(page, viewport) {
   await page.waitForFunction(
     (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["minion-death"] > before,
     beforeEnemyDeath.audio.playCounts["minion-death"],
+  );
+
+  const beforeNewWave = await readDiagnostics(page);
+  const startedWave = await page.evaluate(() => window.__ZEUS_GAME__?.startNextWaveForVerification());
+  if (!startedWave) {
+    throw new Error(`${viewport.name} could not start a wave for audio verification`);
+  }
+  await page.waitForFunction(
+    (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["new-wave-announce"] > before,
+    beforeNewWave.audio.playCounts["new-wave-announce"],
   );
 
   const beforePlayerHit = await readDiagnostics(page);

@@ -4,6 +4,7 @@ export type AudioCueId =
   | "spell-cast-failed"
   | "player-hit"
   | "minion-death"
+  | "new-wave-announce"
   | "charged-tile-channeling"
   | "cursed-tile-channeling";
 

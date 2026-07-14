@@ -38,6 +38,11 @@ export const AUDIO_CATALOG: Record<AudioCueId, AudioCueDefinition> = {
     maxVoices: 5,
     minIntervalMs: 35,
   },
+  "new-wave-announce": {
+    urls: ["/assets/audio/sfx/UX/new_wave_announce.wav"],
+    volume: 0.7,
+    maxVoices: 1,
+  },
   "charged-tile-channeling": {
     urls: ["/assets/audio/sfx/UX/channeling_charged_tile.wav"],
     volume: 0.48,
