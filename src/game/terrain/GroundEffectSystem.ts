@@ -62,9 +62,9 @@ export class GroundEffectSystem {
     private readonly callbacks: GroundEffectCallbacks,
   ) {}
 
-  update(dt: number, playerPosition: { x: number; z: number }) {
+  update(dt: number, playerCell: HexCoord) {
     this.rewardFeedbackSeconds = Math.max(0, this.rewardFeedbackSeconds - dt);
-    const cell = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
+    const cell = playerCell;
     const terrain = this.gridWorld.getCell(cell.q, cell.r);
     const key = this.gridWorld.cellKey(cell.q, cell.r);
     let cooldownRecoveryMultiplier = 1;

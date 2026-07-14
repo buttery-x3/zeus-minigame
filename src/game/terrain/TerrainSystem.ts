@@ -6,7 +6,7 @@ import { SpecialGroundEffects } from "../../render/SpecialGroundEffects";
 import type { GridWorld } from "../../world/GridWorld";
 import type { TerrainCell, TerrainSurface } from "../../types";
 import type { VisibilitySystem } from "../visibility/VisibilitySystem";
-import type { GroundEffectSystem } from "./GroundEffectSystem";
+import type { GroundEffectSnapshot, GroundEffectSystem } from "./GroundEffectSystem";
 
 type BlockerRecord = {
   q: number;
@@ -35,10 +35,16 @@ export class TerrainSystem {
     private readonly materials: GameMaterials,
     private readonly groundEffects: GroundEffectSystem,
   ) {
-    this.specialEffects = new SpecialGroundEffects(gridWorld, terrainGroup, materials, groundEffects);
+    this.specialEffects = new SpecialGroundEffects(gridWorld, terrainGroup);
   }
 
-  update(dt: number, playerPosition: THREE.Vector3, visibility: VisibilitySystem, revealAll = false) {
+  update(
+    dt: number,
+    playerPosition: THREE.Vector3,
+    playerGround: GroundEffectSnapshot,
+    visibility: VisibilitySystem,
+    revealAll = false,
+  ) {
     const center = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
     const radius = revealAll ? DEBUG_RENDER_RADIUS : NORMAL_RENDER_RADIUS;
     const generationVersion = this.gridWorld.getTerrainGenerationVersion();
@@ -52,7 +58,7 @@ export class TerrainSystem {
     if (visibility.getVersion() !== this.visibilityVersion) {
       this.applyVisibility(visibility, revealAll);
     }
-    this.specialEffects.update(dt);
+    this.specialEffects.update(dt, playerGround);
   }
 
   getDiagnostics() {
@@ -90,7 +96,7 @@ export class TerrainSystem {
       tile.receiveShadow = true;
       this.terrainGroup.add(tile);
 
-      this.specialEffects.addCell(cell, world, visual.phase);
+      this.specialEffects.addCell(cell, world, visual);
 
       if (cell.structure === "wall") {
         const blocker = new THREE.Mesh(wallGeometry, this.materials.blocker);

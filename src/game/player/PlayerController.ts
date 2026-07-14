@@ -6,7 +6,7 @@ import type { GameEffects } from "../../render/GameEffects";
 import { createCrosshair, createRing } from "../../render/primitives";
 import { createPlayerModel } from "../../render/meshes";
 import type { CollisionSystem } from "../collision/CollisionSystem";
-import type { GridWorld } from "../../world/GridWorld";
+import type { GridWorld, HexCoord } from "../../world/GridWorld";
 
 type MoveTargetOptions = {
   force?: boolean;
@@ -23,6 +23,8 @@ export class PlayerController {
   private lastRequestedCellKey = "";
   private lastRequestedBlocked = false;
   private groundAura: "charged" | "cursed" | null = null;
+  private groundCell: HexCoord = { q: 0, r: 0 };
+  private groundCellKey = "";
 
   constructor(
     private readonly gridWorld: GridWorld,
@@ -34,6 +36,7 @@ export class PlayerController {
     this.object = this.model.group;
     this.object.position.set(0, 0, 0);
     this.moveTarget.copy(this.object.position);
+    this.syncGroundCell();
 
     this.moveMarker.add(createRing(1.15, 0x8bdfff, 0.55));
     this.moveMarker.add(createCrosshair(1.9, 0x8bdfff, 0.65));
@@ -73,6 +76,7 @@ export class PlayerController {
 
     this.object.position.x = nextPosition.x;
     this.object.position.z = nextPosition.z;
+    this.syncGroundCell();
     this.object.rotation.y = Math.atan2(actualX, actualZ);
     this.moveMarker.position.set(this.moveTarget.x, 0.08, this.moveTarget.z);
 
@@ -151,6 +155,11 @@ export class PlayerController {
     this.materials.player.color.set(0xdfe8ee);
     this.materials.player.emissive.set(0x21526b);
     this.setGroundAura(null);
+    this.syncGroundCell();
+  }
+
+  getGroundCell() {
+    return this.groundCell;
   }
 
   getNavigationDiagnostics() {
@@ -158,7 +167,19 @@ export class PlayerController {
       moveTarget: this.moveTarget.toArray(),
       pathLength: this.path.length,
       requestedBlocked: this.lastRequestedBlocked,
+      groundCell: { ...this.groundCell },
+      groundCellKey: this.groundCellKey,
     };
+  }
+
+  private syncGroundCell() {
+    const cell = this.gridWorld.worldToCell(this.object.position.x, this.object.position.z);
+    const key = this.gridWorld.cellKey(cell.q, cell.r);
+    if (key === this.groundCellKey) {
+      return;
+    }
+    this.groundCell = cell;
+    this.groundCellKey = key;
   }
 
   private currentWaypoint() {

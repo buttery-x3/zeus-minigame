@@ -137,9 +137,11 @@ async function verifyGroundEffects(page, viewport) {
     if (
       diagnostics.terrain?.specialGround?.activeParticleSystems !== 0 ||
       diagnostics.terrain?.specialGround?.activeParticleCount !== 0 ||
-      diagnostics.terrain?.specialGround?.ambientUpdatesPerSecond !== 5
+      diagnostics.terrain?.specialGround?.ambientUpdatesPerSecond !== 0 ||
+      diagnostics.terrain?.specialGround?.animatedTileCount !== 0 ||
+      diagnostics.terrain?.specialGround?.activationSource !== "player-cell"
     ) {
-      throw new Error(`${viewport.name} special ground created ambient particle systems: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
+      throw new Error(`${viewport.name} special ground performed dormant tile work: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
     }
     let charged = diagnostics.groundSamples?.nearestChargedCell;
     if (!charged?.screen?.visible) {
@@ -182,7 +184,9 @@ async function verifyGroundEffects(page, viewport) {
     if (
       recoveryEnd.terrain?.specialGround?.activeParticleSystems !== 1 ||
       recoveryEnd.terrain?.specialGround?.activeParticleCount !== 7 ||
-      recoveryEnd.terrain?.specialGround?.activeParticleKind !== "charged"
+      recoveryEnd.terrain?.specialGround?.activeParticleKind !== "charged" ||
+      recoveryEnd.terrain?.specialGround?.animatedTileCount !== 1 ||
+      recoveryEnd.player?.navigation?.groundCellKey !== chargedKey
     ) {
       throw new Error(`${viewport.name} charged ground did not use the single active particle system: ${JSON.stringify(recoveryEnd.terrain?.specialGround)}`);
     }
@@ -204,7 +208,8 @@ async function verifyGroundEffects(page, viewport) {
     if (
       Math.abs(usedWhileAway - usedBeforeWaitingAway) > 0.03 ||
       away.groundEffects.cooldownRecoveryMultiplier !== 1 ||
-      away.terrain?.specialGround?.activeParticleSystems !== 0
+      away.terrain?.specialGround?.activeParticleSystems !== 0 ||
+      away.terrain?.specialGround?.animatedTileCount !== 0
     ) {
       throw new Error(`${viewport.name} charged-ground capacity did not pause after leaving: before=${usedBeforeWaitingAway}, away=${usedWhileAway}`);
     }
@@ -253,7 +258,8 @@ async function verifyGroundEffects(page, viewport) {
     diagnostics = await readDiagnostics(page);
     if (
       diagnostics.terrain?.specialGround?.activeParticleSystems !== 1 ||
-      diagnostics.terrain?.specialGround?.activeParticleKind !== "cursed"
+      diagnostics.terrain?.specialGround?.activeParticleKind !== "cursed" ||
+      diagnostics.terrain?.specialGround?.animatedTileCount !== 1
     ) {
       throw new Error(`${viewport.name} cursed ground did not activate focused particles: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
     }
@@ -303,7 +309,8 @@ async function verifyGroundEffects(page, viewport) {
     if (
       currencyText?.trim() !== "1" ||
       diagnostics.groundEffects.phase !== "cleansed" ||
-      diagnostics.terrain?.specialGround?.activeParticleSystems !== 0
+      diagnostics.terrain?.specialGround?.activeParticleSystems !== 0 ||
+      diagnostics.terrain?.specialGround?.animatedTileCount !== 0
     ) {
       throw new Error(`${viewport.name} cursed-ground reward or HUD currency did not update: ${currencyText}, ${JSON.stringify(diagnostics.groundEffects)}`);
     }

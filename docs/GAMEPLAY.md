@@ -45,7 +45,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Standing on cursed ground for about `2.25` uninterrupted seconds cleanses it. Leaving the hex resets cleanse progress.
 - Cleansing grants `1` Cursed Energy, changes the hex to scarred ground, and cannot reward the player again during that run.
 - Cursed Energy is run-local in this pass and resets on restart. Spending it on upgrades is reserved for a later progression feature.
-- Special-ground runes stay subdued at a distance and do not emit ambient particles. The occupied charged or cursed hex becomes brighter and faster and receives the single focused particle effect, making active recovery or cleansing clear without filling the terrain with particle systems.
+- Special-ground runes stay static and subdued at a distance and do not emit ambient particles. Only the occupied charged or cursed hex becomes brighter and animated and receives the single focused particle effect, making active recovery or cleansing clear without filling the terrain with particle systems.
 - The dedicated Currencies HUD window starts locked and transparent at the bottom-left. The pause menu's Unlock UI setting exposes its lock control and allows it to be moved like the Vitals and Abilities windows.
 
 ## Enemies

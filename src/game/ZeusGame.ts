@@ -214,6 +214,7 @@ export class ZeusGame {
 
   private update(dt: number) {
     const playerPosition = this.player.object.position;
+    let ground = this.groundEffects.getSnapshot();
 
     if (this.terrainDebugMode) {
       this.state.health = PLAYER_MAX_HEALTH;
@@ -229,7 +230,7 @@ export class ZeusGame {
         }
         this.player.update(dt);
       });
-      const ground = this.profiler.measure("groundEffects", () => this.groundEffects.update(dt, playerPosition));
+      ground = this.profiler.measure("groundEffects", () => this.groundEffects.update(dt, this.player.getGroundCell()));
       this.player.setGroundAura(
         ground.phase === "charged" && ground.cooldownRecoveryMultiplier > 1
           ? "charged"
@@ -246,7 +247,7 @@ export class ZeusGame {
 
     this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
     this.profiler.measure("terrain", () =>
-      this.terrain.update(this.state.paused ? 0 : dt, playerPosition, this.visibility, this.terrainDebugMode),
+      this.terrain.update(this.state.paused ? 0 : dt, playerPosition, ground, this.visibility, this.terrainDebugMode),
     );
     this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, dt, playerPosition));
     this.profiler.measure("targeting", () => this.targeting.update({
