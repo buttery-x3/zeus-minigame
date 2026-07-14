@@ -6,7 +6,6 @@ import {
   INITIAL_ENEMY_COUNT,
   INITIAL_NEXT_WAVE_AT,
   INITIAL_SPAWN_INTERVAL,
-  PLAYER_MAX_MANA,
 } from "../../config";
 import { distance2D, randomBetween } from "../../lib/math";
 import type { GameEffects } from "../../render/GameEffects";
@@ -25,6 +24,7 @@ type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
   enemyDied: (position: THREE.Vector3) => void;
   waveStarted: (wave: number) => void;
+  restoreMana: (amount: number) => void;
 };
 
 type EnemyMovePlan = {
@@ -189,7 +189,7 @@ export class EnemySystem {
     enemy.group.removeFromParent();
     this.enemies = this.enemies.filter((candidate) => candidate !== enemy);
     state.kills += 1;
-    state.mana = Math.min(PLAYER_MAX_MANA, state.mana + 4);
+    this.callbacks.restoreMana(4);
     this.effects.createShockwave(deathPosition, 0x67e3c0, 3);
     this.callbacks.enemyDied(deathPosition);
   }

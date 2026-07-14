@@ -4,7 +4,9 @@ export const TILE_SIZE = 4;
 
 export const PLAYER_MAX_HEALTH = 120;
 export const PLAYER_MAX_MANA = 100;
+export const PLAYER_HEALTH_REGEN_PER_SECOND = 0;
 export const PLAYER_MANA_REGEN_PER_SECOND = 8.5;
+export const PLAYER_MOVE_SPEED = 18;
 
 export const CHARGED_GROUND_CHANCE = 0.035;
 export const CURSED_GROUND_CHANCE = 0.0075;

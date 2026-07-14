@@ -1,14 +1,17 @@
-import { PLAYER_MAX_HEALTH, PLAYER_MAX_MANA } from "../config";
 import { mustQuery } from "../lib/dom";
 import { clamp } from "../lib/math";
 import type { SpellConfig, SpellId } from "../types";
 import type { GroundCellPhase } from "../game/terrain/GroundEffectSystem";
 import type { GameWindow } from "./window/GameWindow";
 import type { WindowManager } from "./window/WindowManager";
+import { UPGRADE_CATALOG } from "../game/upgrades/upgradeCatalog";
+import type { ShieldSnapshot, UpgradeStacks } from "../game/upgrades/upgradeTypes";
 
 type HudState = {
   health: number;
   mana: number;
+  maxHealth: number;
+  maxMana: number;
   kills: number;
   wave: number;
   cellQ: number;
@@ -25,6 +28,8 @@ type HudState = {
   rewardFeedbackVisible: boolean;
   gameOver: boolean;
   paused: boolean;
+  upgradeStacks: UpgradeStacks;
+  shield: ShieldSnapshot;
 };
 
 export class Hud {
@@ -39,6 +44,7 @@ export class Hud {
   private status: HTMLElement;
   private cursedEnergy: HTMLElement;
   private cursedCurrencyRow: HTMLElement;
+  private upgradeSummary: HTMLElement;
   private chainButton: HTMLElement;
   private boltButton: HTMLElement;
 
@@ -90,6 +96,7 @@ export class Hud {
           <span>Cursed Energy</span>
           <strong data-cursed-energy>0</strong>
         </div>
+        <div class="hud__upgrade-summary" data-upgrade-summary hidden></div>
       </div>
     `);
 
@@ -169,18 +176,20 @@ export class Hud {
     this.status = status;
     this.cursedEnergy = mustQuery(currencies, "[data-cursed-energy]");
     this.cursedCurrencyRow = mustQuery(currencies, '[data-currency="cursed"]');
+    this.upgradeSummary = mustQuery(currencies, "[data-upgrade-summary]");
     this.chainButton = mustQuery(abilities, '[data-ability="chain"]');
     this.boltButton = mustQuery(abilities, '[data-ability="bolt"]');
   }
 
   update(state: HudState) {
-    this.healthFill.style.transform = `scaleX(${clamp(state.health / PLAYER_MAX_HEALTH, 0, 1)})`;
-    this.manaFill.style.transform = `scaleX(${clamp(state.mana / PLAYER_MAX_MANA, 0, 1)})`;
+    this.healthFill.style.transform = `scaleX(${clamp(state.health / state.maxHealth, 0, 1)})`;
+    this.manaFill.style.transform = `scaleX(${clamp(state.mana / state.maxMana, 0, 1)})`;
     this.kills.textContent = `${state.kills}`;
     this.wave.textContent = `${state.wave}`;
     this.cell.textContent = `Hex ${state.cellQ}, ${state.cellR}`;
     this.cursedEnergy.textContent = `${state.cursedEnergy}`;
     this.cursedCurrencyRow.classList.toggle("hud__currency--gained", state.rewardFeedbackVisible);
+    this.updateUpgradeSummary(state.upgradeStacks, state.shield);
 
     if (state.gameOver) {
       this.status.textContent = "Storm spent. Press R.";
@@ -233,6 +242,24 @@ export class Hud {
     button.classList.toggle("ability--active", state.castMode === spellId);
     button.classList.toggle("ability--cooling", cooldown > 0);
     cooldownLabel.textContent = cooldown > 0 ? `${Math.ceil(cooldown)}` : "";
+  }
+
+  private updateUpgradeSummary(stacks: UpgradeStacks, shield: ShieldSnapshot) {
+    const active = Object.entries(stacks).filter(([, count]) => count > 0) as [keyof UpgradeStacks, number][];
+    this.upgradeSummary.hidden = active.length === 0;
+    this.upgradeSummary.replaceChildren();
+    for (const [id, count] of active) {
+      const item = document.createElement("span");
+      item.textContent = `${UPGRADE_CATALOG[id].label}${count > 1 ? ` ×${count}` : ""}`;
+      item.title = UPGRADE_CATALOG[id].effectLabel;
+      this.upgradeSummary.append(item);
+    }
+    if (shield.owned) {
+      const shieldStatus = document.createElement("strong");
+      shieldStatus.dataset.shieldStatus = "";
+      shieldStatus.textContent = shield.ready ? "Shield ready" : `Shield ${Math.ceil(shield.rechargeRemainingSeconds)}s`;
+      this.upgradeSummary.append(shieldStatus);
+    }
   }
 
   private createContent(html: string) {

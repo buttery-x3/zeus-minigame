@@ -30,6 +30,11 @@ export class UiToolbar {
     this.pauseButton.title = paused ? "Resume" : "Pause";
   }
 
+  setPauseEnabled(enabled: boolean) {
+    this.pauseButton.disabled = !enabled;
+    this.pauseButton.setAttribute("aria-disabled", String(!enabled));
+  }
+
   setDiagnosticsOpen(open: boolean) {
     this.diagnosticsButton.classList.toggle("ui-tool--active", open);
   }

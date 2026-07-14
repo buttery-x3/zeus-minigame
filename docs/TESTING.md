@@ -40,6 +40,10 @@ npm run verify
 - Checks deterministic special-ground generation, including reachable charged and cursed cells and the requirement that cursed ground remains rarer.
 - Exercises charged ground to confirm both cooldown and Power recovery run at `1.75x`, leaving preserves consumed capacity, returning resumes consumption, and the tile depletes after about three cumulative seconds.
 - Exercises cursed ground to confirm pause freezes cleansing, leaving resets progress, completion grants exactly one Cursed Energy, and the tile becomes cleansed.
+- Confirms each cursed-ground reward immediately opens a paused upgrade offering and that saving the reward resumes play without spending it.
+- Opens deterministic upgrade offerings to check three distinct cards, randomly assigned `1`/`2`/`3` costs, affordability, Escape protection, viewport fit, simulation freeze, wall-clock timer progress, explicit saving, exact spending, and ten-second timeout-to-save behavior.
+- Applies every upgrade through dev-only verification hooks and checks derived HP, Power, regeneration, movement, spell cooldown/cost/damage, Chain Lightning bounce, and Lightning Bolt multiplier diagnostics.
+- Confirms the one-hit shield blocks exactly one damage event, enters its 30-second recharge, replenishes, and exposes ready/recharge state in the HUD build summary.
 - Confirms special charged/cursed tile interactions select their matching channeling loop, own at most one loop, suspend it during pause, and stop it after leaving, depletion, or cleansing.
 - Confirms the player-owned cell contact drives special-ground activation, dormant glyphs perform no animation work, and exactly one seven-point particle object plus one glyph animation is active only while Zeus occupies charged or cursed ground. The contract also checks the `8x` particle-size multiplier.
 - Checks the player outline through diagnostics: golden-orange normally, brighter gold on charged ground, and violet on cursed ground.

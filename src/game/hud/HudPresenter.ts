@@ -2,6 +2,7 @@ import type { GameRuntimeState, SpellConfig, SpellId } from "../../types";
 import type { Hud } from "../../ui/Hud";
 import type { GridWorld } from "../../world/GridWorld";
 import type { GroundEffectSnapshot } from "../terrain/GroundEffectSystem";
+import type { DerivedRunStats, ShieldSnapshot, UpgradeStacks } from "../upgrades/upgradeTypes";
 
 export class HudPresenter {
   constructor(
@@ -17,11 +18,16 @@ export class HudPresenter {
     spells: Record<SpellId, SpellConfig>;
     ground: GroundEffectSnapshot;
     paused: boolean;
+    runStats: DerivedRunStats;
+    upgradeStacks: UpgradeStacks;
+    shield: ShieldSnapshot;
   }) {
     const cell = this.gridWorld.worldToCell(params.playerPosition.x, params.playerPosition.z);
     this.hud.update({
       health: params.state.health,
       mana: params.state.mana,
+      maxHealth: params.runStats.maxHealth,
+      maxMana: params.runStats.maxMana,
       kills: params.state.kills,
       wave: params.state.wave,
       cellQ: cell.q,
@@ -38,6 +44,8 @@ export class HudPresenter {
       rewardFeedbackVisible: params.ground.rewardFeedbackVisible,
       gameOver: params.state.gameOver,
       paused: params.paused,
+      upgradeStacks: params.upgradeStacks,
+      shield: params.shield,
     });
   }
 }

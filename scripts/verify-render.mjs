@@ -66,6 +66,8 @@ async function verifyInBrowser() {
       await verifyTerrainGrammar(page, viewport);
       await verifyGroundEffects(page, viewport);
       await reloadGame(page);
+      await verifyUpgradeChoices(page, viewport);
+      await reloadGame(page);
       await verifyHeldClickTracksCamera(page, viewport);
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
@@ -688,12 +690,205 @@ async function verifyGroundEffects(page, viewport) {
     ) {
       throw new Error(`${viewport.name} cursed-ground reward or HUD currency did not update: ${currencyText}, ${JSON.stringify(diagnostics.groundEffects)}`);
     }
+    if (diagnostics.pauseReason !== "upgrade" || !diagnostics.upgrades?.offer || !diagnostics.paused) {
+      throw new Error(`${viewport.name} cursed-ground reward did not open a paused upgrade offer: ${JSON.stringify(diagnostics.upgrades)}`);
+    }
+    await page.click('[data-upgrade-skip]');
+    await page.waitForFunction(() => !window.__ZEUS_GAME__?.getDiagnostics().paused);
   } finally {
     const diagnostics = await readDiagnostics(page);
     if (diagnostics.input.terrainDebugMode) {
       await page.keyboard.press("F4");
       await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === false);
     }
+  }
+}
+
+async function verifyUpgradeChoices(page, viewport) {
+  const opened = await page.evaluate(() =>
+    window.__ZEUS_GAME__?.openUpgradeOfferForVerification(1, ["healthRegen", "spellCooldown", "shield"]),
+  );
+  if (!opened) {
+    throw new Error(`${viewport.name} could not open a deterministic upgrade offer`);
+  }
+  await page.waitForSelector('[data-window-id="upgrade-choice"]:not([hidden])');
+
+  const initial = await readDiagnostics(page);
+  const costs = initial.upgrades.offer?.cards.map((card) => card.cost).sort((a, b) => a - b);
+  if (
+    initial.pauseReason !== "upgrade" ||
+    !initial.paused ||
+    initial.upgrades.offer?.durationSeconds !== 10 ||
+    JSON.stringify(costs) !== JSON.stringify([1, 2, 3])
+  ) {
+    throw new Error(`${viewport.name} upgrade offer did not expose the required pause, duration, and costs: ${JSON.stringify(initial.upgrades)}`);
+  }
+
+  const cardState = await page.$$eval("[data-upgrade-id]", (buttons) =>
+    buttons.map((button) => ({
+      id: button.getAttribute("data-upgrade-id"),
+      cost: Number(button.getAttribute("data-upgrade-cost")),
+      disabled: button.disabled,
+    })),
+  );
+  if (
+    cardState.length !== 3 ||
+    new Set(cardState.map((card) => card.id)).size !== 3 ||
+    cardState.filter((card) => !card.disabled).length !== 1 ||
+    cardState.find((card) => !card.disabled)?.cost !== 1
+  ) {
+    throw new Error(`${viewport.name} upgrade affordability or uniqueness was incorrect: ${JSON.stringify(cardState)}`);
+  }
+
+  const windowMetrics = await page.$eval('[data-window-id="upgrade-choice"]', (element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+    };
+  });
+  if (
+    windowMetrics.left < 8 ||
+    windowMetrics.right > viewport.width - 8 ||
+    windowMetrics.top < 8 ||
+    windowMetrics.bottom > viewport.height - 8
+  ) {
+    throw new Error(`${viewport.name} upgrade choice did not fit the supported viewport: ${JSON.stringify(windowMetrics)}`);
+  }
+
+  await page.waitForTimeout(360);
+  const timerAdvanced = await readDiagnostics(page);
+  if (
+    timerAdvanced.upgrades.offer.remainingSeconds >= initial.upgrades.offer.remainingSeconds - 0.2 ||
+    Math.abs(timerAdvanced.player.animation.animationTime - initial.player.animation.animationTime) > 0.001 ||
+    timerAdvanced.timing.substeps !== 0 ||
+    !timerAdvanced.audio.suspensionReasons.includes("pause")
+  ) {
+    throw new Error(`${viewport.name} upgrade timer did not advance independently of frozen gameplay: ${JSON.stringify(timerAdvanced.upgrades.offer)}`);
+  }
+
+  await page.keyboard.press("Escape");
+  const afterEscape = await readDiagnostics(page);
+  if (afterEscape.pauseReason !== "upgrade" || !afterEscape.upgrades.offer) {
+    throw new Error(`${viewport.name} Escape bypassed the active upgrade offer`);
+  }
+
+  await page.click("[data-upgrade-skip]");
+  await page.waitForFunction(() => !window.__ZEUS_GAME__?.getDiagnostics().paused);
+  let diagnostics = await readDiagnostics(page);
+  if (diagnostics.groundEffects.cursedEnergy !== 1 || diagnostics.upgrades.offer !== null) {
+    throw new Error(`${viewport.name} saving Cursed Energy changed the balance or retained the offer`);
+  }
+
+  await page.evaluate(() =>
+    window.__ZEUS_GAME__?.openUpgradeOfferForVerification(3, ["maxVitals", "spellCooldown", "shield"]),
+  );
+  await page.waitForSelector('[data-window-id="upgrade-choice"]:not([hidden])');
+  const maxVitalsCard = await page.evaluate(() =>
+    window.__ZEUS_GAME__?.getDiagnostics().upgrades.offer.cards.find((card) => card.id === "maxVitals"),
+  );
+  await page.click('[data-upgrade-id="maxVitals"]');
+  await page.waitForFunction(() => !window.__ZEUS_GAME__?.getDiagnostics().paused);
+  diagnostics = await readDiagnostics(page);
+  if (
+    diagnostics.groundEffects.cursedEnergy !== 3 - maxVitalsCard.cost ||
+    diagnostics.upgrades.stacks.maxVitals !== 1 ||
+    Math.abs(diagnostics.upgrades.stats.maxHealth - 132) > 0.001 ||
+    Math.abs(diagnostics.upgrades.stats.maxMana - 110) > 0.001 ||
+    Math.abs(diagnostics.player.health - 132) > 0.05 ||
+    Math.abs(diagnostics.spells.mana - 110) > 0.05
+  ) {
+    throw new Error(`${viewport.name} max-vitals selection did not spend or apply correctly: ${JSON.stringify(diagnostics.upgrades)}`);
+  }
+
+  const remainingUpgrades = [
+    "healthRegen",
+    "manaRegen",
+    "spellCooldown",
+    "spellCost",
+    "moveSpeed",
+    "shield",
+    "spellDamage",
+    "chainBounce",
+    "boltDamage",
+  ];
+  const applied = await page.evaluate((upgradeIds) =>
+    upgradeIds.map((upgradeId) => window.__ZEUS_GAME__?.applyUpgradeForVerification(upgradeId)),
+    remainingUpgrades,
+  );
+  if (applied.some((result) => result !== true)) {
+    throw new Error(`${viewport.name} could not apply every upgrade for deterministic verification: ${JSON.stringify(applied)}`);
+  }
+
+  diagnostics = await readDiagnostics(page);
+  const stats = diagnostics.upgrades.stats;
+  if (
+    Math.abs(stats.healthRegenPerSecond - 0.2) > 0.001 ||
+    Math.abs(stats.manaRegenPerSecond - 8.7) > 0.001 ||
+    Math.abs(stats.spellCooldownMultiplier - 0.95) > 0.001 ||
+    Math.abs(stats.spellCostMultiplier - 0.95) > 0.001 ||
+    Math.abs(stats.moveSpeed - 18.9) > 0.001 ||
+    Math.abs(stats.spellDamageMultiplier - 1.1) > 0.001 ||
+    stats.chainExtraBounces !== 1 ||
+    Math.abs(stats.boltDamageMultiplier - 1.25) > 0.001 ||
+    Math.abs(diagnostics.spells.effectiveConfig.chain.cooldown - 2.8 * 0.95) > 0.001 ||
+    Math.abs(diagnostics.spells.effectiveConfig.bolt.manaCost - 34 * 0.95) > 0.001 ||
+    !diagnostics.upgrades.shield.ready
+  ) {
+    throw new Error(`${viewport.name} derived upgrade stats were incorrect: ${JSON.stringify(diagnostics.upgrades)}`);
+  }
+
+  const shieldDamage = await page.evaluate(() => {
+    const game = window.__ZEUS_GAME__;
+    const before = game.getDiagnostics().player.health;
+    game.damagePlayerForVerification(7);
+    const afterShield = game.getDiagnostics();
+    game.damagePlayerForVerification(7);
+    const afterDamage = game.getDiagnostics();
+    return {
+      before,
+      afterShieldHealth: afterShield.player.health,
+      afterDamageHealth: afterDamage.player.health,
+      shield: afterShield.upgrades.shield,
+    };
+  });
+  if (
+    shieldDamage.afterShieldHealth !== shieldDamage.before ||
+    shieldDamage.afterDamageHealth !== shieldDamage.before - 7 ||
+    shieldDamage.shield.ready ||
+    shieldDamage.shield.rechargeRemainingSeconds < 29.9
+  ) {
+    throw new Error(`${viewport.name} shield did not absorb exactly one damage instance: ${JSON.stringify(shieldDamage)}`);
+  }
+  await page.evaluate(() => window.__ZEUS_GAME__?.advanceShieldRechargeForVerification(30));
+  diagnostics = await readDiagnostics(page);
+  if (!diagnostics.upgrades.shield.ready || diagnostics.upgrades.shield.rechargeRemainingSeconds !== 0) {
+    throw new Error(`${viewport.name} shield did not replenish after 30 active seconds`);
+  }
+
+  const buildText = await page.$eval("[data-upgrade-summary]", (element) => element.textContent);
+  if (!buildText?.includes("Aegis of Storms") || !buildText.includes("Shield ready")) {
+    throw new Error(`${viewport.name} HUD did not expose the acquired build and shield state: ${buildText}`);
+  }
+
+  await page.evaluate(() =>
+    window.__ZEUS_GAME__?.openUpgradeOfferForVerification(2, ["manaRegen", "moveSpeed", "boltDamage"]),
+  );
+  await page.waitForSelector('[data-window-id="upgrade-choice"]:not([hidden])');
+  await page.waitForFunction(
+    () => document.querySelector('[data-window-id="upgrade-choice"]')?.hasAttribute("hidden"),
+    undefined,
+    { timeout: 12000 },
+  );
+  diagnostics = await readDiagnostics(page);
+  if (diagnostics.paused || diagnostics.upgrades.offer !== null || diagnostics.groundEffects.cursedEnergy !== 2) {
+    throw new Error(`${viewport.name} timed-out offer did not default to saving energy`);
   }
 }
 

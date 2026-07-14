@@ -5,7 +5,9 @@ import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { Hud } from "./Hud";
 import { PauseMenu } from "./PauseMenu";
 import { UiToolbar } from "./UiToolbar";
+import { UpgradeChoiceMenu } from "./UpgradeChoiceMenu";
 import { WindowManager } from "./window/WindowManager";
+import type { UpgradeId, UpgradeOfferSnapshot, UpgradeStacks } from "../game/upgrades/upgradeTypes";
 
 type GameUiCallbacks = {
   resume: () => void;
@@ -24,6 +26,8 @@ type GameUiCallbacks = {
   setSfxVolume: (volume: number) => void;
   setBgmVolume: (volume: number) => void;
   setSpellFailureEnabled: (enabled: boolean) => void;
+  chooseUpgrade: (upgradeId: UpgradeId) => void;
+  skipUpgrade: () => void;
 };
 
 export class GameUi {
@@ -33,6 +37,7 @@ export class GameUi {
   private readonly toolbar: UiToolbar;
   private readonly pauseMenu: PauseMenu;
   private readonly diagnostics: DiagnosticsPanel;
+  private readonly upgradeChoice: UpgradeChoiceMenu;
 
   constructor(callbacks: GameUiCallbacks) {
     this.toolbar = new UiToolbar({
@@ -42,6 +47,10 @@ export class GameUi {
     this.manager.root.append(this.toolbar.element);
 
     this.diagnostics = new DiagnosticsPanel(this.manager, () => this.toolbar.setDiagnosticsOpen(false));
+    this.upgradeChoice = new UpgradeChoiceMenu(this.manager, {
+      choose: callbacks.chooseUpgrade,
+      skip: callbacks.skipUpgrade,
+    });
     this.pauseMenu = new PauseMenu(
       this.manager,
       {
@@ -66,9 +75,17 @@ export class GameUi {
     this.setUnlockUiEnabled(callbacks.unlockUiEnabled);
   }
 
-  setPaused(paused: boolean) {
+  setManualPaused(paused: boolean) {
     this.pauseMenu.setOpen(paused);
+  }
+
+  setSimulationPaused(paused: boolean, upgradeChoiceActive: boolean) {
     this.toolbar.setPaused(paused);
+    this.toolbar.setPauseEnabled(!upgradeChoiceActive);
+  }
+
+  updateUpgradeChoice(offer: UpgradeOfferSnapshot | null, cursedEnergy: number, stacks: UpgradeStacks) {
+    this.upgradeChoice.update(offer, cursedEnergy, stacks);
   }
 
   setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {

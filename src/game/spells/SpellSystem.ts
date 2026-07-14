@@ -5,12 +5,14 @@ import type { GameEffects } from "../../render/GameEffects";
 import type { EnemyState, GameRuntimeState, SpellConfig, SpellId } from "../../types";
 import type { EnemySystem } from "../enemies/EnemySystem";
 import type { SpellCastFailureReason } from "./spellTypes";
+import type { DerivedRunStats } from "../upgrades/upgradeTypes";
 
 type SpellSystemCallbacks = {
   castFailed: (reason: SpellCastFailureReason) => void;
   castSucceeded: (spellId: SpellId, target: THREE.Vector3) => void;
   canCastAt: (target: THREE.Vector3) => boolean;
   canAffectEnemy: (enemy: EnemyState) => boolean;
+  getRunStats: () => DerivedRunStats;
 };
 
 type CastOptions = {
@@ -18,7 +20,6 @@ type CastOptions = {
 };
 
 export class SpellSystem {
-  readonly spells: Record<SpellId, SpellConfig> = SPELLS;
   readonly cooldowns: Record<SpellId, number> = {
     chain: 0,
     bolt: 0,
@@ -31,6 +32,22 @@ export class SpellSystem {
     private readonly enemySystem: EnemySystem,
     private readonly callbacks: SpellSystemCallbacks,
   ) {}
+
+  get spells(): Record<SpellId, SpellConfig> {
+    const stats = this.callbacks.getRunStats();
+    return {
+      chain: {
+        ...SPELLS.chain,
+        manaCost: SPELLS.chain.manaCost * stats.spellCostMultiplier,
+        cooldown: SPELLS.chain.cooldown * stats.spellCooldownMultiplier,
+      },
+      bolt: {
+        ...SPELLS.bolt,
+        manaCost: SPELLS.bolt.manaCost * stats.spellCostMultiplier,
+        cooldown: SPELLS.bolt.cooldown * stats.spellCooldownMultiplier,
+      },
+    };
+  }
 
   update(dt: number, recoveryMultiplier = 1) {
     const recoveredTime = dt * recoveryMultiplier;
@@ -114,6 +131,7 @@ export class SpellSystem {
   }
 
   private castChainLightning(target: THREE.Vector3, playerPosition: THREE.Vector3, state: GameRuntimeState) {
+    const stats = this.callbacks.getRunStats();
     const firstTarget = this.enemySystem.findClosest(target, 12, new Set(), (enemy) => this.callbacks.canAffectEnemy(enemy));
     if (!firstTarget) {
       this.effects.createShockwave(target, 0x83dfff, 3.5);
@@ -123,9 +141,9 @@ export class SpellSystem {
     const struck = new Set<EnemyState>();
     let origin = playerPosition.clone();
     let current: EnemyState | null = firstTarget;
-    let damage = 42 + state.wave * 1.5;
+    let damage = (42 + state.wave * 1.5) * stats.spellDamageMultiplier;
 
-    for (let jump = 0; jump < 5 && current; jump += 1) {
+    for (let jump = 0; jump < 5 + stats.chainExtraBounces && current; jump += 1) {
       struck.add(current);
       const enemyPosition = current.group.position.clone();
       enemyPosition.y = 1.8;
@@ -138,6 +156,8 @@ export class SpellSystem {
   }
 
   private castLightningBolt(target: THREE.Vector3, state: GameRuntimeState) {
+    const stats = this.callbacks.getRunStats();
+    const damageMultiplier = stats.spellDamageMultiplier * stats.boltDamageMultiplier;
     const primary = this.enemySystem.findClosest(target, 7, new Set(), (enemy) => this.callbacks.canAffectEnemy(enemy));
     const impact = primary ? primary.group.position.clone() : target.clone();
     impact.y = 0;
@@ -146,7 +166,7 @@ export class SpellSystem {
     this.effects.createShockwave(impact, 0xffe27a, 7.5);
 
     if (primary) {
-      this.enemySystem.damageEnemy(primary, 94 + state.wave * 2.5, state);
+      this.enemySystem.damageEnemy(primary, (94 + state.wave * 2.5) * damageMultiplier, state);
     }
 
     this.enemySystem.forEach((enemy) => {
@@ -159,7 +179,7 @@ export class SpellSystem {
 
       const distance = distance2D(impact.x, impact.z, enemy.group.position.x, enemy.group.position.z);
       if (distance <= 7.2) {
-        this.enemySystem.damageEnemy(enemy, 28, state);
+        this.enemySystem.damageEnemy(enemy, 28 * damageMultiplier, state);
       }
     });
   }

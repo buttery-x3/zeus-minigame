@@ -29,6 +29,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Health starts at `120`.
 - Mana starts at `100`.
 - Mana regenerates over time and gains a small bump from kills.
+- Health regeneration starts at zero and can be added through Cursed Energy upgrades.
 - Active charged ground accelerates both mana regeneration and spell cooldown recovery by `1.75x`.
 - Movement is click/hold-to-move on the `X/Z` ground plane.
 - Movement commands require known terrain: Zeus can move to previously discovered walkable ground even when it is no longer currently visible.
@@ -51,7 +52,14 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Cursed ground appears less often than charged ground and glows violet.
 - Standing on cursed ground for about `2.25` uninterrupted seconds cleanses it. Leaving the hex resets cleanse progress.
 - Cleansing grants `1` Cursed Energy, changes the hex to scarred ground, and cannot reward the player again during that run.
-- Cursed Energy is run-local in this pass and resets on restart. Spending it on upgrades is reserved for a later progression feature.
+- Cursed Energy is run-local and resets on restart. Every newly earned point opens a three-card upgrade offering and pauses gameplay.
+- Each offering contains three distinct upgrades. Their costs are always `1`, `2`, and `3` Cursed Energy, randomly assigned with no fixed relationship between an upgrade and its price.
+- Unaffordable cards remain visible. The player can select an affordable card, explicitly save their energy, or allow the ten-second timer to expire; saving and timeout spend nothing.
+- The offer timer uses wall-clock time while movement, enemies, spawning, regeneration, cooldowns, effects, and shield recharge remain frozen.
+- Percentage upgrades stack multiplicatively. Flat regeneration and Chain Lightning bounces stack additively. The maximum-vitals upgrade preserves current HP and Power percentages.
+- Available upgrades add HP regeneration, Power regeneration, maximum HP and Power, cooldown recovery, spell efficiency, movement speed, a recharging one-hit shield, global spell damage, Chain Lightning bounces, or Lightning Bolt damage.
+- Aegis of Storms blocks one complete damage event, starts ready, and replenishes after `30` seconds of active gameplay. It is removed from future offerings after acquisition.
+- Acquired upgrades and shield readiness appear beneath Cursed Energy in the Currencies HUD.
 - Special-ground runes stay static and subdued at a distance and do not emit ambient particles. The occupied charged or cursed hex becomes animated and receives a focused particle effect with points eight times the original size. Charged ground keeps its subdued tile color but brightens its active green rune and ring; cursed ground keeps its existing violet charging color.
 - Zeus's normal and charged outline ring is golden-orange so it stays distinct from charged ground's green feedback. The outline changes to violet while cleansing cursed ground.
 - The dedicated Currencies HUD window starts locked and transparent at the bottom-left. The pause menu's Unlock UI setting exposes its lock control and allows it to be moved like the Vitals and Abilities windows.
