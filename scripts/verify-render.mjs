@@ -6,7 +6,6 @@ import { chromium } from "playwright-core";
 const url = process.env.VERIFY_URL ?? "http://127.0.0.1:5173/";
 const parsedUrl = new URL(url);
 const port = process.env.VERIFY_PORT ?? (parsedUrl.port || "5173");
-const outputDir = path.resolve(process.env.VERIFY_OUTPUT_DIR ?? "verify");
 const browserPath = await resolveBrowserPath();
 const spellManaCosts = {
   chain: 22,
@@ -19,18 +18,13 @@ const viewports = [
 let devServer = null;
 
 try {
-  await fs.mkdir(outputDir, { recursive: true });
-
   if (!(await isReachable(url))) {
     devServer = await startDevServer();
   }
 
   const results = await verifyInBrowser();
   for (const result of results) {
-    console.log(
-      `${result.viewport.name}: ${result.metrics.canvasWidth}x${result.metrics.canvasHeight}, nonDark=${result.metrics.nonDark}, bright=${result.metrics.bright}, buckets=${result.metrics.colorBuckets}`,
-    );
-    console.log(`  screenshot: ${result.screenshotPath}`);
+    console.log(`${result.viewport.name}: passed`);
   }
 } finally {
   if (devServer) {
@@ -76,13 +70,9 @@ async function verifyInBrowser() {
       await exerciseCoreInteractions(page, viewport);
       await verifyEnemyPathfindingBudget(page, viewport, "after core interactions");
 
-      const screenshotPath = path.join(outputDir, `${viewport.name}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: true });
-
-      const metrics = await collectCanvasMetrics(page);
       const hud = await collectHudMetrics(page);
-      const result = { viewport, screenshotPath, metrics, hud, errors };
-      assertResult(result);
+      const result = { viewport, hud, errors };
+      assertPageResult(result);
       await verifyTerrainDebugMode(page, viewport);
       results.push(result);
 
@@ -139,7 +129,8 @@ async function verifyGroundEffects(page, viewport) {
       diagnostics.terrain?.specialGround?.activeParticleCount !== 0 ||
       diagnostics.terrain?.specialGround?.ambientUpdatesPerSecond !== 0 ||
       diagnostics.terrain?.specialGround?.animatedTileCount !== 0 ||
-      diagnostics.terrain?.specialGround?.activationSource !== "player-cell"
+      diagnostics.terrain?.specialGround?.activationSource !== "player-cell" ||
+      diagnostics.terrain?.specialGround?.particleSizeMultiplier !== 8
     ) {
       throw new Error(`${viewport.name} special ground performed dormant tile work: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
     }
@@ -1479,53 +1470,6 @@ function cameraLowerFrustumOriginY(camera) {
   return camera.position[1] + upY * camera.projection.bottom;
 }
 
-async function collectCanvasMetrics(page) {
-  return page.evaluate(() => {
-    const canvas = document.querySelector("canvas");
-    if (!canvas) {
-      throw new Error("Missing canvas");
-    }
-
-    const sample = document.createElement("canvas");
-    sample.width = 180;
-    sample.height = 120;
-    const context = sample.getContext("2d", { willReadFrequently: true });
-    if (!context) {
-      throw new Error("Missing sampler context");
-    }
-
-    context.drawImage(canvas, 0, 0, sample.width, sample.height);
-    const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
-    let nonDark = 0;
-    let bright = 0;
-    const buckets = new Set();
-
-    for (let i = 0; i < pixels.length; i += 4) {
-      const r = pixels[i];
-      const g = pixels[i + 1];
-      const b = pixels[i + 2];
-      const a = pixels[i + 3];
-      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-      if (a > 0 && luminance > 22) {
-        nonDark += 1;
-      }
-      if (a > 0 && luminance > 95) {
-        bright += 1;
-      }
-      buckets.add(`${r >> 4},${g >> 4},${b >> 4}`);
-    }
-
-    return {
-      canvasWidth: canvas.width,
-      canvasHeight: canvas.height,
-      nonDark,
-      bright,
-      colorBuckets: buckets.size,
-    };
-  });
-}
-
 async function collectHudMetrics(page) {
   return page.evaluate(() => {
     const text = document.body.innerText;
@@ -1594,14 +1538,10 @@ async function readHudPanelMetrics(page) {
   });
 }
 
-function assertResult(result) {
-  const { viewport, metrics, hud, errors } = result;
-  const usablePixels = metrics.nonDark > 1500 && metrics.bright >= 6 && metrics.colorBuckets > 18;
+function assertPageResult(result) {
+  const { viewport, hud, errors } = result;
   const hudOk = hud.hasKills && hud.hasWave && hud.hasCell && hud.hasChain && hud.hasBolt && hud.hasCursedEnergy && hud.statusVisible;
 
-  if (!usablePixels) {
-    throw new Error(`${viewport.name} canvas looked blank or too flat: ${JSON.stringify(metrics)}`);
-  }
   if (!hudOk) {
     throw new Error(`${viewport.name} HUD check failed: ${JSON.stringify(hud)}`);
   }

@@ -15,7 +15,7 @@ import {
   type GroundGlyphModel,
   type GroundParticleModel,
 } from "./meshes";
-import { setLineOpacity } from "./primitives";
+import { setLineColor, setLineOpacity } from "./primitives";
 
 type SpecialGroundKind = "charged" | "cursed";
 
@@ -29,6 +29,7 @@ type SpecialGroundRecord = {
 };
 
 const ACTIVE_PARTICLE_COUNT = 7;
+const ACTIVE_PARTICLE_SIZE_MULTIPLIER = 8;
 
 export class SpecialGroundEffects {
   private readonly records: SpecialGroundRecord[] = [];
@@ -118,6 +119,7 @@ export class SpecialGroundEffects {
       activationSource: "player-cell",
       ambientUpdatesPerSecond: 0,
       animatedTileCount: this.animatedTileCount,
+      particleSizeMultiplier: ACTIVE_PARTICLE_SIZE_MULTIPLIER,
     };
   }
 
@@ -148,6 +150,10 @@ export class SpecialGroundEffects {
     record.model.group.scale.setScalar(depleted ? 0.86 : 0.92);
     setLineOpacity(record.model.rune, depleted ? 0.08 : strength * 0.34);
     setLineOpacity(record.model.ring, depleted ? 0.035 : strength * (record.kind === "charged" ? 0.1 : 0.12));
+    if (record.kind === "charged") {
+      setLineColor(record.model.rune, 0x67e3c0);
+      setLineColor(record.model.ring, 0x67e3c0);
+    }
   }
 
   private animateCharged(record: SpecialGroundRecord) {
@@ -156,8 +162,10 @@ export class SpecialGroundEffects {
     record.model.rune.rotation.y = this.elapsed * 1.15;
     record.model.ring.rotation.y = -this.elapsed * 0.82;
     record.model.group.scale.setScalar(pulse);
-    setLineOpacity(record.model.rune, strength * 0.98);
-    setLineOpacity(record.model.ring, strength * 0.64);
+    setLineColor(record.model.rune, 0xc0ffd0);
+    setLineColor(record.model.ring, 0x79ff9c);
+    setLineOpacity(record.model.rune, strength);
+    setLineOpacity(record.model.ring, strength * 0.9);
   }
 
   private animateCursed(record: SpecialGroundRecord) {
@@ -191,7 +199,8 @@ export class SpecialGroundEffects {
       particles.positions[offset + 1] = 0.08 + ((this.elapsed * speed + index * 0.23) % 1.18);
       particles.positions[offset + 2] = Math.sin(angle) * radius;
     }
-    particles.points.material.size = (kind === "charged" ? 0.28 : 0.31) + Math.sin(this.elapsed * 5) * 0.035;
+    particles.points.material.size =
+      ((kind === "charged" ? 0.28 : 0.31) + Math.sin(this.elapsed * 5) * 0.035) * ACTIVE_PARTICLE_SIZE_MULTIPLIER;
     particles.points.geometry.attributes.position.needsUpdate = true;
   }
 
