@@ -14,7 +14,6 @@ const spellManaCosts = {
 };
 const viewports = [
   { name: "desktop", width: 1280, height: 720 },
-  { name: "mobile", width: 390, height: 844 },
 ];
 
 let devServer = null;

@@ -23,7 +23,7 @@ npm run verify
 
 - Starts the Vite dev server if `http://127.0.0.1:5173/` is not already reachable.
 - Launches a Chromium-based browser through `playwright-core`.
-- Loads desktop and mobile viewports.
+- Loads the supported desktop viewport at 1280x720.
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
@@ -45,10 +45,12 @@ npm run verify
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
 - Checks that the WebGL canvas is not blank or visually flat.
 - Checks that core HUD text and ability buttons exist, including the Unlock UI toggle, locked transparent HUD panels, click-through behavior, gated hover reveal, and radial spell cooldown button state.
-- Checks that the Currencies panel starts at the bottom-left on desktop and mobile, displays Cursed Energy, and supports the same unlock, drag, relock, transparency, and click-through behavior as the other HUD panels.
+- Checks that the Currencies panel starts at the bottom-left, displays Cursed Energy, and supports the same unlock, drag, relock, transparency, and click-through behavior as the other HUD panels.
 - Saves screenshots into `verify/`.
 
 `verify/` is ignored by git.
+
+Mobile layouts and controls are not currently supported or included in render verification. Desktop is the only target until the control scheme is deliberately expanded for mobile play.
 
 ## Browser Path
 
