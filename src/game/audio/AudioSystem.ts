@@ -3,10 +3,11 @@ import type { AudioCueId, AudioSuspensionReason } from "./audioTypes";
 import { AudioMixer } from "./AudioMixer";
 import { clampAudioVolume, loadAudioPreferences, saveAudioPreferences } from "./AudioPreferences";
 import { SfxPlayer, type SfxPlayOptions } from "./SfxPlayer";
+import { audioAssetUrl } from "./audioAssetUrl";
 
 const COOLDOWN_FAILURE_DETUNE_CENTS = -1200;
 const COOLDOWN_FAILURE_RANDOM_DETUNE_CENTS = 45;
-const MUSIC_SOURCE = "/assets/audio/music/storm-arena-loop.mp3";
+const MUSIC_SOURCE = audioAssetUrl("music/storm-arena-loop.mp3");
 
 export class AudioSystem {
   private mixer: AudioMixer | null = null;

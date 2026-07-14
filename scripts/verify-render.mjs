@@ -3,9 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright-core";
 
-const url = process.env.VERIFY_URL ?? "http://127.0.0.1:5173/";
+const url = process.env.VERIFY_URL ?? "http://127.0.0.1:5174/zeus/";
 const parsedUrl = new URL(url);
 const port = process.env.VERIFY_PORT ?? (parsedUrl.port || "5173");
+const basePath = parsedUrl.pathname.endsWith("/") ? parsedUrl.pathname : `${parsedUrl.pathname}/`;
 const browserPath = await resolveBrowserPath();
 const spellManaCosts = {
   chain: 22,
@@ -110,7 +111,7 @@ async function verifyAudioSystem(page, viewport) {
     initial.audio.preferences.sfxVolume !== 1 ||
     initial.audio.preferences.bgmVolume !== 0.35 ||
     initial.audio.preferences.spellFailureEnabled ||
-    initial.audio.music.source !== "/assets/audio/music/storm-arena-loop.mp3" ||
+    initial.audio.music.source !== `${basePath}assets/audio/music/storm-arena-loop.mp3` ||
     !initial.audio.music.loop ||
     initial.audio.music.loadState === "error"
   ) {
@@ -2272,10 +2273,10 @@ function assertPageResult(result) {
 }
 
 async function startDevServer() {
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const server = spawn(npmCommand, ["run", "dev", "--", "--port", port, "--strictPort", "--force"], {
+  const viteCli = path.join(process.cwd(), "node_modules", "vite", "bin", "vite.js");
+  const server = spawn(process.execPath, [viteCli, "--host", "127.0.0.1", "--port", port, "--strictPort", "--force"], {
     cwd: process.cwd(),
-    env: process.env,
+    env: { ...process.env, VITE_BASE_PATH: process.env.VITE_BASE_PATH ?? basePath },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

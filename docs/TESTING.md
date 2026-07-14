@@ -21,7 +21,7 @@ npm run verify
 
 `npm run verify:render` runs [scripts/verify-render.mjs](../scripts/verify-render.mjs). It:
 
-- Starts the Vite dev server if `http://127.0.0.1:5173/` is not already reachable.
+- Starts a verification Vite server under the production-style `/zeus/` base path on `http://127.0.0.1:5174/zeus/`, keeping it separate from the normal port `5173` development server.
 - Launches a Chromium-based browser through `playwright-core`.
 - Loads the supported desktop viewport at 1280x720.
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
@@ -30,7 +30,7 @@ npm run verify
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Loads the skinned Zeus GLB and checks its exact animation inventory, `Idle_8` default, `Run_03` movement, 5x Q/W cast clips facing their resolved targets, pause freeze, `Dead` defeat, and restart back to idle through runtime diagnostics.
 - Loads the shared skinned melee-enemy GLB for every spawned enemy, checks its exact animation inventory, verifies `Walking_Woman` is the default loop, triggers `Stylish_Walk_inplace`, and confirms the enemy returns to walking.
-- Preloads the required Web Audio cue catalog, unlocks playback from a user gesture, and checks Chain Lightning, Lightning Bolt, failed-cast, player-hit, minion-death, and new-wave routing through deterministic audio diagnostics rather than speaker output.
+- Preloads the required Web Audio cue catalog from the configured base path, unlocks playback from a user gesture, and checks Chain Lightning, Lightning Bolt, failed-cast, player-hit, minion-death, and new-wave routing through deterministic audio diagnostics rather than speaker output.
 - Checks that failed casts preserve distinct cooldown, out-of-mana, hidden-target, and strict out-of-range reasons while sharing the current failure cue.
 - Checks the tuned per-cue mix levels and confirms cooldown failures play one octave lower with a subtle random detune range.
 - Streams and loops the arena BGM after the first user gesture, confirms it continues through pause and game restart, and checks that its playback position advances without joining the decoded SFX buffer catalog.
