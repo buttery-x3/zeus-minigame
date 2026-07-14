@@ -15,6 +15,13 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Press `V` to toggle enemy health bars between smart and always visible.
 - Press `R` after defeat to restart.
 - Press `F4` or use the pause menu to toggle Terrain Debug, which removes fog, zooms the camera out 3x with debug framing, renders a wider window of already-generated terrain, bypasses visibility-gated movement/cast checks, and keeps Zeus at full HP for terrain inspection.
+
+## Audio
+
+- Arena music begins after the first mouse or keyboard interaction and loops continuously, including while the pause menu is open.
+- The pause menu provides independent SFX and BGM volume sliders. SFX is silenced while paused so BGM changes can be previewed cleanly.
+- Spell-failure audio is off by default for cooldown, mana, visibility, and range failures. It can be enabled from the pause menu; visual failure feedback remains active either way.
+- Audio preferences persist in the browser across reloads. Hidden tabs pause both BGM and SFX until play resumes.
 - Use the top-right controls to pause or open diagnostics.
 
 ## Player

@@ -93,6 +93,10 @@ export class ZeusGame {
     setUnlockUiEnabled: (enabled) => this.setUnlockUiEnabled(enabled),
     terrainDebugMode: this.terrainDebugMode,
     setTerrainDebugMode: (enabled) => this.setTerrainDebugMode(enabled),
+    audioPreferences: this.audio.getPreferences(),
+    setSfxVolume: (volume) => this.setSfxVolume(volume),
+    setBgmVolume: (volume) => this.setBgmVolume(volume),
+    setSpellFailureEnabled: (enabled) => this.setSpellFailureEnabled(enabled),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(
@@ -483,6 +487,21 @@ export class ZeusGame {
       this.state.health = PLAYER_MAX_HEALTH;
     }
     this.ui.setTerrainDebugMode(enabled);
+  }
+
+  private setSfxVolume(volume: number) {
+    this.audio.setSfxVolume(volume);
+    this.ui.setSfxVolume(volume);
+  }
+
+  private setBgmVolume(volume: number) {
+    this.audio.setBgmVolume(volume);
+    this.ui.setBgmVolume(volume);
+  }
+
+  private setSpellFailureEnabled(enabled: boolean) {
+    this.audio.setSpellFailureEnabled(enabled);
+    this.ui.setSpellFailureEnabled(enabled);
   }
 
   private toggleEnemyHealthBarMode() {

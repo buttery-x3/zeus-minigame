@@ -97,14 +97,20 @@ async function verifyAudioSystem(page, viewport) {
   await page.mouse.click(viewport.width * 0.5, viewport.height * 0.5);
   await page.waitForFunction(() => {
     const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
-    return audio?.unlocked && audio.contextState === "running";
+    return audio?.unlocked && audio.contextState === "running" && audio.music?.playing;
   });
 
   const initial = await readDiagnostics(page);
   if (
     initial.audio.configuredCueCount !== 8 ||
     initial.audio.loadedVariantCount !== 13 ||
-    initial.audio.optionalUnavailable.length !== 0
+    initial.audio.optionalUnavailable.length !== 0 ||
+    initial.audio.preferences.sfxVolume !== 1 ||
+    initial.audio.preferences.bgmVolume !== 0.35 ||
+    initial.audio.preferences.spellFailureEnabled ||
+    initial.audio.music.source !== "/assets/audio/music/storm-arena-loop.mp3" ||
+    !initial.audio.music.loop ||
+    initial.audio.music.loadState === "error"
   ) {
     throw new Error(`${viewport.name} audio catalog did not preload correctly: ${JSON.stringify(initial.audio)}`);
   }
@@ -127,6 +133,17 @@ async function verifyAudioSystem(page, viewport) {
   ) {
     throw new Error(`${viewport.name} cooldown failure pitch was not configured correctly: ${JSON.stringify(initial.audio)}`);
   }
+  await page.waitForFunction(
+    ({ startTime, expectedGain }) => {
+      const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+      return (
+        audio?.music?.playing &&
+        audio.music.currentTime > startTime + 0.1 &&
+        Math.abs(audio.effectiveBgmGain - expectedGain) < 0.02
+      );
+    },
+    { startTime: initial.audio.music.currentTime, expectedGain: 0.35 },
+  );
 
   const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
   await page.mouse.move(target.x, target.y);
@@ -142,6 +159,62 @@ async function verifyAudioSystem(page, viewport) {
 
   const beforeCooldownFailure = await readDiagnostics(page);
   await page.keyboard.press("KeyQ");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().audio?.lastCastFailureReason === "cooldown");
+  let diagnostics = await readDiagnostics(page);
+  if (diagnostics.audio.playCounts["spell-cast-failed"] !== beforeCooldownFailure.audio.playCounts["spell-cast-failed"]) {
+    throw new Error(`${viewport.name} spell-failure SFX played while disabled: ${JSON.stringify(diagnostics.audio)}`);
+  }
+
+  const musicBeforePause = diagnostics.audio.music.currentTime;
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return audio?.suspensionReasons.includes("pause") && audio.effectiveSfxGain < 0.02;
+  });
+  const defaultControls = await readAudioControls(page);
+  if (
+    defaultControls.sfx !== "100" ||
+    defaultControls.bgm !== "35" ||
+    defaultControls.sfxOutput !== "100%" ||
+    defaultControls.bgmOutput !== "35%" ||
+    defaultControls.spellFailureEnabled
+  ) {
+    throw new Error(`${viewport.name} audio controls had incorrect defaults: ${JSON.stringify(defaultControls)}`);
+  }
+  await page.waitForFunction(
+    (startTime) => {
+      const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+      return audio?.music?.playing && audio.contextState === "running" && audio.music.currentTime > startTime + 0.1;
+    },
+    musicBeforePause,
+  );
+
+  await setRangeInput(page, "[data-sfx-volume]", 64);
+  await setRangeInput(page, "[data-bgm-volume]", 22);
+  await page.click("[data-spell-failure-sfx-toggle]");
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return (
+      audio?.preferences.sfxVolume === 0.64 &&
+      audio.preferences.bgmVolume === 0.22 &&
+      audio.preferences.spellFailureEnabled &&
+      Math.abs(audio.effectiveBgmGain - 0.22) < 0.02
+    );
+  });
+  const changedControls = await readAudioControls(page);
+  if (changedControls.sfxOutput !== "64%" || changedControls.bgmOutput !== "22%" || !changedControls.spellFailureEnabled) {
+    throw new Error(`${viewport.name} audio controls did not update live: ${JSON.stringify(changedControls)}`);
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return !window.__ZEUS_GAME__?.getDiagnostics().paused && Math.abs(audio.effectiveSfxGain - 0.64) < 0.02;
+  });
+
+  const beforeEnabledFailure = await readDiagnostics(page);
+  await page.keyboard.press("KeyQ");
   await page.waitForFunction(
     (before) => {
       const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
@@ -153,7 +226,7 @@ async function verifyAudioSystem(page, viewport) {
         detune <= -1155
       );
     },
-    beforeCooldownFailure.audio.playCounts["spell-cast-failed"],
+    beforeEnabledFailure.audio.playCounts["spell-cast-failed"],
   );
 
   await page.evaluate(() => window.__ZEUS_GAME__?.setPlayerManaForVerification(0));
@@ -186,6 +259,68 @@ async function verifyAudioSystem(page, viewport) {
     (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["player-hit"] > before,
     beforePlayerHit.audio.playCounts["player-hit"],
   );
+  const musicBeforeRestart = beforePlayerHit.audio.music.currentTime;
+  await page.keyboard.press("KeyR");
+  await page.waitForFunction(() => {
+    const current = window.__ZEUS_GAME__?.getDiagnostics();
+    return current && !current.gameOver && current.audio.music.playing;
+  });
+  diagnostics = await readDiagnostics(page);
+  if (diagnostics.audio.music.currentTime <= musicBeforeRestart) {
+    throw new Error(`${viewport.name} game restart reset BGM playback: ${JSON.stringify(diagnostics.audio.music)}`);
+  }
+
+  await reloadGame(page);
+  diagnostics = await readDiagnostics(page);
+  if (
+    diagnostics.audio.preferences.sfxVolume !== 0.64 ||
+    diagnostics.audio.preferences.bgmVolume !== 0.22 ||
+    !diagnostics.audio.preferences.spellFailureEnabled
+  ) {
+    throw new Error(`${viewport.name} audio preferences did not persist across reload: ${JSON.stringify(diagnostics.audio)}`);
+  }
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  const persistedControls = await readAudioControls(page);
+  if (persistedControls.sfx !== "64" || persistedControls.bgm !== "22" || !persistedControls.spellFailureEnabled) {
+    throw new Error(`${viewport.name} persisted audio controls did not render correctly: ${JSON.stringify(persistedControls)}`);
+  }
+
+  await setRangeInput(page, "[data-sfx-volume]", 100);
+  await setRangeInput(page, "[data-bgm-volume]", 35);
+  await page.click("[data-spell-failure-sfx-toggle]");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return (
+      !window.__ZEUS_GAME__?.getDiagnostics().paused &&
+      audio.preferences.sfxVolume === 1 &&
+      audio.preferences.bgmVolume === 0.35 &&
+      !audio.preferences.spellFailureEnabled &&
+      Math.abs(audio.effectiveSfxGain - 1) < 0.02
+    );
+  });
+}
+
+async function setRangeInput(page, selector, value) {
+  await page.$eval(
+    selector,
+    (input, nextValue) => {
+      input.value = String(nextValue);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    },
+    value,
+  );
+}
+
+async function readAudioControls(page) {
+  return page.evaluate(() => ({
+    sfx: document.querySelector("[data-sfx-volume]")?.value,
+    bgm: document.querySelector("[data-bgm-volume]")?.value,
+    sfxOutput: document.querySelector("[data-sfx-volume-output]")?.value,
+    bgmOutput: document.querySelector("[data-bgm-volume-output]")?.value,
+    spellFailureEnabled: document.querySelector("[data-spell-failure-sfx]")?.checked,
+  }));
 }
 
 async function verifyFrameTiming(page, viewport) {
@@ -930,7 +1065,7 @@ async function verifyPauseMenuCentered(page, viewport) {
 
   const xDrift = Math.abs(metrics.centerX - viewport.width / 2);
   const yDrift = Math.abs(metrics.centerY - (viewport.height / 2 - 20));
-  if (xDrift > 2 || yDrift > 2) {
+  if (xDrift > 2 || yDrift > 2 || metrics.height > viewport.height - 16) {
     throw new Error(`${viewport.name} pause menu was not centered: ${JSON.stringify(metrics)}`);
   }
 }

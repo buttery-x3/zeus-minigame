@@ -1,33 +1,20 @@
-import { AUDIO_CATALOG, AUDIO_CUE_IDS } from "./audioCatalog";
 import type { SpellCastFailureReason } from "../spells/spellTypes";
-import type { AudioCueId, AudioLoadState, AudioSuspensionReason } from "./audioTypes";
-import { AudioSourcePool, type AudioSourceHandle } from "./AudioSourcePool";
-
-type PlayOptions = {
-  detuneCents?: number;
-  randomDetuneCents?: number;
-};
+import type { AudioCueId, AudioSuspensionReason } from "./audioTypes";
+import { AudioMixer } from "./AudioMixer";
+import { clampAudioVolume, loadAudioPreferences, saveAudioPreferences } from "./AudioPreferences";
+import { SfxPlayer, type SfxPlayOptions } from "./SfxPlayer";
 
 const COOLDOWN_FAILURE_DETUNE_CENTS = -1200;
 const COOLDOWN_FAILURE_RANDOM_DETUNE_CENTS = 45;
+const MUSIC_SOURCE = "/assets/audio/music/storm-arena-loop.mp3";
 
 export class AudioSystem {
-  private context: AudioContext | null = null;
-  private masterGain: GainNode | null = null;
-  private sfxGain: GainNode | null = null;
-  private sourcePool: AudioSourcePool | null = null;
-  private loadState: AudioLoadState = "idle";
+  private mixer: AudioMixer | null = null;
+  private readonly sfx = new SfxPlayer();
+  private preferences = loadAudioPreferences();
   private unlocked = false;
   private disposed = false;
-  private readonly buffers = new Map<string, AudioBuffer>();
-  private readonly lastVariantByCue = new Map<AudioCueId, number>();
-  private readonly lastPlayedAt = new Map<AudioCueId, number>();
-  private readonly playCounts = createCueCounter();
-  private readonly lastDetuneByCue = new Map<AudioCueId, number>();
-  private readonly optionalUnavailable = new Set<AudioCueId>();
   private readonly suspensionReasons = new Set<AudioSuspensionReason>();
-  private desiredLoop: AudioCueId | null = null;
-  private loopSource: AudioSourceHandle | null = null;
   private lastCastFailureReason: SpellCastFailureReason | null = null;
 
   constructor() {
@@ -36,34 +23,23 @@ export class AudioSystem {
     void this.preload();
   }
 
-  play(cueId: AudioCueId, options: PlayOptions = {}) {
+  play(cueId: AudioCueId, options: SfxPlayOptions = {}) {
     if (this.disposed) {
       return false;
     }
 
-    const definition = AUDIO_CATALOG[cueId];
-    const now = performance.now();
-    const lastPlayedAt = this.lastPlayedAt.get(cueId) ?? -Infinity;
-    if (now - lastPlayedAt < (definition.minIntervalMs ?? 0)) {
+    const mixer = this.ensureMixer();
+    if (!mixer) {
       return false;
     }
-
-    const context = this.ensureContext();
-    const buffer = this.chooseBuffer(cueId);
-    if (!context || !this.sfxGain || !buffer) {
-      return false;
-    }
-
-    this.lastPlayedAt.set(cueId, now);
-    this.playCounts[cueId] += 1;
-    const detuneCents = getRandomDetune(options.detuneCents ?? 0, options.randomDetuneCents ?? 0);
-    this.lastDetuneByCue.set(cueId, detuneCents);
-    this.sourcePool?.play(cueId, buffer, definition.volume, false, definition.maxVoices, detuneCents);
-    return true;
+    return this.sfx.play(mixer, cueId, options);
   }
 
   playSpellCastFailed(reason: SpellCastFailureReason) {
     this.lastCastFailureReason = reason;
+    if (!this.preferences.spellFailureEnabled) {
+      return;
+    }
     this.play(
       "spell-cast-failed",
       reason === "cooldown"
@@ -76,32 +52,18 @@ export class AudioSystem {
   }
 
   startLoop(cueId: AudioCueId) {
-    const definition = AUDIO_CATALOG[cueId];
-    if (!definition.loop || this.disposed || this.desiredLoop === cueId) {
+    if (this.disposed) {
       return;
     }
-
-    this.stopLoop();
-    this.desiredLoop = cueId;
-    const context = this.ensureContext();
-    const buffer = this.chooseBuffer(cueId);
-    if (!context || !this.sfxGain || !buffer) {
-      return;
+    const mixer = this.ensureMixer();
+    if (mixer) {
+      this.sfx.startLoop(mixer, cueId);
     }
-
-    this.playCounts[cueId] += 1;
-    this.loopSource = this.sourcePool?.play(cueId, buffer, definition.volume, true, definition.maxVoices) ?? null;
   }
 
   stopLoop(cueId?: AudioCueId) {
-    if (cueId && this.desiredLoop !== cueId) {
-      return;
-    }
-
-    this.desiredLoop = null;
-    if (this.loopSource && this.sourcePool) {
-      this.sourcePool.stop(this.loopSource);
-      this.loopSource = null;
+    if (this.mixer) {
+      this.sfx.stopLoop(this.mixer, cueId);
     }
   }
 
@@ -111,36 +73,70 @@ export class AudioSystem {
     } else {
       this.suspensionReasons.delete(reason);
     }
+    if (reason === "pause") {
+      this.applySfxVolume();
+    }
+    if (reason === "hidden") {
+      if (suspended) {
+        this.mixer?.pauseMusic();
+      } else if (this.unlocked) {
+        void this.mixer?.playMusic();
+      }
+    }
     void this.syncContextState();
   }
 
+  getPreferences() {
+    return { ...this.preferences };
+  }
+
+  setSfxVolume(volume: number) {
+    this.preferences.sfxVolume = clampAudioVolume(volume);
+    this.savePreferences();
+    this.applySfxVolume();
+  }
+
+  setBgmVolume(volume: number) {
+    this.preferences.bgmVolume = clampAudioVolume(volume);
+    this.savePreferences();
+    this.applyMusicVolume();
+  }
+
+  setSpellFailureEnabled(enabled: boolean) {
+    this.preferences.spellFailureEnabled = enabled;
+    this.savePreferences();
+  }
+
   reset() {
-    this.stopAllSources();
-    this.lastVariantByCue.clear();
-    this.lastPlayedAt.clear();
-    this.lastDetuneByCue.clear();
+    this.sfx.reset(this.mixer);
     this.lastCastFailureReason = null;
   }
 
   getDiagnostics() {
+    const sfxDiagnostics = this.sfx.getDiagnostics();
+    const mixerDiagnostics = this.mixer?.getDiagnostics();
     return {
       unlocked: this.unlocked,
-      loadState: this.loadState,
-      contextState: this.context?.state ?? "unavailable",
-      configuredCueCount: AUDIO_CUE_IDS.length,
-      loadedVariantCount: this.buffers.size,
-      activeVoiceCount: this.sourcePool?.activeCount ?? 0,
-      activeLoop: this.desiredLoop,
-      loopPlaying: this.loopSource !== null,
-      playCounts: { ...this.playCounts },
-      cueVolumes: Object.fromEntries(AUDIO_CUE_IDS.map((cueId) => [cueId, AUDIO_CATALOG[cueId].volume])),
-      lastDetuneCents: Object.fromEntries(this.lastDetuneByCue),
+      loadState: sfxDiagnostics.loadState,
+      contextState: this.mixer?.context.state ?? "unavailable",
+      configuredCueCount: sfxDiagnostics.configuredCueCount,
+      loadedVariantCount: sfxDiagnostics.loadedVariantCount,
+      activeVoiceCount: mixerDiagnostics?.activeVoiceCount ?? 0,
+      activeLoop: sfxDiagnostics.activeLoop,
+      loopPlaying: sfxDiagnostics.loopPlaying,
+      playCounts: sfxDiagnostics.playCounts,
+      cueVolumes: sfxDiagnostics.cueVolumes,
+      lastDetuneCents: sfxDiagnostics.lastDetuneCents,
       cooldownFailurePitch: {
         detuneCents: COOLDOWN_FAILURE_DETUNE_CENTS,
         randomDetuneCents: COOLDOWN_FAILURE_RANDOM_DETUNE_CENTS,
       },
+      preferences: { ...this.preferences },
+      effectiveSfxGain: mixerDiagnostics?.effectiveSfxGain ?? 0,
+      effectiveBgmGain: mixerDiagnostics?.effectiveBgmGain ?? 0,
+      music: mixerDiagnostics?.music ?? null,
       lastCastFailureReason: this.lastCastFailureReason,
-      optionalUnavailable: [...this.optionalUnavailable],
+      optionalUnavailable: sfxDiagnostics.optionalUnavailable,
       suspensionReasons: [...this.suspensionReasons],
     };
   }
@@ -153,52 +149,17 @@ export class AudioSystem {
     this.disposed = true;
     document.removeEventListener("pointerdown", this.handleUnlockGesture, { capture: true });
     document.removeEventListener("keydown", this.handleUnlockGesture, { capture: true });
-    this.stopAllSources();
-    const context = this.context;
-    this.context = null;
-    this.masterGain = null;
-    this.sfxGain = null;
-    this.sourcePool = null;
-    if (context && context.state !== "closed") {
-      void context.close();
-    }
+    this.sfx.reset(this.mixer);
+    this.mixer?.dispose();
+    this.mixer = null;
   }
 
   private async preload() {
-    this.loadState = "loading";
-    const context = this.ensureContext();
-    if (!context) {
-      this.loadState = "partial";
+    const mixer = this.ensureMixer();
+    if (!mixer) {
       return;
     }
-
-    let requiredFailure = false;
-    await Promise.all(
-      AUDIO_CUE_IDS.flatMap((cueId) => {
-        const definition = AUDIO_CATALOG[cueId];
-        return definition.urls.map(async (url) => {
-          try {
-            const response = await fetch(url);
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status}`);
-            }
-            const buffer = await context.decodeAudioData(await response.arrayBuffer());
-            this.buffers.set(url, buffer);
-          } catch (error) {
-            if (definition.optional) {
-              this.optionalUnavailable.add(cueId);
-              return;
-            }
-            requiredFailure = true;
-            console.warn(`[audio] Could not load ${url}`, error);
-          }
-        });
-      }),
-    );
-
-    if (!this.disposed) {
-      this.loadState = requiredFailure ? "partial" : "ready";
-    }
+    await this.sfx.preload(mixer.context);
   }
 
   private readonly handleUnlockGesture = () => {
@@ -206,20 +167,22 @@ export class AudioSystem {
   };
 
   private async unlock() {
-    const context = this.ensureContext();
-    if (!context || this.disposed) {
+    const mixer = this.ensureMixer();
+    if (!mixer || this.disposed) {
       return;
     }
 
     this.unlocked = true;
     document.removeEventListener("pointerdown", this.handleUnlockGesture, { capture: true });
     document.removeEventListener("keydown", this.handleUnlockGesture, { capture: true });
-    await this.syncContextState();
+    const musicPlayback = mixer.playMusic();
+    this.applyMusicVolume(true);
+    await Promise.all([this.syncContextState(), musicPlayback]);
   }
 
-  private ensureContext() {
-    if (this.context || this.disposed) {
-      return this.context;
+  private ensureMixer() {
+    if (this.mixer || this.disposed) {
+      return this.mixer;
     }
 
     const AudioContextConstructor = window.AudioContext;
@@ -227,24 +190,17 @@ export class AudioSystem {
       return null;
     }
 
-    this.context = new AudioContextConstructor();
-    this.masterGain = this.context.createGain();
-    this.sfxGain = this.context.createGain();
-    this.masterGain.gain.value = 0.82;
-    this.sfxGain.gain.value = 1;
-    this.sfxGain.connect(this.masterGain);
-    this.masterGain.connect(this.context.destination);
-    this.sourcePool = new AudioSourcePool(this.context, this.sfxGain);
-    return this.context;
+    this.mixer = new AudioMixer(new AudioContextConstructor(), this.preferences, MUSIC_SOURCE);
+    return this.mixer;
   }
 
   private async syncContextState() {
-    const context = this.context;
+    const context = this.mixer?.context;
     if (!context || context.state === "closed") {
       return;
     }
 
-    if (this.suspensionReasons.size > 0) {
+    if (this.suspensionReasons.has("hidden")) {
       if (context.state === "running") {
         await context.suspend();
       }
@@ -256,33 +212,15 @@ export class AudioSystem {
     }
   }
 
-  private chooseBuffer(cueId: AudioCueId) {
-    const urls = AUDIO_CATALOG[cueId].urls;
-    const available = urls
-      .map((url, index) => ({ buffer: this.buffers.get(url), index }))
-      .filter((entry): entry is { buffer: AudioBuffer; index: number } => entry.buffer !== undefined);
-    if (available.length === 0) {
-      return null;
-    }
-
-    const previous = this.lastVariantByCue.get(cueId);
-    const choices = available.length > 1 ? available.filter((entry) => entry.index !== previous) : available;
-    const selected = choices[Math.floor(Math.random() * choices.length)];
-    this.lastVariantByCue.set(cueId, selected.index);
-    return selected.buffer;
+  private applySfxVolume() {
+    this.mixer?.setSfxVolume(this.preferences.sfxVolume, this.suspensionReasons.has("pause"));
   }
 
-  private stopAllSources() {
-    this.desiredLoop = null;
-    this.loopSource = null;
-    this.sourcePool?.stopAll();
+  private applyMusicVolume(fadeIn = false) {
+    this.mixer?.setMusicVolume(this.preferences.bgmVolume, fadeIn);
   }
-}
 
-function createCueCounter(): Record<AudioCueId, number> {
-  return Object.fromEntries(AUDIO_CUE_IDS.map((cueId) => [cueId, 0])) as Record<AudioCueId, number>;
-}
-
-function getRandomDetune(baseCents: number, randomCents: number) {
-  return baseCents + (Math.random() * 2 - 1) * randomCents;
+  private savePreferences() {
+    saveAudioPreferences(this.preferences);
+  }
 }
