@@ -147,6 +147,42 @@
   box-shadow: 0 0 14px #79f0cc;
 }
 
+.hud__currencies {
+  display: grid;
+  gap: 7px;
+}
+
+.hud__currency {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: #d9c4e5;
+  font-size: 12px;
+  text-shadow: 0 2px 9px rgb(0 0 0 / 88%);
+}
+
+.hud__currency strong {
+  min-width: 30px;
+  color: #f3d7ff;
+  font-size: 18px;
+  text-align: right;
+}
+
+.hud__currency-icon {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #df9cff;
+  background: radial-gradient(circle at 38% 34%, #f2c7ff 0 18%, #a849d0 24% 58%, #42144f 64%);
+  box-shadow: 0 0 13px rgb(199 92 237 / 78%);
+  transform: rotate(45deg);
+}
+
+.hud__currency--gained .hud__currency-icon,
+.hud__currency--gained strong {
+  animation: cursed-energy-gain 420ms ease-out 2 alternate;
+}
+
 .hud__abilities {
   display: flex;
   gap: 10px;
@@ -192,6 +228,19 @@
 .ability--active {
   border-color: #ffe27a;
   box-shadow: 0 0 0 2px rgb(255 226 122 / 22%);
+}
+
+.ability--accelerated {
+  border-color: #8ffff0;
+  box-shadow: 0 0 12px rgb(103 227 192 / 34%);
+}
+
+@keyframes cursed-energy-gain {
+  to {
+    color: #ffffff;
+    filter: brightness(1.45);
+    text-shadow: 0 0 14px rgb(223 156 255 / 88%);
+  }
 }
 
 .ability__cooldown-fill {

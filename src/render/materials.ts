@@ -36,6 +36,12 @@ export function createGameMaterials() {
       emissiveIntensity: 0.45,
       roughness: 0.7,
     }),
+    cursed: new THREE.MeshStandardMaterial({
+      color: 0x28162f,
+      emissive: 0x3c0d54,
+      emissiveIntensity: 0.52,
+      roughness: 0.76,
+    }),
     lake: new THREE.MeshStandardMaterial({
       color: 0x102833,
       emissive: 0x07151b,

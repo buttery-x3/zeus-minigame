@@ -2,6 +2,7 @@ import { PLAYER_MAX_HEALTH, PLAYER_MAX_MANA } from "../config";
 import { mustQuery } from "../lib/dom";
 import { clamp } from "../lib/math";
 import type { SpellConfig, SpellId } from "../types";
+import type { GroundCellPhase } from "../game/terrain/GroundEffectSystem";
 import type { GameWindow } from "./window/GameWindow";
 import type { WindowManager } from "./window/WindowManager";
 
@@ -15,6 +16,13 @@ type HudState = {
   castMode: SpellId | null;
   cooldowns: Record<SpellId, number>;
   spells: Record<SpellId, SpellConfig>;
+  cursedEnergy: number;
+  groundPhase: GroundCellPhase;
+  cooldownRecoveryMultiplier: number;
+  energyRecoveryMultiplier: number;
+  chargedRemainingSeconds: number;
+  curseProgress: number;
+  rewardFeedbackVisible: boolean;
   gameOver: boolean;
   paused: boolean;
 };
@@ -29,6 +37,8 @@ export class Hud {
   private wave: HTMLElement;
   private cell: HTMLElement;
   private status: HTMLElement;
+  private cursedEnergy: HTMLElement;
+  private cursedCurrencyRow: HTMLElement;
   private chainButton: HTMLElement;
   private boltButton: HTMLElement;
 
@@ -71,6 +81,15 @@ export class Hud {
           <span class="ability__name">Bolt</span>
           <em class="ability__cooldown"></em>
         </button>
+      </div>
+    `);
+    const currencies = this.createContent(`
+      <div class="hud__currencies">
+        <div class="hud__currency hud__currency--cursed" data-currency="cursed" aria-label="Cursed Energy">
+          <i class="hud__currency-icon" aria-hidden="true"></i>
+          <span>Cursed Energy</span>
+          <strong data-cursed-energy>0</strong>
+        </div>
       </div>
     `);
 
@@ -122,9 +141,24 @@ export class Hud {
       lockable: true,
       locked: true,
     });
+    const currenciesWindow = windowManager.createWindow({
+      id: "hud-currencies",
+      title: "Currencies",
+      content: currencies,
+      placement: {
+        anchor: "bottom-left",
+        width: 190,
+        offsetX: 18,
+        offsetY: 18,
+        mobile: { anchor: "bottom-left", width: 180, offsetX: 14, offsetY: 14 },
+      },
+      className: "hud-window hud-window--currencies hud-window--minimal",
+      lockable: true,
+      locked: true,
+    });
 
-    this.windows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow);
-    this.hoverRevealWindows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow);
+    this.windows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow, currenciesWindow);
+    this.hoverRevealWindows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow, currenciesWindow);
     window.addEventListener("pointermove", this.handleHoverRevealPointerMove);
 
     this.healthFill = mustQuery(stats, "[data-health-fill]");
@@ -133,6 +167,8 @@ export class Hud {
     this.wave = mustQuery(game, "[data-wave]");
     this.cell = mustQuery(game, "[data-cell]");
     this.status = status;
+    this.cursedEnergy = mustQuery(currencies, "[data-cursed-energy]");
+    this.cursedCurrencyRow = mustQuery(currencies, '[data-currency="cursed"]');
     this.chainButton = mustQuery(abilities, '[data-ability="chain"]');
     this.boltButton = mustQuery(abilities, '[data-ability="bolt"]');
   }
@@ -143,6 +179,8 @@ export class Hud {
     this.kills.textContent = `${state.kills}`;
     this.wave.textContent = `${state.wave}`;
     this.cell.textContent = `Hex ${state.cellQ}, ${state.cellR}`;
+    this.cursedEnergy.textContent = `${state.cursedEnergy}`;
+    this.cursedCurrencyRow.classList.toggle("hud__currency--gained", state.rewardFeedbackVisible);
 
     if (state.gameOver) {
       this.status.textContent = "Storm spent. Press R.";
@@ -150,12 +188,20 @@ export class Hud {
       this.status.textContent = "Paused";
     } else if (state.castMode) {
       this.status.textContent = state.spells[state.castMode].label;
+    } else if (state.rewardFeedbackVisible) {
+      this.status.textContent = "+1 Cursed Energy";
+    } else if (state.groundPhase === "cursed") {
+      this.status.textContent = `Cleansing Curse · ${Math.round(state.curseProgress * 100)}%`;
+    } else if (state.groundPhase === "charged" && state.cooldownRecoveryMultiplier > 1) {
+      this.status.textContent = `Charged Ground · Cooldowns + Power ×${state.cooldownRecoveryMultiplier.toFixed(2)} · ${state.chargedRemainingSeconds.toFixed(1)}s`;
     } else {
       this.status.textContent = "";
     }
 
     this.updateAbility(this.chainButton, "chain", state);
     this.updateAbility(this.boltButton, "bolt", state);
+    this.chainButton.classList.toggle("ability--accelerated", state.cooldownRecoveryMultiplier > 1);
+    this.boltButton.classList.toggle("ability--accelerated", state.cooldownRecoveryMultiplier > 1);
   }
 
   remove() {

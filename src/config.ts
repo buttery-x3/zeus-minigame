@@ -4,6 +4,15 @@ export const TILE_SIZE = 4;
 
 export const PLAYER_MAX_HEALTH = 120;
 export const PLAYER_MAX_MANA = 100;
+export const PLAYER_MANA_REGEN_PER_SECOND = 8.5;
+
+export const CHARGED_GROUND_CHANCE = 0.035;
+export const CURSED_GROUND_CHANCE = 0.0075;
+export const SPECIAL_GROUND_SAFE_RADIUS = 2;
+export const CHARGED_GROUND_RECOVERY_MULTIPLIER = 1.75;
+export const CHARGED_GROUND_CAPACITY_SECONDS = 3;
+export const CURSED_GROUND_CLEANSE_SECONDS = 2.25;
+export const CURSED_GROUND_REWARD = 1;
 
 export const INITIAL_ENEMY_COUNT = 8;
 export const INITIAL_SPAWN_INTERVAL = 1.25;

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createLine } from "./primitives";
+import { createLine, createRing } from "./primitives";
 
 export type PlayerModel = {
   group: THREE.Group;
@@ -10,6 +10,13 @@ export type PlayerModel = {
 export type EnemyModel = {
   group: THREE.Group;
   body: THREE.Mesh;
+};
+
+export type GroundGlyphModel = {
+  group: THREE.Group;
+  rune: THREE.Object3D;
+  ring: THREE.Object3D;
+  motes: THREE.Mesh[];
 };
 
 export function createPlayerModel(playerMaterial: THREE.Material): PlayerModel {
@@ -46,9 +53,9 @@ export function createEnemyModel(enemyMaterial: THREE.Material): EnemyModel {
   return { group, body };
 }
 
-export function createChargedGlyph(x: number, z: number) {
+export function createChargedGlyph(x: number, z: number): GroundGlyphModel {
   const group = new THREE.Group();
-  const line = createLine(
+  const rune = createLine(
     [
       new THREE.Vector3(-0.7, 0.03, 0.9),
       new THREE.Vector3(0.05, 0.03, -0.25),
@@ -58,9 +65,60 @@ export function createChargedGlyph(x: number, z: number) {
     0x67e3c0,
     0.7,
   );
-  group.add(line);
-  group.position.set(x, 0.05, z);
-  return group;
+  const ring = createRing(1.34, 0x67e3c0, 0.34);
+  const motes = createGroundMotes(0x8ffff0, 3);
+  group.add(rune, ring, ...motes);
+  group.position.set(x, 0.11, z);
+  return { group, rune, ring, motes };
+}
+
+export function createCursedGlyph(x: number, z: number): GroundGlyphModel {
+  const group = new THREE.Group();
+  const rune = new THREE.Group();
+  rune.add(
+    createLine(
+      [
+        new THREE.Vector3(-0.88, 0.02, -0.62),
+        new THREE.Vector3(-0.18, 0.02, -0.12),
+        new THREE.Vector3(-0.7, 0.02, 0.7),
+      ],
+      0xd475ff,
+      0.8,
+    ),
+    createLine(
+      [
+        new THREE.Vector3(0.78, 0.02, -0.72),
+        new THREE.Vector3(0.14, 0.02, 0.02),
+        new THREE.Vector3(0.72, 0.02, 0.76),
+      ],
+      0x9e4bd1,
+      0.72,
+    ),
+  );
+  const ring = createRing(1.42, 0xb65be2, 0.42);
+  const motes = createGroundMotes(0xd993ff, 4);
+  group.add(rune, ring, ...motes);
+  group.position.set(x, 0.11, z);
+  return { group, rune, ring, motes };
+}
+
+function createGroundMotes(color: THREE.ColorRepresentation, count: number) {
+  const geometry = new THREE.SphereGeometry(0.075, 6, 6);
+  const motes: THREE.Mesh[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.56,
+      depthWrite: false,
+    });
+    const mote = new THREE.Mesh(geometry, material);
+    const angle = (index / count) * Math.PI * 2 + 0.35;
+    const radius = 0.72 + (index % 2) * 0.34;
+    mote.position.set(Math.cos(angle) * radius, 0.18 + index * 0.08, Math.sin(angle) * radius);
+    motes.push(mote);
+  }
+  return motes;
 }
 
 function createLightningMark() {

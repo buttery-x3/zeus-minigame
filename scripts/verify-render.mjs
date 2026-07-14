@@ -62,11 +62,14 @@ async function verifyInBrowser() {
       await page.waitForSelector(".ui-toolbar");
 
       await verifyHudTransparency(page, viewport);
+      await reloadGame(page);
+      await verifyTerrainGrammar(page, viewport);
+      await verifyGroundEffects(page, viewport);
+      await reloadGame(page);
       await verifyHeldClickTracksCamera(page, viewport);
       await verifyCameraRigStability(page, viewport);
       await verifyShadowRigTracking(page, viewport);
       await verifyVisibilitySystem(page, viewport);
-      await verifyTerrainGrammar(page, viewport);
       await verifyBlockerNavigation(page, viewport);
       await verifyEnemyHealthBars(page, viewport);
       await verifyEnemyAvoidance(page, viewport);
@@ -115,9 +118,178 @@ async function verifyTerrainGrammar(page, viewport) {
   if (!wfc.structureCounts || wfc.structureCounts.open < 1 || wfc.structureCounts.river < 1) {
     throw new Error(`${viewport.name} rolling patch terrain did not produce open terrain and at least one river micro hex: ${JSON.stringify(wfc)}`);
   }
+  if (!wfc.surfaceCounts || wfc.surfaceCounts.charged < 1 || wfc.surfaceCounts.cursed < 1) {
+    throw new Error(`${viewport.name} rolling terrain did not produce charged and cursed ground: ${JSON.stringify(wfc.surfaceCounts)}`);
+  }
+  if (wfc.surfaceCounts.cursed >= wfc.surfaceCounts.charged) {
+    throw new Error(`${viewport.name} cursed ground was not rarer than charged ground: ${JSON.stringify(wfc.surfaceCounts)}`);
+  }
   if (wfc.patchSocketMismatchSample) {
     throw new Error(`${viewport.name} rolling patch terrain produced a socket mismatch: ${JSON.stringify(wfc.patchSocketMismatchSample)}`);
   }
+}
+
+async function verifyGroundEffects(page, viewport) {
+  await page.keyboard.press("F4");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === true);
+
+  try {
+    let diagnostics = await readDiagnostics(page);
+    let charged = diagnostics.groundSamples?.nearestChargedCell;
+    if (!charged?.screen?.visible) {
+      throw new Error(`${viewport.name} missing a reachable charged-ground sample: ${JSON.stringify(diagnostics.terrainGrammar?.wfc?.surfaceCounts)}`);
+    }
+
+    await page.mouse.click(charged.screen.x, charged.screen.y);
+    await page.waitForFunction(
+      ({ q, r }) => {
+        const ground = window.__ZEUS_GAME__?.getDiagnostics().groundEffects;
+        return ground?.cell?.q === q && ground?.cell?.r === r && ground.phase === "charged" && ground.cooldownRecoveryMultiplier > 1.7;
+      },
+      charged.cell,
+      { timeout: 6000 },
+    );
+
+    const chargedKey = `${charged.cell.q},${charged.cell.r}`;
+    const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
+    await page.mouse.move(target.x, target.y);
+    await releaseSpellKeys(page);
+    await page.keyboard.down("KeyQ");
+    await waitForCastMode(page, "chain");
+    await page.keyboard.up("KeyQ");
+    await waitForSpellCooldown(page, "chain");
+
+    const recoveryStart = await readDiagnostics(page);
+    await page.waitForTimeout(420);
+    const recoveryEnd = await readDiagnostics(page);
+    const cooldownRecovered = recoveryStart.spells.cooldowns.chain - recoveryEnd.spells.cooldowns.chain;
+    const powerRecovered = recoveryEnd.spells.mana - recoveryStart.spells.mana;
+    if (cooldownRecovered < 0.58 || powerRecovered < 4.6) {
+      throw new Error(`${viewport.name} charged ground did not accelerate cooldown and Power recovery: cooldown=${cooldownRecovered}, power=${powerRecovered}`);
+    }
+    if (
+      recoveryEnd.groundEffects.cooldownRecoveryMultiplier < 1.7 ||
+      recoveryEnd.groundEffects.energyRecoveryMultiplier < 1.7
+    ) {
+      throw new Error(`${viewport.name} charged recovery multipliers were not active: ${JSON.stringify(recoveryEnd.groundEffects)}`);
+    }
+
+    await clickVisibleMoveCell(page, viewport, 0.34, 0.55);
+    await page.waitForFunction(
+      ({ q, r }) => {
+        const cell = window.__ZEUS_GAME__?.getDiagnostics().groundEffects?.cell;
+        return cell && (cell.q !== q || cell.r !== r);
+      },
+      charged.cell,
+      { timeout: 6000 },
+    );
+    const awayStart = await readDiagnostics(page);
+    const usedBeforeWaitingAway = chargedUsageFor(awayStart, chargedKey);
+    await page.waitForTimeout(360);
+    const away = await readDiagnostics(page);
+    const usedWhileAway = chargedUsageFor(away, chargedKey);
+    if (Math.abs(usedWhileAway - usedBeforeWaitingAway) > 0.03 || away.groundEffects.cooldownRecoveryMultiplier !== 1) {
+      throw new Error(`${viewport.name} charged-ground capacity did not pause after leaving: before=${usedBeforeWaitingAway}, away=${usedWhileAway}`);
+    }
+
+    diagnostics = await readDiagnostics(page);
+    charged = diagnostics.groundSamples?.partiallyChargedCell;
+    if (!charged?.screen?.visible || `${charged.cell.q},${charged.cell.r}` !== chargedKey) {
+      throw new Error(`${viewport.name} could not reacquire the partially consumed charged tile`);
+    }
+    await page.mouse.click(charged.screen.x, charged.screen.y);
+    await page.waitForFunction(
+      ({ q, r }) => {
+        const ground = window.__ZEUS_GAME__?.getDiagnostics().groundEffects;
+        return ground?.cell?.q === q && ground?.cell?.r === r && ground.cooldownRecoveryMultiplier > 1;
+      },
+      charged.cell,
+      { timeout: 6000 },
+    );
+    await page.waitForFunction(
+      (key) => {
+        const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+        const usage = diagnostics?.groundEffects?.chargedCells?.find((entry) => entry.key === key);
+        return usage?.remainingSeconds <= 0 && diagnostics.groundEffects.phase === "depleted";
+      },
+      chargedKey,
+      { timeout: 5000 },
+    );
+    diagnostics = await readDiagnostics(page);
+    if (diagnostics.groundEffects.cooldownRecoveryMultiplier !== 1 || diagnostics.groundEffects.energyRecoveryMultiplier !== 1) {
+      throw new Error(`${viewport.name} depleted charged ground still granted recovery: ${JSON.stringify(diagnostics.groundEffects)}`);
+    }
+
+    let cursed = diagnostics.groundSamples?.nearestCursedCell;
+    if (!cursed?.screen?.visible) {
+      throw new Error(`${viewport.name} missing a reachable cursed-ground sample: ${JSON.stringify(diagnostics.terrainGrammar?.wfc?.surfaceCounts)}`);
+    }
+    await page.mouse.click(cursed.screen.x, cursed.screen.y);
+    await page.waitForFunction(
+      ({ q, r }) => {
+        const ground = window.__ZEUS_GAME__?.getDiagnostics().groundEffects;
+        return ground?.cell?.q === q && ground?.cell?.r === r && ground.phase === "cursed" && ground.curseProgress > 0.12;
+      },
+      cursed.cell,
+      { timeout: 6000 },
+    );
+
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === true);
+    const pausedStart = await readDiagnostics(page);
+    await page.waitForTimeout(360);
+    const pausedEnd = await readDiagnostics(page);
+    if (Math.abs(pausedEnd.groundEffects.curseProgress - pausedStart.groundEffects.curseProgress) > 0.01) {
+      throw new Error(`${viewport.name} curse cleansing advanced while paused`);
+    }
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+
+    const cursedCell = cursed.cell;
+    await clickVisibleMoveCell(page, viewport, 0.67, 0.54);
+    await page.waitForFunction(
+      ({ q, r }) => {
+        const cell = window.__ZEUS_GAME__?.getDiagnostics().groundEffects?.cell;
+        return cell && (cell.q !== q || cell.r !== r);
+      },
+      cursedCell,
+      { timeout: 6000 },
+    );
+    const leftCurse = await readDiagnostics(page);
+    if (leftCurse.groundEffects.curseProgress !== 0) {
+      throw new Error(`${viewport.name} curse progress did not reset after leaving`);
+    }
+
+    diagnostics = await readDiagnostics(page);
+    cursed = diagnostics.groundSamples?.nearestCursedCell;
+    if (!cursed?.screen?.visible || cursed.cell.q !== cursedCell.q || cursed.cell.r !== cursedCell.r) {
+      throw new Error(`${viewport.name} could not reacquire the reset cursed tile`);
+    }
+    await page.mouse.click(cursed.screen.x, cursed.screen.y);
+    await page.waitForFunction(
+      () => {
+        const ground = window.__ZEUS_GAME__?.getDiagnostics().groundEffects;
+        return ground?.cursedEnergy === 1 && ground.cleansedCount === 1;
+      },
+      undefined,
+      { timeout: 7000 },
+    );
+    diagnostics = await readDiagnostics(page);
+    const currencyText = await page.$eval('[data-window-id="hud-currencies"] [data-cursed-energy]', (element) => element.textContent);
+    if (currencyText?.trim() !== "1" || diagnostics.groundEffects.phase !== "cleansed") {
+      throw new Error(`${viewport.name} cursed-ground reward or HUD currency did not update: ${currencyText}, ${JSON.stringify(diagnostics.groundEffects)}`);
+    }
+  } finally {
+    const diagnostics = await readDiagnostics(page);
+    if (diagnostics.input.terrainDebugMode) {
+      await page.keyboard.press("F4");
+      await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === false);
+    }
+  }
+}
+
+function chargedUsageFor(diagnostics, key) {
+  return diagnostics.groundEffects.chargedCells.find((entry) => entry.key === key)?.usedSeconds ?? 0;
 }
 
 async function verifyTerrainDebugMode(page, viewport) {
@@ -481,11 +653,11 @@ async function verifyPauseMenuCentered(page, viewport) {
 
 async function verifyHudTransparency(page, viewport) {
   const initial = await readHudPanelMetrics(page);
-  if (!initial.vitals || !initial.status || !initial.game || !initial.abilities) {
+  if (!initial.vitals || !initial.status || !initial.game || !initial.abilities || !initial.currencies) {
     throw new Error(`${viewport.name} missing HUD panel metrics: ${JSON.stringify(initial)}`);
   }
 
-  const minimalPanelIds = ["hud-vitals", "hud-status", "hud-position", "hud-abilities"];
+  const minimalPanelIds = ["hud-vitals", "hud-status", "hud-position", "hud-abilities", "hud-currencies"];
   const panels = minimalPanelIds.map((id) => getHudPanelMetric(initial, id));
 
   await verifyUnlockUiDefault(page);
@@ -498,6 +670,12 @@ async function verifyHudTransparency(page, viewport) {
   }
   if (!initial.game.text.includes("Hex") || !initial.game.text.includes("Kills") || !initial.game.text.includes("Wave")) {
     throw new Error(`${viewport.name} game panel did not contain hex, kills, and wave text: ${JSON.stringify(initial.game)}`);
+  }
+  if (!initial.currencies.text.includes("Cursed Energy") || !initial.currencies.text.includes("0")) {
+    throw new Error(`${viewport.name} currency panel did not expose the initial Cursed Energy balance: ${JSON.stringify(initial.currencies)}`);
+  }
+  if (initial.currencies.centerXRatio > 0.32 || initial.currencies.centerYRatio < 0.86) {
+    throw new Error(`${viewport.name} currency panel was not placed at the bottom-left: ${JSON.stringify(initial.currencies)}`);
   }
   if (Math.abs(initial.vitals.centerXRatio - 0.5) > 0.08 || Math.abs(initial.abilities.centerXRatio - 0.5) > 0.08) {
     throw new Error(`${viewport.name} central HUD panels were not horizontally centered: ${JSON.stringify(initial)}`);
@@ -521,6 +699,7 @@ async function verifyHudTransparency(page, viewport) {
   for (const id of minimalPanelIds) {
     await verifyHudPanelHoverReveal(page, viewport, id);
   }
+  await verifyCurrencyPanelMovement(page, viewport);
 
   const unlockEnabled = await readHudPanelMetrics(page);
   if (minimalPanelIds.some((id) => getHudPanelMetric(unlockEnabled, id).lockControlHidden)) {
@@ -540,6 +719,37 @@ async function verifyHudTransparency(page, viewport) {
   for (const id of minimalPanelIds) {
     await verifyHudPanelDoesNotHoverReveal(page, viewport, id);
   }
+}
+
+async function verifyCurrencyPanelMovement(page, viewport) {
+  await revealHudPanel(page, viewport, "hud-currencies");
+  await page.click('[data-window-id="hud-currencies"] .game-window__action--lock');
+  await page.waitForFunction(() => !document.querySelector('[data-window-id="hud-currencies"]')?.classList.contains("game-window--locked"));
+
+  const before = await page.$eval('[data-window-id="hud-currencies"]', (element) => {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.x, y: rect.y };
+  });
+  const titlebar = page.locator('[data-window-id="hud-currencies"] .game-window__titlebar');
+  const box = await titlebar.boundingBox();
+  if (!box) {
+    throw new Error(`${viewport.name} currency panel titlebar was not draggable`);
+  }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 28, box.y + box.height / 2 - 18, { steps: 4 });
+  await page.mouse.up();
+
+  const after = await page.$eval('[data-window-id="hud-currencies"]', (element) => {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.x, y: rect.y };
+  });
+  if (Math.hypot(after.x - before.x, after.y - before.y) < 12) {
+    throw new Error(`${viewport.name} currency panel did not move while unlocked: before=${JSON.stringify(before)}, after=${JSON.stringify(after)}`);
+  }
+
+  await page.click('[data-window-id="hud-currencies"] .game-window__action--lock');
+  await page.waitForFunction(() => document.querySelector('[data-window-id="hud-currencies"]')?.classList.contains("game-window--locked"));
 }
 
 async function verifyHudPanelHoverReveal(page, viewport, id) {
@@ -607,6 +817,7 @@ function getHudPanelMetric(metrics, id) {
     "hud-status": "status",
     "hud-position": "game",
     "hud-abilities": "abilities",
+    "hud-currencies": "currencies",
   };
   return metrics[keyById[id]];
 }
@@ -1291,6 +1502,7 @@ async function collectHudMetrics(page) {
       hasCell: text.includes("Hex"),
       hasChain: abilities.some((text) => text.includes("Q") && text.includes("Chain")),
       hasBolt: abilities.some((text) => text.includes("W") && text.includes("Bolt")),
+      hasCursedEnergy: text.includes("Cursed Energy"),
       statusVisible,
     };
   });
@@ -1342,6 +1554,7 @@ async function readHudPanelMetrics(page) {
       status: readPanel("hud-status"),
       game: readPanel("hud-position"),
       abilities: readPanel("hud-abilities"),
+      currencies: readPanel("hud-currencies"),
     };
   });
 }
@@ -1349,7 +1562,7 @@ async function readHudPanelMetrics(page) {
 function assertResult(result) {
   const { viewport, metrics, hud, errors } = result;
   const usablePixels = metrics.nonDark > 1500 && metrics.bright > 8 && metrics.colorBuckets > 18;
-  const hudOk = hud.hasKills && hud.hasWave && hud.hasCell && hud.hasChain && hud.hasBolt && hud.statusVisible;
+  const hudOk = hud.hasKills && hud.hasWave && hud.hasCell && hud.hasChain && hud.hasBolt && hud.hasCursedEnergy && hud.statusVisible;
 
   if (!usablePixels) {
     throw new Error(`${viewport.name} canvas looked blank or too flat: ${JSON.stringify(metrics)}`);

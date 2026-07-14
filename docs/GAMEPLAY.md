@@ -22,6 +22,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Health starts at `120`.
 - Mana starts at `100`.
 - Mana regenerates over time and gains a small bump from kills.
+- Active charged ground accelerates both mana regeneration and spell cooldown recovery by `1.75x`.
 - Movement is click/hold-to-move on the `X/Z` ground plane.
 - Movement commands require known terrain: Zeus can move to previously discovered walkable ground even when it is no longer currently visible.
 - If pathfinding cannot resolve a full route to a movement command, Zeus falls back to moving in a straight visible line toward the command until terrain blocks the path.
@@ -34,6 +35,17 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Spells require current visibility and light at the resolved target point. Casts into blocker shadows, undiscovered terrain, or remembered darkness are rejected before spending mana or cooldown.
 - When Allow Max Range Target Snap is off, raw out-of-range spell targets are rejected instead of snapping to max range.
 - Spells use explicit mana costs, cooldowns, and targeting ranges from `src/config.ts`.
+
+## Special Ground
+
+- Charged and cursed ground are deterministic decorations on walkable open hexes. They do not change collision, sight, or WFC edge compatibility.
+- Charged ground glows cyan and grants `1.75x` spell cooldown recovery and `1.75x` Power regeneration while Zeus stands on it.
+- Each charged hex contains about `3` seconds of cumulative energy. Leaving pauses its consumption, returning resumes it, and an exhausted tile stays depleted until the run restarts.
+- Cursed ground appears less often than charged ground and glows violet.
+- Standing on cursed ground for about `2.25` uninterrupted seconds cleanses it. Leaving the hex resets cleanse progress.
+- Cleansing grants `1` Cursed Energy, changes the hex to scarred ground, and cannot reward the player again during that run.
+- Cursed Energy is run-local in this pass and resets on restart. Spending it on upgrades is reserved for a later progression feature.
+- The dedicated Currencies HUD window starts locked and transparent at the bottom-left. The pause menu's Unlock UI setting exposes its lock control and allows it to be moved like the Vitals and Abilities windows.
 
 ## Enemies
 
@@ -50,7 +62,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - The world is a deterministic axial hex grid over the `X/Z` plane. HUD coordinates are shown as `q,r`.
 - The world has no gameplay boundary; rolling patch terrain is generated as needed around Zeus.
 - Terrain cells are supplied by the default WFC terrain provider. It generates rolling patch-by-patch terrain around the player over explicit patch tile variants. A micro hex is a gameplay terrain cell; a patch tile is a non-overlapping radius-2 group of micro hexes selected as one generation unit.
-- Terrain cells have a structural type and a derived surface. Structures are `open`, `wall`, `bank`, `lake`, and `river`; the active rolling catalog currently emits `open`, `wall`, and `river`. Surfaces include `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, and `charged`.
+- Terrain cells have a structural type and a derived surface. Structures are `open`, `wall`, `bank`, `lake`, and `river`; the active rolling catalog currently emits `open`, `wall`, and `river`. Surfaces include `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, `charged`, and `cursed`.
 - `open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Water is not a visibility occluder in the first hex pass; only `wall` blocks sight.
 - Rivers are path-like water that can form lines, bends, forks, and sources. Lakes and banks are reserved for a later pass.
 - Patch edge signatures are ordered lists of `open`, `closed`, and `river` sockets. Patch WFC matches each edge against the reversed opposite edge of its neighbor. Bank and lake variants are reserved for a later pass.

@@ -81,6 +81,9 @@ export class GameWindow {
     } else if (placement.anchor === "top-center") {
       this.x = (window.innerWidth - width) / 2 + (placement.offsetX ?? 0);
       this.y = offsetY;
+    } else if (placement.anchor === "bottom-left") {
+      this.x = offsetX;
+      this.y = window.innerHeight - height - offsetY;
     } else if (placement.anchor === "bottom-center") {
       this.x = (window.innerWidth - width) / 2 + (placement.offsetX ?? 0);
       this.y = window.innerHeight - height - offsetY;

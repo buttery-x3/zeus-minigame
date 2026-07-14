@@ -29,6 +29,9 @@ npm run verify
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
 - Checks rolling patch terrain diagnostics, including active patch-radius generation, at least one river micro hex, no emergency patches, and ordered patch edge socket agreement.
+- Checks deterministic special-ground generation, including reachable charged and cursed cells and the requirement that cursed ground remains rarer.
+- Exercises charged ground to confirm both cooldown and Power recovery run at `1.75x`, leaving preserves consumed capacity, returning resumes consumption, and the tile depletes after about three cumulative seconds.
+- Exercises cursed ground to confirm pause freezes cleansing, leaving resets progress, completion grants exactly one Cursed Energy, and the tile becomes cleansed.
 - Checks Terrain Debug mode by toggling it on, verifying fog is disabled, camera view is widened with debug framing, HP remains full, the rendered terrain window expands, and rolling terrain diagnostics remain valid without increasing the configured generation radius or generating new patches.
 - Checks that hidden spell targets do not spend cooldown, default out-of-range spell targets snap to max range, and strict mode rejects out-of-range raw targets.
 - Checks that click and held movement commands reject undiscovered terrain.
@@ -42,6 +45,7 @@ npm run verify
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
 - Checks that the WebGL canvas is not blank or visually flat.
 - Checks that core HUD text and ability buttons exist, including the Unlock UI toggle, locked transparent HUD panels, click-through behavior, gated hover reveal, and radial spell cooldown button state.
+- Checks that the Currencies panel starts at the bottom-left on desktop and mobile, displays Cursed Energy, and supports the same unlock, drag, relock, transparency, and click-through behavior as the other HUD panels.
 - Saves screenshots into `verify/`.
 
 `verify/` is ignored by git.
@@ -72,5 +76,6 @@ Update `scripts/verify-render.mjs` when adding or changing:
 - Camera behavior that changes framing.
 - Rendering that changes the canvas baseline significantly.
 - Game states that should be smoke-tested, such as pause, death, restart, upgrades, or menus.
+- Persistent or consumable terrain interactions and currencies.
 
 Keep the verifier focused on smoke coverage. It should prove the playable scene boots, renders, responds to core input, and exposes expected HUD state; it should not become a full gameplay simulation.

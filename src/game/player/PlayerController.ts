@@ -22,6 +22,7 @@ export class PlayerController {
   private path: THREE.Vector3[] = [];
   private lastRequestedCellKey = "";
   private lastRequestedBlocked = false;
+  private groundAura: "charged" | "cursed" | null = null;
 
   constructor(
     private readonly gridWorld: GridWorld,
@@ -42,7 +43,7 @@ export class PlayerController {
   update(dt: number) {
     const waypoint = this.currentWaypoint();
     if (!waypoint) {
-      this.model.aura.rotation.z += dt * 1.6;
+      this.rotateAura(dt);
       return;
     }
 
@@ -50,7 +51,7 @@ export class PlayerController {
     const distance = offset.length();
     if (distance < 0.18) {
       this.path.shift();
-      this.model.aura.rotation.z += dt * 1.6;
+      this.rotateAura(dt);
       return;
     }
 
@@ -66,7 +67,7 @@ export class PlayerController {
 
     if (distance2D(this.object.position.x, this.object.position.z, nextPosition.x, nextPosition.z) < 0.001) {
       this.path = [];
-      this.model.aura.rotation.z += dt * 1.6;
+      this.rotateAura(dt);
       return;
     }
 
@@ -79,7 +80,21 @@ export class PlayerController {
       this.path.shift();
     }
 
-    this.model.aura.rotation.z += dt * 1.6;
+    this.rotateAura(dt);
+  }
+
+  setGroundAura(mode: "charged" | "cursed" | null) {
+    if (this.groundAura === mode) {
+      return;
+    }
+
+    this.groundAura = mode;
+    const material = this.model.aura.material;
+    if (!(material instanceof THREE.MeshBasicMaterial)) {
+      return;
+    }
+    material.color.set(mode === "cursed" ? 0xd475ff : mode === "charged" ? 0x8ffff0 : 0x7bd7ff);
+    material.opacity = mode ? 0.82 : 0.54;
   }
 
   setMoveTarget(x: number, z: number, options: MoveTargetOptions = {}) {
@@ -135,6 +150,7 @@ export class PlayerController {
     this.lastRequestedBlocked = false;
     this.materials.player.color.set(0xdfe8ee);
     this.materials.player.emissive.set(0x21526b);
+    this.setGroundAura(null);
   }
 
   getNavigationDiagnostics() {
@@ -151,5 +167,9 @@ export class PlayerController {
     }
 
     return this.path[0] ?? null;
+  }
+
+  private rotateAura(dt: number) {
+    this.model.aura.rotation.z += dt * (this.groundAura === "charged" ? 4.2 : this.groundAura === "cursed" ? 2.5 : 1.6);
   }
 }

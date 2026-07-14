@@ -1,6 +1,7 @@
 import type { GameRuntimeState, SpellConfig, SpellId } from "../../types";
 import type { Hud } from "../../ui/Hud";
 import type { GridWorld } from "../../world/GridWorld";
+import type { GroundEffectSnapshot } from "../terrain/GroundEffectSystem";
 
 export class HudPresenter {
   constructor(
@@ -14,6 +15,7 @@ export class HudPresenter {
     castMode: SpellId | null;
     cooldowns: Record<SpellId, number>;
     spells: Record<SpellId, SpellConfig>;
+    ground: GroundEffectSnapshot;
     paused: boolean;
   }) {
     const cell = this.gridWorld.worldToCell(params.playerPosition.x, params.playerPosition.z);
@@ -27,6 +29,13 @@ export class HudPresenter {
       castMode: params.castMode,
       cooldowns: params.cooldowns,
       spells: params.spells,
+      cursedEnergy: params.state.cursedEnergy,
+      groundPhase: params.ground.phase,
+      cooldownRecoveryMultiplier: params.ground.cooldownRecoveryMultiplier,
+      energyRecoveryMultiplier: params.ground.energyRecoveryMultiplier,
+      chargedRemainingSeconds: params.ground.chargedRemainingSeconds,
+      curseProgress: params.ground.curseProgress,
+      rewardFeedbackVisible: params.ground.rewardFeedbackVisible,
       gameOver: params.state.gameOver,
       paused: params.paused,
     });

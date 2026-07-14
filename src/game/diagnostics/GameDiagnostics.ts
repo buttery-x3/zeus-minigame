@@ -6,6 +6,7 @@ import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { Profiler } from "../perf/Profiler";
 import type { PlayerController } from "../player/PlayerController";
 import type { GameScene } from "../scene/GameScene";
+import type { GroundEffectSystem } from "../terrain/GroundEffectSystem";
 import type { VisibilitySystem } from "../visibility/VisibilitySystem";
 
 export class GameDiagnostics {
@@ -15,6 +16,7 @@ export class GameDiagnostics {
     private readonly collision: CollisionSystem,
     private readonly player: PlayerController,
     private readonly visibility: VisibilitySystem,
+    private readonly groundEffects: GroundEffectSystem,
     private readonly profiler: Profiler,
   ) {}
 
@@ -52,6 +54,33 @@ export class GameDiagnostics {
         },
       },
       nearestBlockedCell: this.findNearestBlockedCell(this.player.object.position, 18),
+      groundSamples: {
+        partiallyChargedCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          18,
+          (q, r) => {
+            const cell = this.gridWorld.getCell(q, r);
+            const visual = this.groundEffects.getCellVisualState(cell);
+            return cell.surface === "charged" && visual.phase === "charged" && visual.progress > 0 && this.isDirectVisibleMoveCell(q, r);
+          },
+        ),
+        nearestChargedCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          18,
+          (q, r) => {
+            const cell = this.gridWorld.getCell(q, r);
+            return cell.surface === "charged" && this.groundEffects.getCellVisualState(cell).phase === "charged" && this.isDirectVisibleMoveCell(q, r);
+          },
+        ),
+        nearestCursedCell: this.findNearestVisibilityCell(
+          this.player.object.position,
+          18,
+          (q, r) => {
+            const cell = this.gridWorld.getCell(q, r);
+            return cell.surface === "cursed" && this.groundEffects.getCellVisualState(cell).phase === "cursed" && this.isDirectVisibleMoveCell(q, r);
+          },
+        ),
+      },
       visibility: visibilityDiagnostics,
       visibilitySamples: {
         shadowedCell: visibilityDiagnostics.shadowSample

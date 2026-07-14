@@ -32,6 +32,6 @@ This runs the production build and a headless browser smoke test for rendering, 
 
 - Orthographic isometric camera following the player in a larger axial hex world.
 - Three.js mesh player, enemies, hex terrain cells, wall blockers, water tiles, and lightning effects.
-- Local-pattern procedural hex terrain with structural cells (`open`, `wall`, `bank`, `lake`, `river`) and derived surfaces prepared for future WFC generation.
+- Rolling patch-WFC hex terrain with structural cells (`open`, `wall`, `bank`, `lake`, `river`) and deterministic charged/cursed special-ground surfaces.
 - Simple melee chaser enemies that spawn around the player.
-- HTML/CSS health, mana, cooldowns, wave counter, kill counter, and hex coordinate readout.
+- HTML/CSS health, mana, cooldowns, wave and kill counters, hex coordinates, and a movable Cursed Energy currency panel.

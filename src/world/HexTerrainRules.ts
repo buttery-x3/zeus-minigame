@@ -1,5 +1,18 @@
+import {
+  CHARGED_GROUND_CHANCE,
+  CURSED_GROUND_CHANCE,
+  SPECIAL_GROUND_SAFE_RADIUS,
+} from "../config";
 import type { TerrainStructure, TerrainSurface } from "../types";
-import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, OPPOSITE_HEX_DIRECTIONS, hexCellKey, type HexCoord, type HexDirection } from "./hexCoordinates";
+import {
+  HEX_DIRECTIONS,
+  HEX_DIRECTION_ORDER,
+  OPPOSITE_HEX_DIRECTIONS,
+  hexCellKey,
+  hexDistance,
+  type HexCoord,
+  type HexDirection,
+} from "./hexCoordinates";
 import type { HexPatchTileVariant } from "./HexTerrainCatalog";
 
 export type HexPatchSocketMismatch = {
@@ -16,6 +29,40 @@ export function createTerrainStructureCounts(): Record<TerrainStructure, number>
     lake: 0,
     river: 0,
   };
+}
+
+export function createTerrainSurfaceCounts(): Record<TerrainSurface, number> {
+  return {
+    grass: 0,
+    dirt: 0,
+    sand: 0,
+    mud: 0,
+    stone: 0,
+    scarred: 0,
+    charged: 0,
+    cursed: 0,
+  };
+}
+
+export function decorateSpecialTerrainSurface(
+  structure: TerrainStructure,
+  baseSurface: TerrainSurface,
+  q: number,
+  r: number,
+  seed: number,
+): TerrainSurface {
+  if (structure !== "open" || hexDistance({ q, r }, { q: 0, r: 0 }) <= SPECIAL_GROUND_SAFE_RADIUS) {
+    return baseSurface;
+  }
+
+  const roll = seededTerrainUnit(seed, q, r);
+  if (roll < CURSED_GROUND_CHANCE) {
+    return "cursed";
+  }
+  if (roll < CURSED_GROUND_CHANCE + CHARGED_GROUND_CHANCE) {
+    return "charged";
+  }
+  return baseSurface;
 }
 
 export function deriveTerrainSurface(
@@ -93,4 +140,16 @@ export function findPatchSocketMismatch(
 
 function edgeSignaturesMatch(a: readonly string[], b: readonly string[]) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function seededTerrainUnit(seed: number, q: number, r: number) {
+  let value = (seed ^ 0x6d2b79f5) >>> 0;
+  value ^= Math.imul(q, 0x9e3779b1);
+  value ^= Math.imul(r, 0x85ebca77);
+  value ^= value >>> 16;
+  value = Math.imul(value, 0x7feb352d);
+  value ^= value >>> 15;
+  value = Math.imul(value, 0x846ca68b);
+  value ^= value >>> 16;
+  return (value >>> 0) / 0x100000000;
 }
