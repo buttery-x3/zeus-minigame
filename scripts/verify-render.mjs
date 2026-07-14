@@ -53,6 +53,8 @@ async function verifyInBrowser() {
       await page.waitForSelector(".ui-layer");
       await page.waitForSelector(".hud__stats");
       await page.waitForSelector(".ui-toolbar");
+      await waitForPlayerModel(page, viewport);
+      await verifyPlayerAnimationLifecycle(page, viewport);
 
       await verifyHudTransparency(page, viewport);
       await reloadGame(page);
@@ -155,6 +157,7 @@ async function verifyFrameTiming(page, viewport) {
   const pausedEnd = await readDiagnostics(page);
   if (
     Math.abs(pausedStart.spells.cooldowns.chain - pausedEnd.spells.cooldowns.chain) > 0.02 ||
+    Math.abs(pausedStart.player.animation.animationTime - pausedEnd.player.animation.animationTime) > 0.001 ||
     !pausedEnd.timing.paused ||
     pausedEnd.timing.simulatedDeltaSeconds !== 0 ||
     pausedEnd.timing.substeps !== 0
@@ -714,6 +717,7 @@ async function verifyHeldClickTracksCamera(page, viewport) {
 
   await page.mouse.down();
   try {
+    await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().player.animation.activeClip === "Run_03");
     await page.waitForTimeout(120);
     const initialHold = await readDiagnostics(page);
 
@@ -728,6 +732,9 @@ async function verifyHeldClickTracksCamera(page, viewport) {
     }
     if (targetShift < 2) {
       throw new Error(`${viewport.name} held-click target did not refresh as the camera moved: ${targetShift}`);
+    }
+    if (initialHold.player.animation.activeState !== "run" || initialHold.player.animation.activeClip !== "Run_03") {
+      throw new Error(`${viewport.name} movement did not use Run_03: ${JSON.stringify(initialHold.player.animation)}`);
     }
   } finally {
     await page.mouse.up();
@@ -1279,18 +1286,82 @@ async function verifyQuickCastCancel(page, viewport) {
   if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
     throw new Error(`${viewport.name} right-click cancel still cast the quick-cast spell`);
   }
+  if (after.player.animation.activeClip === "mage_soell_cast_3") {
+    throw new Error(`${viewport.name} cancelled Chain Lightning still triggered its cast animation`);
+  }
 }
 
 async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRatio) {
   await waitForSpellReady(page, spellId);
   const target = await getVisibleInteractionPoint(page, viewport, xRatio, yRatio);
   await page.mouse.move(target.x, target.y);
+  const beforeCast = await readDiagnostics(page);
   await releaseSpellKeys(page);
   await page.keyboard.down(key);
   await waitForCastMode(page, spellId);
   await page.keyboard.up(key);
   await waitForSpellCooldown(page, spellId);
+  const expectedClip = spellId === "chain" ? "mage_soell_cast_3" : "mage_soell_cast";
+  await page.waitForFunction(
+    (clip) => window.__ZEUS_GAME__?.getDiagnostics().player.animation.activeClip === clip,
+    expectedClip,
+  );
+  const duringCast = await readDiagnostics(page);
+  const castTarget = beforeCast.input.pointerWorld;
+  const castOrigin = beforeCast.player.position;
+  const expectedRotation = Math.atan2(castTarget[0] - castOrigin[0], castTarget[2] - castOrigin[2]);
+  if (duringCast.player.animation.timeScale !== 5) {
+    throw new Error(`${viewport.name} ${spellId} cast animation did not run at 5x: ${JSON.stringify(duringCast.player.animation)}`);
+  }
+  if (angleDistance(duringCast.player.rotationY, expectedRotation) > 0.08) {
+    throw new Error(
+      `${viewport.name} ${spellId} cast did not face its target: rotation=${duringCast.player.rotationY}, expected=${expectedRotation}`,
+    );
+  }
   await verifyAbilityCooldownUi(page, viewport, spellId);
+}
+
+async function verifyPlayerAnimationLifecycle(page, viewport) {
+  const expectedClips = [
+    "Dead",
+    "Idle_8",
+    "Run_03",
+    "Running",
+    "Walking",
+    "mage_soell_cast_3",
+    "mage_soell_cast",
+  ];
+  const initial = await readDiagnostics(page);
+  const animation = initial.player.animation;
+  const available = [...animation.availableClips].sort();
+
+  if (
+    animation.loadState !== "ready" ||
+    animation.activeState !== "idle" ||
+    animation.activeClip !== "Idle_8" ||
+    !animation.modelSource.endsWith("/assets/models/characters/zeus/zeus.glb") ||
+    !(animation.modelScale > 0) ||
+    JSON.stringify(available) !== JSON.stringify([...expectedClips].sort())
+  ) {
+    throw new Error(`${viewport.name} animated Zeus model did not initialize correctly: ${JSON.stringify(animation)}`);
+  }
+
+  await page.evaluate(() => window.__ZEUS_GAME__?.defeatPlayerForVerification());
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().player.animation.activeClip === "Dead");
+  const defeated = await readDiagnostics(page);
+  if (!defeated.gameOver || defeated.player.animation.activeState !== "dead" || !defeated.player.animation.defeated) {
+    throw new Error(`${viewport.name} defeat did not start the Dead animation: ${JSON.stringify(defeated.player.animation)}`);
+  }
+
+  await page.keyboard.press("KeyR");
+  await page.waitForFunction(() => {
+    const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+    return diagnostics && !diagnostics.gameOver && diagnostics.player.animation.activeClip === "Idle_8";
+  });
+  const restarted = await readDiagnostics(page);
+  if (restarted.player.animation.activeState !== "idle" || restarted.player.animation.defeated) {
+    throw new Error(`${viewport.name} restart did not restore Idle_8: ${JSON.stringify(restarted.player.animation)}`);
+  }
 }
 
 async function verifyAbilityCooldownUi(page, viewport, spellId) {
@@ -1517,6 +1588,18 @@ async function reloadGame(page) {
   await page.waitForSelector(".ui-layer");
   await page.waitForSelector(".hud__stats");
   await page.waitForSelector(".ui-toolbar");
+  await waitForPlayerModel(page, { name: "reloaded game" });
+}
+
+async function waitForPlayerModel(page, viewport) {
+  await page.waitForFunction(() => {
+    const loadState = window.__ZEUS_GAME__?.getDiagnostics().player.animation.loadState;
+    return loadState === "ready" || loadState === "error";
+  });
+  const diagnostics = await readDiagnostics(page);
+  if (diagnostics.player.animation.loadState !== "ready") {
+    throw new Error(`${viewport.name} animated Zeus model failed to load: ${JSON.stringify(diagnostics.player.animation)}`);
+  }
 }
 
 async function readDiagnostics(page) {
@@ -1570,6 +1653,10 @@ function quaternionDistance(a, b) {
 
 function groundDistance(a, b) {
   return Math.hypot(a[0] - b[0], a[2] - b[2]);
+}
+
+function angleDistance(a, b) {
+  return Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 }
 
 function assertContinuousVisibilityOverlay(viewport, diagnostics, label) {

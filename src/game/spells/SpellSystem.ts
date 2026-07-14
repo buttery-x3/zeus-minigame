@@ -7,6 +7,7 @@ import type { EnemySystem } from "../enemies/EnemySystem";
 
 type SpellSystemCallbacks = {
   invalidCast: () => void;
+  castSucceeded: (spellId: SpellId, target: THREE.Vector3) => void;
   canCastAt: (target: THREE.Vector3) => boolean;
   canAffectEnemy: (enemy: EnemyState) => boolean;
 };
@@ -85,6 +86,7 @@ export class SpellSystem {
 
     state.mana -= spell.manaCost;
     this.cooldowns[spellId] = spell.cooldown;
+    this.callbacks.castSucceeded(spellId, target);
 
     if (spellId === "chain") {
       this.castChainLightning(target, playerPosition, state);

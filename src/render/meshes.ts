@@ -3,6 +3,8 @@ import { createLine, createRing } from "./primitives";
 
 export type PlayerModel = {
   group: THREE.Group;
+  visualRoot: THREE.Group;
+  fallback: THREE.Group;
   body: THREE.Mesh;
   aura: THREE.Mesh;
 };
@@ -29,6 +31,8 @@ export const PLAYER_CHARGED_AURA_COLOR = 0xffc857;
 
 export function createPlayerModel(playerMaterial: THREE.Material): PlayerModel {
   const group = new THREE.Group();
+  const visualRoot = new THREE.Group();
+  const fallback = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(1.05, 1.65, 6, 16), playerMaterial);
   body.castShadow = true;
   body.position.y = 1.55;
@@ -40,8 +44,10 @@ export function createPlayerModel(playerMaterial: THREE.Material): PlayerModel {
   aura.rotation.x = Math.PI / 2;
   aura.position.y = 0.08;
 
-  group.add(aura, body, createLightningMark());
-  return { group, body, aura };
+  fallback.add(body, createLightningMark());
+  visualRoot.add(fallback);
+  group.add(aura, visualRoot);
+  return { group, visualRoot, fallback, body, aura };
 }
 
 export function createEnemyModel(enemyMaterial: THREE.Material): EnemyModel {
