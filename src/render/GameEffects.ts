@@ -82,4 +82,34 @@ export class GameEffects {
       },
     });
   }
+
+  createEnergyAbsorption(start: THREE.Vector3, end: THREE.Vector3) {
+    const energy = new THREE.Group();
+    const points = jaggedLine(start.clone().setY(0.45), end.clone().setY(2.1), 10, 0.52);
+    const glow = createLine(points, 0xf2c7ff, 0.42);
+    const core = createLine(points, 0xc266f0, 0.94);
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.24, 10, 10),
+      new THREE.MeshBasicMaterial({ color: 0xe5a5ff, transparent: true, opacity: 0.86, depthWrite: false }),
+    );
+    orb.position.copy(start).setY(0.65);
+    energy.add(glow, core, orb);
+    this.group.add(energy);
+    this.effects.push({
+      object: energy,
+      ttl: 0.52,
+      maxTtl: 0.52,
+      update: (lifeRatio) => {
+        const travel = 1 - lifeRatio;
+        orb.position.lerpVectors(start.clone().setY(0.65), end.clone().setY(2.1), travel);
+        orb.scale.setScalar(0.7 + lifeRatio * 0.6);
+        setLineOpacity(glow, lifeRatio * 0.42);
+        setLineOpacity(core, lifeRatio * 0.94);
+        const material = orb.material;
+        if (material instanceof THREE.MeshBasicMaterial) {
+          material.opacity = lifeRatio * 0.86;
+        }
+      },
+    });
+  }
 }

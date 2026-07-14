@@ -30,9 +30,10 @@ export class SpellSystem {
     private readonly callbacks: SpellSystemCallbacks,
   ) {}
 
-  update(dt: number) {
-    this.cooldowns.chain = Math.max(0, this.cooldowns.chain - dt);
-    this.cooldowns.bolt = Math.max(0, this.cooldowns.bolt - dt);
+  update(dt: number, recoveryMultiplier = 1) {
+    const recoveredTime = dt * recoveryMultiplier;
+    this.cooldowns.chain = Math.max(0, this.cooldowns.chain - recoveredTime);
+    this.cooldowns.bolt = Math.max(0, this.cooldowns.bolt - recoveredTime);
   }
 
   reset() {

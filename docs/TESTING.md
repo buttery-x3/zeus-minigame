@@ -23,12 +23,18 @@ npm run verify
 
 - Starts the Vite dev server if `http://127.0.0.1:5173/` is not already reachable.
 - Launches a Chromium-based browser through `playwright-core`.
-- Loads desktop and mobile viewports.
+- Loads the supported desktop viewport at 1280x720.
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
+- Injects controlled 160–320 ms main-thread stalls and checks that active gameplay catches up through bounded simulation substeps, long stalls remain capped, pause remains frozen, and visibility resets discard hidden-tab time.
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
 - Checks rolling patch terrain diagnostics, including active patch-radius generation, at least one river micro hex, no emergency patches, and ordered patch edge socket agreement.
+- Checks deterministic special-ground generation, including reachable charged and cursed cells and the requirement that cursed ground remains rarer.
+- Exercises charged ground to confirm both cooldown and Power recovery run at `1.75x`, leaving preserves consumed capacity, returning resumes consumption, and the tile depletes after about three cumulative seconds.
+- Exercises cursed ground to confirm pause freezes cleansing, leaving resets progress, completion grants exactly one Cursed Energy, and the tile becomes cleansed.
+- Confirms the player-owned cell contact drives special-ground activation, dormant glyphs perform no animation work, and exactly one seven-point particle object plus one glyph animation is active only while Zeus occupies charged or cursed ground. The contract also checks the `8x` particle-size multiplier.
+- Checks the player outline through diagnostics: golden-orange normally, brighter gold on charged ground, and violet on cursed ground.
 - Checks Terrain Debug mode by toggling it on, verifying fog is disabled, camera view is widened with debug framing, HP remains full, the rendered terrain window expands, and rolling terrain diagnostics remain valid without increasing the configured generation radius or generating new patches.
 - Checks that hidden spell targets do not spend cooldown, default out-of-range spell targets snap to max range, and strict mode rejects out-of-range raw targets.
 - Checks that click and held movement commands reject undiscovered terrain.
@@ -40,11 +46,11 @@ npm run verify
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
-- Checks that the WebGL canvas is not blank or visually flat.
 - Checks that core HUD text and ability buttons exist, including the Unlock UI toggle, locked transparent HUD panels, click-through behavior, gated hover reveal, and radial spell cooldown button state.
-- Saves screenshots into `verify/`.
+- Checks that the Currencies panel starts at the bottom-left, displays Cursed Energy, and supports the same unlock, drag, relock, transparency, and click-through behavior as the other HUD panels.
+Do not add or run screenshot-based canvas verification, pixel sampling, luminance thresholds, color-bucket heuristics, or similar visual image checks. They are intentionally excluded because they are flaky and expensive. Verify render behavior through deterministic runtime diagnostics and DOM state instead.
 
-`verify/` is ignored by git.
+Mobile layouts and controls are not currently supported or included in render verification. Desktop is the only target until the control scheme is deliberately expanded for mobile play.
 
 ## Browser Path
 
@@ -72,5 +78,6 @@ Update `scripts/verify-render.mjs` when adding or changing:
 - Camera behavior that changes framing.
 - Rendering that changes the canvas baseline significantly.
 - Game states that should be smoke-tested, such as pause, death, restart, upgrades, or menus.
+- Persistent or consumable terrain interactions and currencies.
 
 Keep the verifier focused on smoke coverage. It should prove the playable scene boots, renders, responds to core input, and exposes expected HUD state; it should not become a full gameplay simulation.

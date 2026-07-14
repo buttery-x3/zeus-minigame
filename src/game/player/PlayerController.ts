@@ -4,9 +4,9 @@ import { distance2D } from "../../lib/math";
 import type { GameMaterials } from "../../render/materials";
 import type { GameEffects } from "../../render/GameEffects";
 import { createCrosshair, createRing } from "../../render/primitives";
-import { createPlayerModel } from "../../render/meshes";
+import { createPlayerModel, PLAYER_AURA_COLOR, PLAYER_CHARGED_AURA_COLOR } from "../../render/meshes";
 import type { CollisionSystem } from "../collision/CollisionSystem";
-import type { GridWorld } from "../../world/GridWorld";
+import type { GridWorld, HexCoord } from "../../world/GridWorld";
 
 type MoveTargetOptions = {
   force?: boolean;
@@ -22,6 +22,9 @@ export class PlayerController {
   private path: THREE.Vector3[] = [];
   private lastRequestedCellKey = "";
   private lastRequestedBlocked = false;
+  private groundAura: "charged" | "cursed" | null = null;
+  private groundCell: HexCoord = { q: 0, r: 0 };
+  private groundCellKey = "";
 
   constructor(
     private readonly gridWorld: GridWorld,
@@ -33,6 +36,7 @@ export class PlayerController {
     this.object = this.model.group;
     this.object.position.set(0, 0, 0);
     this.moveTarget.copy(this.object.position);
+    this.syncGroundCell();
 
     this.moveMarker.add(createRing(1.15, 0x8bdfff, 0.55));
     this.moveMarker.add(createCrosshair(1.9, 0x8bdfff, 0.65));
@@ -42,7 +46,7 @@ export class PlayerController {
   update(dt: number) {
     const waypoint = this.currentWaypoint();
     if (!waypoint) {
-      this.model.aura.rotation.z += dt * 1.6;
+      this.rotateAura(dt);
       return;
     }
 
@@ -50,7 +54,7 @@ export class PlayerController {
     const distance = offset.length();
     if (distance < 0.18) {
       this.path.shift();
-      this.model.aura.rotation.z += dt * 1.6;
+      this.rotateAura(dt);
       return;
     }
 
@@ -66,12 +70,13 @@ export class PlayerController {
 
     if (distance2D(this.object.position.x, this.object.position.z, nextPosition.x, nextPosition.z) < 0.001) {
       this.path = [];
-      this.model.aura.rotation.z += dt * 1.6;
+      this.rotateAura(dt);
       return;
     }
 
     this.object.position.x = nextPosition.x;
     this.object.position.z = nextPosition.z;
+    this.syncGroundCell();
     this.object.rotation.y = Math.atan2(actualX, actualZ);
     this.moveMarker.position.set(this.moveTarget.x, 0.08, this.moveTarget.z);
 
@@ -79,7 +84,21 @@ export class PlayerController {
       this.path.shift();
     }
 
-    this.model.aura.rotation.z += dt * 1.6;
+    this.rotateAura(dt);
+  }
+
+  setGroundAura(mode: "charged" | "cursed" | null) {
+    if (this.groundAura === mode) {
+      return;
+    }
+
+    this.groundAura = mode;
+    const material = this.model.aura.material;
+    if (!(material instanceof THREE.MeshBasicMaterial)) {
+      return;
+    }
+    material.color.set(mode === "cursed" ? 0xd475ff : mode === "charged" ? PLAYER_CHARGED_AURA_COLOR : PLAYER_AURA_COLOR);
+    material.opacity = mode ? 0.82 : 0.54;
   }
 
   setMoveTarget(x: number, z: number, options: MoveTargetOptions = {}) {
@@ -135,14 +154,35 @@ export class PlayerController {
     this.lastRequestedBlocked = false;
     this.materials.player.color.set(0xdfe8ee);
     this.materials.player.emissive.set(0x21526b);
+    this.setGroundAura(null);
+    this.syncGroundCell();
+  }
+
+  getGroundCell() {
+    return this.groundCell;
   }
 
   getNavigationDiagnostics() {
+    const auraMaterial = this.model.aura.material;
     return {
       moveTarget: this.moveTarget.toArray(),
       pathLength: this.path.length,
       requestedBlocked: this.lastRequestedBlocked,
+      groundCell: { ...this.groundCell },
+      groundCellKey: this.groundCellKey,
+      groundAuraMode: this.groundAura ?? "normal",
+      groundAuraColor: auraMaterial instanceof THREE.MeshBasicMaterial ? `#${auraMaterial.color.getHexString()}` : null,
     };
+  }
+
+  private syncGroundCell() {
+    const cell = this.gridWorld.worldToCell(this.object.position.x, this.object.position.z);
+    const key = this.gridWorld.cellKey(cell.q, cell.r);
+    if (key === this.groundCellKey) {
+      return;
+    }
+    this.groundCell = cell;
+    this.groundCellKey = key;
   }
 
   private currentWaypoint() {
@@ -151,5 +191,9 @@ export class PlayerController {
     }
 
     return this.path[0] ?? null;
+  }
+
+  private rotateAura(dt: number) {
+    this.model.aura.rotation.z += dt * (this.groundAura === "charged" ? 4.2 : this.groundAura === "cursed" ? 2.5 : 1.6);
   }
 }

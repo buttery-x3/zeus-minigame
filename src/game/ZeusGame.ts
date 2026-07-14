@@ -5,6 +5,7 @@ import {
   INITIAL_SPAWN_INTERVAL,
   PLAYER_MAX_HEALTH,
   PLAYER_MAX_MANA,
+  PLAYER_MANA_REGEN_PER_SECOND,
   VISIBILITY_LIGHT_EPSILON,
 } from "../config";
 import { CameraRig } from "./camera/CameraRig";
@@ -16,9 +17,11 @@ import { GameInput } from "./input/GameInput";
 import { Profiler } from "./perf/Profiler";
 import { PlayerController } from "./player/PlayerController";
 import { GameScene } from "./scene/GameScene";
+import { getBoundedFrameDelta, SimulationStepper } from "./SimulationStepper";
 import { SpellSystem } from "./spells/SpellSystem";
 import { TargetingRenderer } from "./spells/TargetingRenderer";
 import { TerrainSystem } from "./terrain/TerrainSystem";
+import { GroundEffectSystem } from "./terrain/GroundEffectSystem";
 import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from "../types";
 import { VisibilitySystem } from "./visibility/VisibilitySystem";
 import { GameEffects } from "../render/GameEffects";
@@ -30,6 +33,7 @@ import { GridWorld } from "../world/GridWorld";
 export class ZeusGame {
   private readonly clock = new THREE.Clock();
   private readonly profiler = new Profiler();
+  private readonly simulationStepper = new SimulationStepper();
   private readonly gridWorld = new GridWorld();
   private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
   private readonly visibility = new VisibilitySystem(this.gridWorld);
@@ -47,12 +51,21 @@ export class ZeusGame {
   private readonly visibilityOverlay = new VisibilityOverlay(this.gridWorld);
   private readonly effects = new GameEffects(this.groups.effects);
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
+  private readonly groundEffects = new GroundEffectSystem(this.gridWorld, {
+    onCursedCleared: (cell, reward) => {
+      this.state.cursedEnergy += reward;
+      const world = this.gridWorld.cellToWorldPoint(cell);
+      this.effects.createEnergyAbsorption(world, this.player.object.position);
+      this.effects.createShockwave(world, 0xc266f0, 4.8);
+    },
+  });
   private readonly diagnostics = new GameDiagnostics(
     this.scene,
     this.gridWorld,
     this.collision,
     this.player,
     this.visibility,
+    this.groundEffects,
     this.profiler,
   );
   private readonly cameraRig = new CameraRig(this.scene.camera, this.scene.renderer);
@@ -94,7 +107,13 @@ export class ZeusGame {
     canAffectEnemy: (enemy) => this.isEnemyVisible(enemy),
   });
   private readonly targeting = new TargetingRenderer(this.groups.targeting);
-  private readonly terrain = new TerrainSystem(this.gridWorld, this.groups.terrain, this.groups.blockers, this.materials);
+  private readonly terrain = new TerrainSystem(
+    this.gridWorld,
+    this.groups.terrain,
+    this.groups.blockers,
+    this.materials,
+    this.groundEffects,
+  );
   private readonly input = new GameInput(this.scene.camera, this.scene.renderer, this.gridWorld, {
     isGameOver: () => this.state.gameOver,
     isPaused: () => this.state.paused,
@@ -117,6 +136,7 @@ export class ZeusGame {
   private state = createInitialState();
   private lastTime = 0;
   private animationId = 0;
+  private discardNextFrameDelta = false;
 
   constructor() {
     this.scene.mount({
@@ -137,6 +157,7 @@ export class ZeusGame {
     this.visibility.update(this.player.object.position, 0);
 
     window.addEventListener("resize", this.cameraRig.resize);
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
     this.cameraRig.resize();
     this.enemies.spawnInitial(this.state, this.player.object.position);
     this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
@@ -147,6 +168,7 @@ export class ZeusGame {
   dispose() {
     window.cancelAnimationFrame(this.animationId);
     window.removeEventListener("resize", this.cameraRig.resize);
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     this.input.dispose();
     this.ui.remove();
     this.visibilityOverlay.dispose();
@@ -168,6 +190,10 @@ export class ZeusGame {
         cooldowns: { ...this.spells.cooldowns },
         mana: this.state.mana,
       },
+      groundEffects: {
+        ...this.groundEffects.getDiagnostics(),
+        cursedEnergy: this.state.cursedEnergy,
+      },
       enemyHealthBars: {
         mode: this.enemyHealthBarMode,
         ...this.enemies.getHealthBarDiagnostics(),
@@ -176,45 +202,93 @@ export class ZeusGame {
       enemyAvoidance: this.enemies.getAvoidanceDiagnostics(),
       terrain: this.terrain.getDiagnostics(),
       visibilityOverlay: this.visibilityOverlay.getDiagnostics(),
+      timing: this.simulationStepper.diagnostics(),
     };
   }
 
   private readonly tick = (time: number) => {
-    const dt = Math.min(0.05, this.clock.getDelta() || (time - this.lastTime) / 1000 || 0.016);
+    const rawDt = this.clock.getDelta() || (time - this.lastTime) / 1000 || 0.016;
     this.lastTime = time;
+    const discardForVisibility = document.hidden || this.discardNextFrameDelta;
+    if (!document.hidden) {
+      this.discardNextFrameDelta = false;
+    }
 
     this.profiler.beginFrame(time);
-    this.profiler.measure("gameLogic", () => this.update(dt));
+    this.profiler.measure("gameLogic", () => this.update(rawDt, discardForVisibility));
     this.profiler.measure("render", () => this.scene.render());
     this.profiler.endFrame();
     this.ui.updateDiagnostics(this.profiler.snapshot());
     this.animationId = window.requestAnimationFrame(this.tick);
   };
 
-  private update(dt: number) {
+  private update(rawDt: number, discardForVisibility: boolean) {
     const playerPosition = this.player.object.position;
+    let ground = this.groundEffects.getSnapshot();
 
     if (this.terrainDebugMode) {
       this.state.health = PLAYER_MAX_HEALTH;
     }
 
     this.profiler.measure("terrainGeneration", () => this.gridWorld.ensureTerrainGeneratedAroundWorld(playerPosition));
-    this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
-    this.profiler.measure("input", () => this.input.update(dt));
+    this.profiler.measure("terrainPreparation", () => this.terrain.prepare(playerPosition, this.terrainDebugMode));
+    const frameDt = getBoundedFrameDelta(rawDt, discardForVisibility);
+    this.profiler.measure("camera", () => this.cameraRig.update(frameDt, playerPosition));
+    this.profiler.measure("input", () => this.input.update(frameDt));
+
+    const timing = this.simulationStepper.advance(rawDt, this.state.paused, discardForVisibility, (dt) => {
+      ground = this.updateSimulation(dt, ground);
+    });
+    this.updatePresentation(frameDt, timing.simulatedDeltaSeconds, ground);
+  }
+
+  private updateSimulation(dt: number, ground: ReturnType<GroundEffectSystem["getSnapshot"]>) {
+    const playerPosition = this.player.object.position;
     if (!this.state.gameOver && !this.state.paused) {
-      this.state.mana = Math.min(PLAYER_MAX_MANA, this.state.mana + dt * 8.5);
-      this.profiler.measure("spells", () => this.spells.update(dt));
       this.profiler.measure("player", () => {
         if (this.input.consumeMoveRequest()) {
           this.requestMoveTarget(this.input.pointerWorld.x, this.input.pointerWorld.z, false);
         }
         this.player.update(dt);
+        this.terrain.prepare(playerPosition, this.terrainDebugMode);
       });
+      ground = this.profiler.measure("groundEffects", () => this.groundEffects.update(dt, this.player.getGroundCell()));
+      this.player.setGroundAura(
+        ground.phase === "charged" && ground.cooldownRecoveryMultiplier > 1
+          ? "charged"
+          : ground.phase === "cursed"
+            ? "cursed"
+            : null,
+      );
+      this.state.mana = Math.min(
+        PLAYER_MAX_MANA,
+        this.state.mana + dt * PLAYER_MANA_REGEN_PER_SECOND * ground.energyRecoveryMultiplier,
+      );
+      this.profiler.measure("spells", () => this.spells.update(dt, ground.cooldownRecoveryMultiplier));
     }
 
+    if (this.state.gameOver) {
+      this.profiler.measure("effects", () => this.effects.update(dt));
+      return ground;
+    }
+
+    this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
+    if (this.terrainDebugMode) {
+      this.state.health = PLAYER_MAX_HEALTH;
+    }
+    this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
+    this.profiler.measure("effects", () => this.effects.update(dt));
+    return ground;
+  }
+
+  private updatePresentation(frameDt: number, simulatedDt: number, ground: ReturnType<GroundEffectSystem["getSnapshot"]>) {
+    const playerPosition = this.player.object.position;
+
     this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
-    this.profiler.measure("terrain", () => this.terrain.update(playerPosition, this.visibility, this.terrainDebugMode));
-    this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, dt, playerPosition));
+    this.profiler.measure("terrain", () =>
+      this.terrain.update(this.state.paused ? 0 : simulatedDt, playerPosition, ground, this.visibility, this.terrainDebugMode),
+    );
+    this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, frameDt, playerPosition));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,
       spells: this.spells.spells,
@@ -229,37 +303,14 @@ export class ZeusGame {
       castMode: this.spells.castMode,
       cooldowns: this.spells.cooldowns,
       spells: this.spells.spells,
+      ground: this.groundEffects.getSnapshot(),
       paused: this.state.paused,
     }));
 
-    if (this.state.gameOver || this.state.paused) {
-      this.profiler.measure("enemyVisibility", () => this.enemies.updateVisibility((enemy) => this.isEnemyVisible(enemy)));
-      this.profiler.measure("enemyHealthBars", () =>
-        this.enemies.updateHealthBars(
-          0,
-          this.scene.camera,
-          this.enemyHealthBarMode,
-          playerPosition,
-          this.input.pointerWorld,
-          (enemy) => this.isEnemyVisible(enemy),
-        ),
-      );
-      this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
-      if (this.state.gameOver) {
-        this.profiler.measure("effects", () => this.effects.update(dt));
-      }
-      return;
-    }
-
-    this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
-    if (this.terrainDebugMode) {
-      this.state.health = PLAYER_MAX_HEALTH;
-    }
-    this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("enemyVisibility", () => this.enemies.updateVisibility((enemy) => this.isEnemyVisible(enemy)));
     this.profiler.measure("enemyHealthBars", () =>
       this.enemies.updateHealthBars(
-        dt,
+        this.state.gameOver || this.state.paused ? 0 : simulatedDt,
         this.scene.camera,
         this.enemyHealthBarMode,
         playerPosition,
@@ -267,9 +318,12 @@ export class ZeusGame {
         (enemy) => this.isEnemyVisible(enemy),
       ),
     );
-    this.profiler.measure("effects", () => this.effects.update(dt));
     this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
   }
+
+  private readonly handleVisibilityChange = () => {
+    this.discardNextFrameDelta = true;
+  };
 
   private damagePlayer(amount: number) {
     if (this.terrainDebugMode) {
@@ -316,6 +370,7 @@ export class ZeusGame {
     this.state = createInitialState();
     this.ui.setPaused(false);
     this.spells.reset();
+    this.groundEffects.reset();
     this.player.reset();
     this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
     this.visibility.reset();
@@ -381,6 +436,7 @@ function createInitialState(): GameRuntimeState {
   return {
     health: PLAYER_MAX_HEALTH,
     mana: PLAYER_MAX_MANA,
+    cursedEnergy: 0,
     kills: 0,
     wave: 1,
     spawnTimer: 0,

@@ -6,7 +6,7 @@ export type EnemyHealthBarVisibilityMode = "always" | "smart";
 
 export type TerrainStructure = "open" | "wall" | "bank" | "lake" | "river";
 
-export type TerrainSurface = "grass" | "dirt" | "sand" | "mud" | "stone" | "scarred" | "charged";
+export type TerrainSurface = "grass" | "dirt" | "sand" | "mud" | "stone" | "scarred" | "charged" | "cursed";
 
 export type HexEdgeKind = "open" | "closed" | "river" | "lake";
 
@@ -67,6 +67,7 @@ export type EffectState = {
 export type GameRuntimeState = {
   health: number;
   mana: number;
+  cursedEnergy: number;
   kills: number;
   wave: number;
   spawnTimer: number;

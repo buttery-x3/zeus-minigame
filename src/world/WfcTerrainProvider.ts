@@ -1,5 +1,5 @@
 import { ROLLING_TERRAIN_PATCH_RADIUS } from "../config";
-import type { TerrainCell, TerrainStructure } from "../types";
+import type { TerrainCell, TerrainStructure, TerrainSurface } from "../types";
 import {
   HEX_PATCH_RADIUS,
   createHexPatchRegion,
@@ -8,7 +8,14 @@ import {
   patchLocalToWorld,
   type HexPatchTileVariant,
 } from "./HexTerrainCatalog";
-import { createTerrainStructureCounts, findPatchSocketMismatch, patchVariantsCanNeighbor, type HexPatchSocketMismatch } from "./HexTerrainRules";
+import {
+  createTerrainStructureCounts,
+  createTerrainSurfaceCounts,
+  decorateSpecialTerrainSurface,
+  findPatchSocketMismatch,
+  patchVariantsCanNeighbor,
+  type HexPatchSocketMismatch,
+} from "./HexTerrainRules";
 import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, hexCellKey, hexDistance, type HexCoord } from "./hexCoordinates";
 import { createTerrainCell, type TerrainProvider } from "./TerrainProvider";
 
@@ -32,6 +39,7 @@ type RollingWfcDiagnostics = {
   resolvedPatchCount: number;
   resolvedCells: number;
   structureCounts: Record<TerrainStructure, number>;
+  surfaceCounts: Record<TerrainSurface, number>;
   patchVariantCounts: Record<string, number>;
   patchSocketMismatchSample: HexPatchSocketMismatch | null;
   fellBack: false;
@@ -46,6 +54,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   private readonly committedPatches = new Map<string, CommittedPatch>();
   private readonly generatedCells = new Map<string, TerrainCell>();
   private readonly structureCounts = createTerrainStructureCounts();
+  private readonly surfaceCounts = createTerrainSurfaceCounts();
   private readonly patchVariantCounts: Record<string, number> = {};
   private generatedPatchCount = 0;
   private generatedLastEnsure = 0;
@@ -113,6 +122,7 @@ export class WfcTerrainProvider implements TerrainProvider {
       resolvedPatchCount: this.committedPatches.size,
       resolvedCells: this.generatedCells.size,
       structureCounts: { ...this.structureCounts },
+      surfaceCounts: { ...this.surfaceCounts },
       patchVariantCounts: { ...this.patchVariantCounts },
       patchSocketMismatchSample: findPatchSocketMismatch(this.committedPatches.values()),
       fellBack: false,
@@ -235,9 +245,17 @@ export class WfcTerrainProvider implements TerrainProvider {
         continue;
       }
 
-      const cell = createTerrainCell(world.q, world.r, localCell.structure, localCell.surface, localCell.edges);
+      const surface = decorateSpecialTerrainSurface(
+        localCell.structure,
+        localCell.surface,
+        world.q,
+        world.r,
+        WFC_TERRAIN_SEED,
+      );
+      const cell = createTerrainCell(world.q, world.r, localCell.structure, surface, localCell.edges);
       this.generatedCells.set(key, cell);
       this.structureCounts[cell.structure] += 1;
+      this.surfaceCounts[cell.surface] += 1;
     }
   }
 }

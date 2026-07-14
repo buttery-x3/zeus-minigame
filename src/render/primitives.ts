@@ -45,6 +45,16 @@ export function setLineOpacity(object: THREE.Object3D, opacity: number) {
   });
 }
 
+export function setLineColor(object: THREE.Object3D, color: THREE.ColorRepresentation) {
+  object.traverse((child) => {
+    const maybeLine = child as THREE.Line;
+    const material = maybeLine.material;
+    if (material instanceof THREE.LineBasicMaterial) {
+      material.color.set(color);
+    }
+  });
+}
+
 export function jaggedLine(start: THREE.Vector3, end: THREE.Vector3, steps: number, jitter: number) {
   const points: THREE.Vector3[] = [];
   const direction = end.clone().sub(start).normalize();

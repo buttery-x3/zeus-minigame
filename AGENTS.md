@@ -75,6 +75,7 @@ Git Handling:
 ## Gameplay Direction
 
 - The core feel is Dota-like targeted spellcasting in an isometric arena.
+- Desktop is the only supported target for now. Do not add mobile verification until the control scheme is deliberately expanded for mobile play.
 - Movement is click or hold-to-move only, no WASD by default.
 - `Q` is Chain Lightning and `W` is Lightning Bolt.
 - Enemies are simple melee chasers until a specific feature expands them.

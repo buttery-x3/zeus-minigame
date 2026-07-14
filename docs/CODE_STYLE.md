@@ -34,5 +34,5 @@
 ## CSS
 
 - HUD is a functional game overlay, not a landing page.
-- Keep text compact and legible at desktop and mobile sizes.
+- Keep text compact and legible at the supported desktop size.
 - Avoid explanatory in-app copy unless it is part of the HUD state.

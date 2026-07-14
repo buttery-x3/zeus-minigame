@@ -1,6 +1,8 @@
-import type { TerrainCell, TerrainStructure } from "../types";
+import type { TerrainCell, TerrainStructure, TerrainSurface } from "../types";
 import {
   createTerrainStructureCounts,
+  createTerrainSurfaceCounts,
+  decorateSpecialTerrainSurface,
   deriveTerrainSurface,
 } from "./HexTerrainRules";
 import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, hexCellKey, hexDistance } from "./hexCoordinates";
@@ -11,6 +13,7 @@ export type SeedTerrainProviderDiagnostics = {
   seed: number;
   generatedCells: number;
   structureCounts: Record<TerrainStructure, number>;
+  surfaceCounts: Record<TerrainSurface, number>;
 };
 
 export class SeedTerrainProvider implements TerrainProvider {
@@ -30,7 +33,8 @@ export class SeedTerrainProvider implements TerrainProvider {
       const offset = HEX_DIRECTIONS[direction];
       return this.structureAt(q + offset.q, r + offset.r);
     });
-    const surface = deriveTerrainSurface(structure, neighbors, this.hash(q + 31, r - 17));
+    const baseSurface = deriveTerrainSurface(structure, neighbors, this.hash(q + 31, r - 17));
+    const surface = decorateSpecialTerrainSurface(structure, baseSurface, q, r, this.seed);
     const cell = createTerrainCell(q, r, structure, surface);
     this.cells.set(key, cell);
     return cell;
@@ -52,8 +56,10 @@ export class SeedTerrainProvider implements TerrainProvider {
 
   getDiagnostics(): SeedTerrainProviderDiagnostics {
     const structureCounts = createTerrainStructureCounts();
+    const surfaceCounts = createTerrainSurfaceCounts();
     for (const cell of this.cells.values()) {
       structureCounts[cell.structure] += 1;
+      surfaceCounts[cell.surface] += 1;
     }
 
     return {
@@ -61,6 +67,7 @@ export class SeedTerrainProvider implements TerrainProvider {
       seed: this.seed,
       generatedCells: this.cells.size,
       structureCounts,
+      surfaceCounts,
     };
   }
 

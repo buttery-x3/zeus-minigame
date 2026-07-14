@@ -33,8 +33,14 @@ export function createGameMaterials() {
     charged: new THREE.MeshStandardMaterial({
       color: 0x173733,
       emissive: 0x0b312c,
-      emissiveIntensity: 0.45,
+      emissiveIntensity: 0.29,
       roughness: 0.7,
+    }),
+    cursed: new THREE.MeshStandardMaterial({
+      color: 0x28162f,
+      emissive: 0x3c0d54,
+      emissiveIntensity: 0.34,
+      roughness: 0.76,
     }),
     lake: new THREE.MeshStandardMaterial({
       color: 0x102833,
