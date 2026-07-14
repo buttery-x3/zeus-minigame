@@ -1,5 +1,6 @@
 import type { EnemyHealthBarVisibilityMode } from "../types";
 import { mustQuery } from "../lib/dom";
+import type { AudioPreferences } from "../game/audio/AudioPreferences";
 import type { GameWindow } from "./window/GameWindow";
 import type { WindowManager } from "./window/WindowManager";
 
@@ -11,6 +12,9 @@ type PauseMenuCallbacks = {
   setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
   setUnlockUiEnabled: (enabled: boolean) => void;
   setTerrainDebugMode: (enabled: boolean) => void;
+  setSfxVolume: (volume: number) => void;
+  setBgmVolume: (volume: number) => void;
+  setSpellFailureEnabled: (enabled: boolean) => void;
 };
 
 export class PauseMenu {
@@ -20,6 +24,11 @@ export class PauseMenu {
   private readonly maxRangeTargetSnapToggle: HTMLInputElement;
   private readonly unlockUiToggle: HTMLInputElement;
   private readonly terrainDebugToggle: HTMLInputElement;
+  private readonly sfxVolumeSlider: HTMLInputElement;
+  private readonly sfxVolumeOutput: HTMLOutputElement;
+  private readonly bgmVolumeSlider: HTMLInputElement;
+  private readonly bgmVolumeOutput: HTMLOutputElement;
+  private readonly spellFailureToggle: HTMLInputElement;
 
   constructor(
     windowManager: WindowManager,
@@ -29,6 +38,7 @@ export class PauseMenu {
     allowMaxRangeTargetSnap: boolean,
     unlockUiEnabled: boolean,
     terrainDebugMode: boolean,
+    audioPreferences: AudioPreferences,
   ) {
     const content = document.createElement("div");
     content.className = "pause-menu";
@@ -41,6 +51,21 @@ export class PauseMenu {
           <button type="button" data-health-mode="smart" role="radio">Smart</button>
           <button type="button" data-health-mode="always" role="radio">Always</button>
         </div>
+      </div>
+      <div class="pause-menu__audio" aria-label="Audio settings">
+        <label class="pause-menu__setting pause-menu__slider">
+          <span>SFX Volume <output data-sfx-volume-output></output></span>
+          <input type="range" min="0" max="100" step="1" data-sfx-volume aria-label="SFX volume" />
+        </label>
+        <label class="pause-menu__setting pause-menu__slider">
+          <span>BGM Volume <output data-bgm-volume-output></output></span>
+          <input type="range" min="0" max="100" step="1" data-bgm-volume aria-label="BGM volume" />
+        </label>
+        <label class="pause-menu__setting pause-menu__switch" data-spell-failure-sfx-toggle>
+          <span>Spell-Failed SFX</span>
+          <input type="checkbox" data-spell-failure-sfx aria-label="Spell-failed SFX" />
+          <i aria-hidden="true"></i>
+        </label>
       </div>
       <label class="pause-menu__setting pause-menu__switch" data-quick-cast-toggle>
         <span>Quick Cast</span>
@@ -80,6 +105,31 @@ export class PauseMenu {
     });
     this.setEnemyHealthBarMode(enemyHealthBarMode);
 
+    this.sfxVolumeSlider = mustQuery<HTMLInputElement>(content, "[data-sfx-volume]");
+    this.sfxVolumeOutput = mustQuery<HTMLOutputElement>(content, "[data-sfx-volume-output]");
+    this.sfxVolumeSlider.addEventListener("input", () => {
+      const volume = Number(this.sfxVolumeSlider.value) / 100;
+      this.setSfxVolume(volume);
+      callbacks.setSfxVolume(volume);
+    });
+    this.setSfxVolume(audioPreferences.sfxVolume);
+
+    this.bgmVolumeSlider = mustQuery<HTMLInputElement>(content, "[data-bgm-volume]");
+    this.bgmVolumeOutput = mustQuery<HTMLOutputElement>(content, "[data-bgm-volume-output]");
+    this.bgmVolumeSlider.addEventListener("input", () => {
+      const volume = Number(this.bgmVolumeSlider.value) / 100;
+      this.setBgmVolume(volume);
+      callbacks.setBgmVolume(volume);
+    });
+    this.setBgmVolume(audioPreferences.bgmVolume);
+
+    this.spellFailureToggle = mustQuery<HTMLInputElement>(content, "[data-spell-failure-sfx]");
+    this.spellFailureToggle.addEventListener("change", () => {
+      this.setSpellFailureEnabled(this.spellFailureToggle.checked);
+      callbacks.setSpellFailureEnabled(this.spellFailureToggle.checked);
+    });
+    this.setSpellFailureEnabled(audioPreferences.spellFailureEnabled);
+
     this.quickCastToggle = mustQuery<HTMLInputElement>(content, "[data-quick-cast]");
     this.quickCastToggle.addEventListener("change", () => {
       this.setQuickCastEnabled(this.quickCastToggle.checked);
@@ -112,7 +162,7 @@ export class PauseMenu {
       id: "pause-menu",
       title: "Pause",
       content,
-      placement: { anchor: "center", width: 340, offsetY: -20 },
+      placement: { anchor: "center", width: 380, offsetY: -20 },
       className: "pause-window",
       movable: false,
       closable: false,
@@ -152,5 +202,22 @@ export class PauseMenu {
   setTerrainDebugMode(enabled: boolean) {
     this.terrainDebugToggle.checked = enabled;
     this.terrainDebugToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
+  }
+
+  setSfxVolume(volume: number) {
+    const percent = Math.round(volume * 100);
+    this.sfxVolumeSlider.value = String(percent);
+    this.sfxVolumeOutput.value = `${percent}%`;
+  }
+
+  setBgmVolume(volume: number) {
+    const percent = Math.round(volume * 100);
+    this.bgmVolumeSlider.value = String(percent);
+    this.bgmVolumeOutput.value = `${percent}%`;
+  }
+
+  setSpellFailureEnabled(enabled: boolean) {
+    this.spellFailureToggle.checked = enabled;
+    this.spellFailureToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
   }
 }

@@ -9,6 +9,7 @@ import {
   VISIBILITY_LIGHT_EPSILON,
 } from "../config";
 import { CameraRig } from "./camera/CameraRig";
+import { AudioSystem } from "./audio/AudioSystem";
 import { CollisionSystem } from "./collision/CollisionSystem";
 import { GameDiagnostics } from "./diagnostics/GameDiagnostics";
 import { EnemySystem } from "./enemies/EnemySystem";
@@ -51,6 +52,7 @@ export class ZeusGame {
   private readonly visibilityOverlay = new VisibilityOverlay(this.gridWorld);
   private readonly effects = new GameEffects(this.groups.effects);
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
+  private readonly audio = new AudioSystem();
   private readonly groundEffects = new GroundEffectSystem(this.gridWorld, {
     onCursedCleared: (cell, reward) => {
       this.state.cursedEnergy += reward;
@@ -58,6 +60,10 @@ export class ZeusGame {
       this.effects.createEnergyAbsorption(world, this.player.object.position);
       this.effects.createShockwave(world, 0xc266f0, 4.8);
     },
+    onSpecialTileInteractionStarted: (surface) =>
+      this.audio.startLoop(surface === "charged" ? "charged-tile-channeling" : "cursed-tile-channeling"),
+    onSpecialTileInteractionStopped: (surface) =>
+      this.audio.stopLoop(surface === "charged" ? "charged-tile-channeling" : "cursed-tile-channeling"),
   });
   private readonly diagnostics = new GameDiagnostics(
     this.scene,
@@ -87,6 +93,10 @@ export class ZeusGame {
     setUnlockUiEnabled: (enabled) => this.setUnlockUiEnabled(enabled),
     terrainDebugMode: this.terrainDebugMode,
     setTerrainDebugMode: (enabled) => this.setTerrainDebugMode(enabled),
+    audioPreferences: this.audio.getPreferences(),
+    setSfxVolume: (volume) => this.setSfxVolume(volume),
+    setBgmVolume: (volume) => this.setBgmVolume(volume),
+    setSpellFailureEnabled: (enabled) => this.setSpellFailureEnabled(enabled),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(
@@ -99,11 +109,19 @@ export class ZeusGame {
     this.effects,
     {
       damagePlayer: (amount) => this.damagePlayer(amount),
+      enemyDied: () => this.audio.play("minion-death"),
+      waveStarted: () => this.audio.play("new-wave-announce"),
     },
   );
   private readonly spells = new SpellSystem(this.effects, this.enemies, {
-    invalidCast: () => this.player.flash(0x657172),
-    castSucceeded: (spellId, target) => this.player.playSpellCast(spellId, target),
+    castFailed: (reason) => {
+      this.player.flash(0x657172);
+      this.audio.playSpellCastFailed(reason);
+    },
+    castSucceeded: (spellId, target) => {
+      this.player.playSpellCast(spellId, target);
+      this.audio.play(spellId === "chain" ? "spell-chain-cast" : "spell-bolt-cast");
+    },
     canCastAt: (target) => this.canCastAt(target),
     canAffectEnemy: (enemy) => this.isEnemyVisible(enemy),
   });
@@ -171,6 +189,7 @@ export class ZeusGame {
     window.removeEventListener("resize", this.cameraRig.resize);
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     this.input.dispose();
+    this.audio.dispose();
     this.enemies.clear();
     this.player.dispose();
     this.ui.remove();
@@ -204,6 +223,7 @@ export class ZeusGame {
       enemyVisibility: this.enemies.getVisibilityDiagnostics(),
       enemyAvoidance: this.enemies.getAvoidanceDiagnostics(),
       enemyAnimations: this.enemies.getAnimationDiagnostics(),
+      audio: this.audio.getDiagnostics(),
       terrain: this.terrain.getDiagnostics(),
       visibilityOverlay: this.visibilityOverlay.getDiagnostics(),
       timing: this.simulationStepper.diagnostics(),
@@ -218,6 +238,27 @@ export class ZeusGame {
 
   triggerEnemyAttackForVerification() {
     return import.meta.env.DEV && this.enemies.triggerAttackForVerification();
+  }
+
+  defeatEnemyForVerification() {
+    return import.meta.env.DEV && this.enemies.defeatEnemyForVerification(this.state);
+  }
+
+  setPlayerManaForVerification(mana: number) {
+    if (import.meta.env.DEV) {
+      this.state.mana = Math.max(0, Math.min(PLAYER_MAX_MANA, mana));
+    }
+  }
+
+  startNextWaveForVerification() {
+    if (!import.meta.env.DEV) {
+      return false;
+    }
+
+    const previousWave = this.state.wave;
+    this.state.kills = this.state.nextWaveAt;
+    this.enemies.updateSpawner(0, this.state, this.player.object.position);
+    return this.state.wave === previousWave + 1;
   }
 
   private readonly tick = (time: number) => {
@@ -339,6 +380,7 @@ export class ZeusGame {
 
   private readonly handleVisibilityChange = () => {
     this.discardNextFrameDelta = true;
+    this.audio.setSuspended("hidden", document.hidden);
   };
 
   private damagePlayer(amount: number) {
@@ -348,12 +390,14 @@ export class ZeusGame {
     }
 
     this.state.health = Math.max(0, this.state.health - amount);
+    this.audio.play("player-hit");
     this.player.flash(0xff5c66, () => !this.state.gameOver);
     this.effects.createShockwave(this.player.object.position, 0xff5c66, 2.5);
 
     if (this.state.health <= 0) {
       this.state.gameOver = true;
       this.spells.cancelTargeting();
+      this.audio.stopLoop();
       this.player.setDefeated();
     }
   }
@@ -387,6 +431,8 @@ export class ZeusGame {
     this.ui.setPaused(false);
     this.spells.reset();
     this.groundEffects.reset();
+    this.audio.reset();
+    this.audio.setSuspended("pause", false);
     this.player.reset();
     this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
     this.visibility.reset();
@@ -409,6 +455,7 @@ export class ZeusGame {
     if (paused) {
       this.spells.cancelTargeting();
     }
+    this.audio.setSuspended("pause", paused);
     this.ui.setPaused(paused);
   }
 
@@ -440,6 +487,21 @@ export class ZeusGame {
       this.state.health = PLAYER_MAX_HEALTH;
     }
     this.ui.setTerrainDebugMode(enabled);
+  }
+
+  private setSfxVolume(volume: number) {
+    this.audio.setSfxVolume(volume);
+    this.ui.setSfxVolume(volume);
+  }
+
+  private setBgmVolume(volume: number) {
+    this.audio.setBgmVolume(volume);
+    this.ui.setBgmVolume(volume);
+  }
+
+  private setSpellFailureEnabled(enabled: boolean) {
+    this.audio.setSpellFailureEnabled(enabled);
+    this.ui.setSpellFailureEnabled(enabled);
   }
 
   private toggleEnemyHealthBarMode() {

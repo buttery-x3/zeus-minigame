@@ -14,6 +14,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/config.ts`: global tuning constants and spell definitions.
 - `src/types.ts`: shared TypeScript types for gameplay and effects.
 - `src/game/ZeusGame.ts`: composition root, shared runtime state, and update order.
+- `src/game/audio`: decoded/pooled SFX playback, streamed looping music, separate gain buses, persisted preferences, and audio diagnostics.
 - `src/game/camera/CameraRig.ts`: orthographic camera follow and resize behavior.
 - `src/game/collision`: hex occupancy, hex linecasts, Theta* individual pathfinding, and movement collision helpers.
 - `src/game/diagnostics/GameDiagnostics.ts`: dev/test diagnostics snapshot and world-to-screen probes.

@@ -30,11 +30,17 @@ npm run verify
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Loads the skinned Zeus GLB and checks its exact animation inventory, `Idle_8` default, `Run_03` movement, 5x Q/W cast clips facing their resolved targets, pause freeze, `Dead` defeat, and restart back to idle through runtime diagnostics.
 - Loads the shared skinned melee-enemy GLB for every spawned enemy, checks its exact animation inventory, verifies `Walking_Woman` is the default loop, triggers `Stylish_Walk_inplace`, and confirms the enemy returns to walking.
+- Preloads the required Web Audio cue catalog, unlocks playback from a user gesture, and checks Chain Lightning, Lightning Bolt, failed-cast, player-hit, minion-death, and new-wave routing through deterministic audio diagnostics rather than speaker output.
+- Checks that failed casts preserve distinct cooldown, out-of-mana, hidden-target, and strict out-of-range reasons while sharing the current failure cue.
+- Checks the tuned per-cue mix levels and confirms cooldown failures play one octave lower with a subtle random detune range.
+- Streams and loops the arena BGM after the first user gesture, confirms it continues through pause and game restart, and checks that its playback position advances without joining the decoded SFX buffer catalog.
+- Checks the pause-menu SFX/BGM sliders, live percentage outputs, pause-time SFX suppression, default-off spell-failure toggle, enabled cooldown pitch behavior, and local preference persistence across reload.
 - Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
 - Checks rolling patch terrain diagnostics, including active patch-radius generation, at least one river micro hex, no emergency patches, and ordered patch edge socket agreement.
 - Checks deterministic special-ground generation, including reachable charged and cursed cells and the requirement that cursed ground remains rarer.
 - Exercises charged ground to confirm both cooldown and Power recovery run at `1.75x`, leaving preserves consumed capacity, returning resumes consumption, and the tile depletes after about three cumulative seconds.
 - Exercises cursed ground to confirm pause freezes cleansing, leaving resets progress, completion grants exactly one Cursed Energy, and the tile becomes cleansed.
+- Confirms special charged/cursed tile interactions select their matching channeling loop, own at most one loop, suspend it during pause, and stop it after leaving, depletion, or cleansing.
 - Confirms the player-owned cell contact drives special-ground activation, dormant glyphs perform no animation work, and exactly one seven-point particle object plus one glyph animation is active only while Zeus occupies charged or cursed ground. The contract also checks the `8x` particle-size multiplier.
 - Checks the player outline through diagnostics: golden-orange normally, brighter gold on charged ground, and violet on cursed ground.
 - Checks Terrain Debug mode by toggling it on, verifying fog is disabled, camera view is widened with debug framing, HP remains full, the rendered terrain window expands, and rolling terrain diagnostics remain valid without increasing the configured generation radius or generating new patches.
@@ -42,7 +48,7 @@ npm run verify
 - Checks that click and held movement commands reject undiscovered terrain.
 - Clicks a visible wall blocker and checks that navigation resolves to reachable discovered neighboring hex space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
-- Checks the pause menu enemy health bar visibility options, Quick Cast toggle, and Allow Max Range Target Snap toggle.
+- Checks the pause menu audio controls, enemy health bar visibility options, Quick Cast toggle, and Allow Max Range Target Snap toggle, and confirms the expanded menu fits the supported desktop viewport.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
 - Checks that diagnostics exposes enemy hex flow-field metrics and that the smoke path does not create a pathfinding call spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.

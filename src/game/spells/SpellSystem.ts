@@ -4,9 +4,10 @@ import { distance2D } from "../../lib/math";
 import type { GameEffects } from "../../render/GameEffects";
 import type { EnemyState, GameRuntimeState, SpellConfig, SpellId } from "../../types";
 import type { EnemySystem } from "../enemies/EnemySystem";
+import type { SpellCastFailureReason } from "./spellTypes";
 
 type SpellSystemCallbacks = {
-  invalidCast: () => void;
+  castFailed: (reason: SpellCastFailureReason) => void;
   castSucceeded: (spellId: SpellId, target: THREE.Vector3) => void;
   canCastAt: (target: THREE.Vector3) => boolean;
   canAffectEnemy: (enemy: EnemyState) => boolean;
@@ -49,8 +50,9 @@ export class SpellSystem {
     }
 
     const spell = this.spells[spellId];
-    if (this.cooldowns[spellId] > 0 || state.mana < spell.manaCost) {
-      this.callbacks.invalidCast();
+    const failure = this.getResourceFailure(spellId, state);
+    if (failure) {
+      this.callbacks.castFailed(failure);
       return;
     }
 
@@ -70,17 +72,23 @@ export class SpellSystem {
     const spell = this.spells[spellId];
     this.castMode = null;
 
-    if (this.cooldowns[spellId] > 0 || state.mana < spell.manaCost) {
-      this.callbacks.invalidCast();
+    const failure = this.getResourceFailure(spellId, state);
+    if (failure) {
+      this.callbacks.castFailed(failure);
       return;
     }
 
     const rawDistance = distance2D(playerPosition.x, playerPosition.z, rawTarget.x, rawTarget.z);
+    if (!options.allowMaxRangeTargetSnap && rawDistance > spell.range) {
+      this.callbacks.castFailed("out-of-range");
+      return;
+    }
+
     const target = options.allowMaxRangeTargetSnap
       ? clampToSpellRange(rawTarget, playerPosition, spell.range)
       : new THREE.Vector3(rawTarget.x, 0, rawTarget.z);
-    if ((!options.allowMaxRangeTargetSnap && rawDistance > spell.range) || !this.callbacks.canCastAt(target)) {
-      this.callbacks.invalidCast();
+    if (!this.callbacks.canCastAt(target)) {
+      this.callbacks.castFailed("hidden-target");
       return;
     }
 
@@ -93,6 +101,16 @@ export class SpellSystem {
     } else {
       this.castLightningBolt(target, state);
     }
+  }
+
+  private getResourceFailure(spellId: SpellId, state: GameRuntimeState): SpellCastFailureReason | null {
+    if (this.cooldowns[spellId] > 0) {
+      return "cooldown";
+    }
+    if (state.mana < this.spells[spellId].manaCost) {
+      return "out-of-mana";
+    }
+    return null;
   }
 
   private castChainLightning(target: THREE.Vector3, playerPosition: THREE.Vector3, state: GameRuntimeState) {

@@ -1,5 +1,6 @@
 import type { ProfilerSnapshot } from "../game/perf/Profiler";
 import type { EnemyHealthBarVisibilityMode } from "../types";
+import type { AudioPreferences } from "../game/audio/AudioPreferences";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { Hud } from "./Hud";
 import { PauseMenu } from "./PauseMenu";
@@ -19,6 +20,10 @@ type GameUiCallbacks = {
   setUnlockUiEnabled: (enabled: boolean) => void;
   terrainDebugMode: boolean;
   setTerrainDebugMode: (enabled: boolean) => void;
+  audioPreferences: AudioPreferences;
+  setSfxVolume: (volume: number) => void;
+  setBgmVolume: (volume: number) => void;
+  setSpellFailureEnabled: (enabled: boolean) => void;
 };
 
 export class GameUi {
@@ -47,12 +52,16 @@ export class GameUi {
         setAllowMaxRangeTargetSnap: callbacks.setAllowMaxRangeTargetSnap,
         setUnlockUiEnabled: callbacks.setUnlockUiEnabled,
         setTerrainDebugMode: callbacks.setTerrainDebugMode,
+        setSfxVolume: callbacks.setSfxVolume,
+        setBgmVolume: callbacks.setBgmVolume,
+        setSpellFailureEnabled: callbacks.setSpellFailureEnabled,
       },
       callbacks.enemyHealthBarMode,
       callbacks.quickCastEnabled,
       callbacks.allowMaxRangeTargetSnap,
       callbacks.unlockUiEnabled,
       callbacks.terrainDebugMode,
+      callbacks.audioPreferences,
     );
     this.setUnlockUiEnabled(callbacks.unlockUiEnabled);
   }
@@ -81,6 +90,18 @@ export class GameUi {
 
   setTerrainDebugMode(enabled: boolean) {
     this.pauseMenu.setTerrainDebugMode(enabled);
+  }
+
+  setSfxVolume(volume: number) {
+    this.pauseMenu.setSfxVolume(volume);
+  }
+
+  setBgmVolume(volume: number) {
+    this.pauseMenu.setBgmVolume(volume);
+  }
+
+  setSpellFailureEnabled(enabled: boolean) {
+    this.pauseMenu.setSpellFailureEnabled(enabled);
   }
 
   toggleDiagnostics() {

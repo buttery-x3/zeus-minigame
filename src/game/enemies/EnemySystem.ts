@@ -23,6 +23,8 @@ import { EnemyNavigation } from "./navigation/EnemyNavigation";
 
 type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
+  enemyDied: (position: THREE.Vector3) => void;
+  waveStarted: (wave: number) => void;
 };
 
 type EnemyMovePlan = {
@@ -134,6 +136,7 @@ export class EnemySystem {
       state.nextWaveAt += 12 + state.wave * 5;
       state.spawnInterval = Math.max(0.46, state.spawnInterval - 0.12);
       this.effects.createShockwave(playerPosition, 0xb184ff, 10);
+      this.callbacks.waveStarted(state.wave);
     }
 
     if (state.spawnTimer <= 0) {
@@ -188,6 +191,7 @@ export class EnemySystem {
     state.kills += 1;
     state.mana = Math.min(PLAYER_MAX_MANA, state.mana + 4);
     this.effects.createShockwave(deathPosition, 0x67e3c0, 3);
+    this.callbacks.enemyDied(deathPosition);
   }
 
   findClosest(
@@ -284,6 +288,15 @@ export class EnemySystem {
       return false;
     }
     enemy.character.playAttack();
+    return true;
+  }
+
+  defeatEnemyForVerification(state: GameRuntimeState) {
+    const enemy = this.enemies[0];
+    if (!enemy) {
+      return false;
+    }
+    this.damageEnemy(enemy, enemy.hp, state);
     return true;
   }
 

@@ -56,7 +56,9 @@ async function verifyInBrowser() {
       await waitForPlayerModel(page, viewport);
       await verifyPlayerAnimationLifecycle(page, viewport);
       await verifyEnemyAnimationLifecycle(page, viewport);
+      await verifyAudioSystem(page, viewport);
 
+      await reloadGame(page);
       await verifyHudTransparency(page, viewport);
       await reloadGame(page);
       await verifyFrameTiming(page, viewport);
@@ -88,6 +90,237 @@ async function verifyInBrowser() {
   }
 
   return results;
+}
+
+async function verifyAudioSystem(page, viewport) {
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().audio?.loadState === "ready");
+  await page.mouse.click(viewport.width * 0.5, viewport.height * 0.5);
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return audio?.unlocked && audio.contextState === "running" && audio.music?.playing;
+  });
+
+  const initial = await readDiagnostics(page);
+  if (
+    initial.audio.configuredCueCount !== 8 ||
+    initial.audio.loadedVariantCount !== 13 ||
+    initial.audio.optionalUnavailable.length !== 0 ||
+    initial.audio.preferences.sfxVolume !== 1 ||
+    initial.audio.preferences.bgmVolume !== 0.35 ||
+    initial.audio.preferences.spellFailureEnabled ||
+    initial.audio.music.source !== "/assets/audio/music/storm-arena-loop.mp3" ||
+    !initial.audio.music.loop ||
+    initial.audio.music.loadState === "error"
+  ) {
+    throw new Error(`${viewport.name} audio catalog did not preload correctly: ${JSON.stringify(initial.audio)}`);
+  }
+  const expectedVolumes = {
+    "spell-chain-cast": 0.576,
+    "spell-bolt-cast": 0.576,
+    "minion-death": 0.651,
+    "new-wave-announce": 0.455,
+    "charged-tile-channeling": 0.528,
+    "cursed-tile-channeling": 0.456,
+  };
+  for (const [cueId, expectedVolume] of Object.entries(expectedVolumes)) {
+    if (Math.abs(initial.audio.cueVolumes[cueId] - expectedVolume) > 0.0001) {
+      throw new Error(`${viewport.name} ${cueId} had the wrong mix volume: ${JSON.stringify(initial.audio.cueVolumes)}`);
+    }
+  }
+  if (
+    initial.audio.cooldownFailurePitch.detuneCents !== -1200 ||
+    initial.audio.cooldownFailurePitch.randomDetuneCents !== 45
+  ) {
+    throw new Error(`${viewport.name} cooldown failure pitch was not configured correctly: ${JSON.stringify(initial.audio)}`);
+  }
+  await page.waitForFunction(
+    ({ startTime, expectedGain }) => {
+      const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+      return (
+        audio?.music?.playing &&
+        audio.music.currentTime > startTime + 0.1 &&
+        Math.abs(audio.effectiveBgmGain - expectedGain) < 0.02
+      );
+    },
+    { startTime: initial.audio.music.currentTime, expectedGain: 0.35 },
+  );
+
+  const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
+  await page.mouse.move(target.x, target.y);
+  await releaseSpellKeys(page);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.up("KeyQ");
+  await waitForSpellCooldown(page, "chain");
+  await page.waitForFunction(
+    (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["spell-chain-cast"] > before,
+    initial.audio.playCounts["spell-chain-cast"],
+  );
+
+  const beforeCooldownFailure = await readDiagnostics(page);
+  await page.keyboard.press("KeyQ");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().audio?.lastCastFailureReason === "cooldown");
+  let diagnostics = await readDiagnostics(page);
+  if (diagnostics.audio.playCounts["spell-cast-failed"] !== beforeCooldownFailure.audio.playCounts["spell-cast-failed"]) {
+    throw new Error(`${viewport.name} spell-failure SFX played while disabled: ${JSON.stringify(diagnostics.audio)}`);
+  }
+
+  const musicBeforePause = diagnostics.audio.music.currentTime;
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return audio?.suspensionReasons.includes("pause") && audio.effectiveSfxGain < 0.02;
+  });
+  const defaultControls = await readAudioControls(page);
+  if (
+    defaultControls.sfx !== "100" ||
+    defaultControls.bgm !== "35" ||
+    defaultControls.sfxOutput !== "100%" ||
+    defaultControls.bgmOutput !== "35%" ||
+    defaultControls.spellFailureEnabled
+  ) {
+    throw new Error(`${viewport.name} audio controls had incorrect defaults: ${JSON.stringify(defaultControls)}`);
+  }
+  await page.waitForFunction(
+    (startTime) => {
+      const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+      return audio?.music?.playing && audio.contextState === "running" && audio.music.currentTime > startTime + 0.1;
+    },
+    musicBeforePause,
+  );
+
+  await setRangeInput(page, "[data-sfx-volume]", 64);
+  await setRangeInput(page, "[data-bgm-volume]", 22);
+  await page.click("[data-spell-failure-sfx-toggle]");
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return (
+      audio?.preferences.sfxVolume === 0.64 &&
+      audio.preferences.bgmVolume === 0.22 &&
+      audio.preferences.spellFailureEnabled &&
+      Math.abs(audio.effectiveBgmGain - 0.22) < 0.02
+    );
+  });
+  const changedControls = await readAudioControls(page);
+  if (changedControls.sfxOutput !== "64%" || changedControls.bgmOutput !== "22%" || !changedControls.spellFailureEnabled) {
+    throw new Error(`${viewport.name} audio controls did not update live: ${JSON.stringify(changedControls)}`);
+  }
+
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return !window.__ZEUS_GAME__?.getDiagnostics().paused && Math.abs(audio.effectiveSfxGain - 0.64) < 0.02;
+  });
+
+  const beforeEnabledFailure = await readDiagnostics(page);
+  await page.keyboard.press("KeyQ");
+  await page.waitForFunction(
+    (before) => {
+      const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+      const detune = audio?.lastDetuneCents?.["spell-cast-failed"];
+      return (
+        audio?.lastCastFailureReason === "cooldown" &&
+        audio.playCounts["spell-cast-failed"] > before &&
+        detune >= -1245 &&
+        detune <= -1155
+      );
+    },
+    beforeEnabledFailure.audio.playCounts["spell-cast-failed"],
+  );
+
+  await page.evaluate(() => window.__ZEUS_GAME__?.setPlayerManaForVerification(0));
+  await page.keyboard.press("KeyW");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().audio?.lastCastFailureReason === "out-of-mana");
+
+  const beforeEnemyDeath = await readDiagnostics(page);
+  const defeatedEnemy = await page.evaluate(() => window.__ZEUS_GAME__?.defeatEnemyForVerification());
+  if (!defeatedEnemy) {
+    throw new Error(`${viewport.name} could not defeat an enemy for audio verification`);
+  }
+  await page.waitForFunction(
+    (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["minion-death"] > before,
+    beforeEnemyDeath.audio.playCounts["minion-death"],
+  );
+
+  const beforeNewWave = await readDiagnostics(page);
+  const startedWave = await page.evaluate(() => window.__ZEUS_GAME__?.startNextWaveForVerification());
+  if (!startedWave) {
+    throw new Error(`${viewport.name} could not start a wave for audio verification`);
+  }
+  await page.waitForFunction(
+    (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["new-wave-announce"] > before,
+    beforeNewWave.audio.playCounts["new-wave-announce"],
+  );
+
+  const beforePlayerHit = await readDiagnostics(page);
+  await page.evaluate(() => window.__ZEUS_GAME__?.defeatPlayerForVerification());
+  await page.waitForFunction(
+    (before) => window.__ZEUS_GAME__?.getDiagnostics().audio?.playCounts?.["player-hit"] > before,
+    beforePlayerHit.audio.playCounts["player-hit"],
+  );
+  const musicBeforeRestart = beforePlayerHit.audio.music.currentTime;
+  await page.keyboard.press("KeyR");
+  await page.waitForFunction(() => {
+    const current = window.__ZEUS_GAME__?.getDiagnostics();
+    return current && !current.gameOver && current.audio.music.playing;
+  });
+  diagnostics = await readDiagnostics(page);
+  if (diagnostics.audio.music.currentTime <= musicBeforeRestart) {
+    throw new Error(`${viewport.name} game restart reset BGM playback: ${JSON.stringify(diagnostics.audio.music)}`);
+  }
+
+  await reloadGame(page);
+  diagnostics = await readDiagnostics(page);
+  if (
+    diagnostics.audio.preferences.sfxVolume !== 0.64 ||
+    diagnostics.audio.preferences.bgmVolume !== 0.22 ||
+    !diagnostics.audio.preferences.spellFailureEnabled
+  ) {
+    throw new Error(`${viewport.name} audio preferences did not persist across reload: ${JSON.stringify(diagnostics.audio)}`);
+  }
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  const persistedControls = await readAudioControls(page);
+  if (persistedControls.sfx !== "64" || persistedControls.bgm !== "22" || !persistedControls.spellFailureEnabled) {
+    throw new Error(`${viewport.name} persisted audio controls did not render correctly: ${JSON.stringify(persistedControls)}`);
+  }
+
+  await setRangeInput(page, "[data-sfx-volume]", 100);
+  await setRangeInput(page, "[data-bgm-volume]", 35);
+  await page.click("[data-spell-failure-sfx-toggle]");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => {
+    const audio = window.__ZEUS_GAME__?.getDiagnostics().audio;
+    return (
+      !window.__ZEUS_GAME__?.getDiagnostics().paused &&
+      audio.preferences.sfxVolume === 1 &&
+      audio.preferences.bgmVolume === 0.35 &&
+      !audio.preferences.spellFailureEnabled &&
+      Math.abs(audio.effectiveSfxGain - 1) < 0.02
+    );
+  });
+}
+
+async function setRangeInput(page, selector, value) {
+  await page.$eval(
+    selector,
+    (input, nextValue) => {
+      input.value = String(nextValue);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    },
+    value,
+  );
+}
+
+async function readAudioControls(page) {
+  return page.evaluate(() => ({
+    sfx: document.querySelector("[data-sfx-volume]")?.value,
+    bgm: document.querySelector("[data-bgm-volume]")?.value,
+    sfxOutput: document.querySelector("[data-sfx-volume-output]")?.value,
+    bgmOutput: document.querySelector("[data-bgm-volume-output]")?.value,
+    spellFailureEnabled: document.querySelector("[data-spell-failure-sfx]")?.checked,
+  }));
 }
 
 async function verifyFrameTiming(page, viewport) {
@@ -279,6 +512,11 @@ async function verifyGroundEffects(page, viewport) {
       { timeout: 6000 },
     );
 
+    const chargedAudio = (await readDiagnostics(page)).audio;
+    if (chargedAudio.activeLoop !== "charged-tile-channeling" || !chargedAudio.loopPlaying) {
+      throw new Error(`${viewport.name} charged ground did not start the channeling cue: ${JSON.stringify(chargedAudio)}`);
+    }
+
     const chargedKey = `${charged.cell.q},${charged.cell.r}`;
     const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
     await page.mouse.move(target.x, target.y);
@@ -332,7 +570,8 @@ async function verifyGroundEffects(page, viewport) {
       Math.abs(usedWhileAway - usedBeforeWaitingAway) > 0.03 ||
       away.groundEffects.cooldownRecoveryMultiplier !== 1 ||
       away.terrain?.specialGround?.activeParticleSystems !== 0 ||
-      away.terrain?.specialGround?.animatedTileCount !== 0
+      away.terrain?.specialGround?.animatedTileCount !== 0 ||
+      away.audio.activeLoop !== null
     ) {
       throw new Error(`${viewport.name} charged-ground capacity did not pause after leaving: before=${usedBeforeWaitingAway}, away=${usedWhileAway}`);
     }
@@ -361,7 +600,11 @@ async function verifyGroundEffects(page, viewport) {
       { timeout: 5000 },
     );
     diagnostics = await readDiagnostics(page);
-    if (diagnostics.groundEffects.cooldownRecoveryMultiplier !== 1 || diagnostics.groundEffects.energyRecoveryMultiplier !== 1) {
+    if (
+      diagnostics.groundEffects.cooldownRecoveryMultiplier !== 1 ||
+      diagnostics.groundEffects.energyRecoveryMultiplier !== 1 ||
+      diagnostics.audio.activeLoop !== null
+    ) {
       throw new Error(`${viewport.name} depleted charged ground still granted recovery: ${JSON.stringify(diagnostics.groundEffects)}`);
     }
 
@@ -383,13 +626,16 @@ async function verifyGroundEffects(page, viewport) {
       diagnostics.terrain?.specialGround?.activeParticleSystems !== 1 ||
       diagnostics.terrain?.specialGround?.activeParticleKind !== "cursed" ||
       diagnostics.terrain?.specialGround?.animatedTileCount !== 1 ||
-      diagnostics.player?.navigation?.groundAuraColor !== "#d475ff"
+      diagnostics.player?.navigation?.groundAuraColor !== "#d475ff" ||
+      diagnostics.audio.activeLoop !== "cursed-tile-channeling" ||
+      !diagnostics.audio.loopPlaying
     ) {
       throw new Error(`${viewport.name} cursed ground did not activate focused particles: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
     }
 
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === true);
+    await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().audio?.suspensionReasons.includes("pause"));
     const pausedStart = await readDiagnostics(page);
     await page.waitForTimeout(360);
     const pausedEnd = await readDiagnostics(page);
@@ -397,7 +643,10 @@ async function verifyGroundEffects(page, viewport) {
       throw new Error(`${viewport.name} curse cleansing advanced while paused`);
     }
     await page.keyboard.press("Escape");
-    await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+    await page.waitForFunction(() => {
+      const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+      return diagnostics && !diagnostics.paused && !diagnostics.audio.suspensionReasons.includes("pause");
+    });
 
     const cursedCell = cursed.cell;
     await clickVisibleMoveCell(page, viewport, 0.67, 0.54);
@@ -410,7 +659,7 @@ async function verifyGroundEffects(page, viewport) {
       { timeout: 6000 },
     );
     const leftCurse = await readDiagnostics(page);
-    if (leftCurse.groundEffects.curseProgress !== 0) {
+    if (leftCurse.groundEffects.curseProgress !== 0 || leftCurse.audio.activeLoop !== null) {
       throw new Error(`${viewport.name} curse progress did not reset after leaving`);
     }
 
@@ -434,7 +683,8 @@ async function verifyGroundEffects(page, viewport) {
       currencyText?.trim() !== "1" ||
       diagnostics.groundEffects.phase !== "cleansed" ||
       diagnostics.terrain?.specialGround?.activeParticleSystems !== 0 ||
-      diagnostics.terrain?.specialGround?.animatedTileCount !== 0
+      diagnostics.terrain?.specialGround?.animatedTileCount !== 0 ||
+      diagnostics.audio.activeLoop !== null
     ) {
       throw new Error(`${viewport.name} cursed-ground reward or HUD currency did not update: ${currencyText}, ${JSON.stringify(diagnostics.groundEffects)}`);
     }
@@ -631,6 +881,9 @@ async function verifyHiddenCastRejected(page, viewport, diagnostics) {
   if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
     throw new Error(`${viewport.name} cast into hidden blocker shadow was not rejected`);
   }
+  if (after.audio.lastCastFailureReason !== "hidden-target") {
+    throw new Error(`${viewport.name} hidden cast reported the wrong audio failure reason: ${JSON.stringify(after.audio)}`);
+  }
 }
 
 async function verifyUndiscoveredMoveRejected(page, viewport, diagnostics) {
@@ -692,6 +945,9 @@ async function verifyOutOfRangeCastRejected(page, viewport) {
   const after = await readDiagnostics(page);
   if (after.spells.cooldowns.chain > before.spells.cooldowns.chain + 0.05) {
     throw new Error(`${viewport.name} out-of-range raw cast target was not rejected when target snap was disabled`);
+  }
+  if (after.audio.lastCastFailureReason !== "out-of-range") {
+    throw new Error(`${viewport.name} strict-range cast reported the wrong audio failure reason: ${JSON.stringify(after.audio)}`);
   }
 }
 
@@ -809,7 +1065,7 @@ async function verifyPauseMenuCentered(page, viewport) {
 
   const xDrift = Math.abs(metrics.centerX - viewport.width / 2);
   const yDrift = Math.abs(metrics.centerY - (viewport.height / 2 - 20));
-  if (xDrift > 2 || yDrift > 2) {
+  if (xDrift > 2 || yDrift > 2 || metrics.height > viewport.height - 16) {
     throw new Error(`${viewport.name} pause menu was not centered: ${JSON.stringify(metrics)}`);
   }
 }
@@ -1308,6 +1564,7 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
     expectedClip,
   );
   const duringCast = await readDiagnostics(page);
+  const audioCue = spellId === "chain" ? "spell-chain-cast" : "spell-bolt-cast";
   const castTarget = beforeCast.input.pointerWorld;
   const castOrigin = beforeCast.player.position;
   const expectedRotation = Math.atan2(castTarget[0] - castOrigin[0], castTarget[2] - castOrigin[2]);
@@ -1318,6 +1575,9 @@ async function verifyQuickCastRelease(page, viewport, spellId, key, xRatio, yRat
     throw new Error(
       `${viewport.name} ${spellId} cast did not face its target: rotation=${duringCast.player.rotationY}, expected=${expectedRotation}`,
     );
+  }
+  if (duringCast.audio.playCounts[audioCue] !== beforeCast.audio.playCounts[audioCue] + 1) {
+    throw new Error(`${viewport.name} ${spellId} cast did not play exactly one cast cue: ${JSON.stringify(duringCast.audio)}`);
   }
   await verifyAbilityCooldownUi(page, viewport, spellId);
 }
