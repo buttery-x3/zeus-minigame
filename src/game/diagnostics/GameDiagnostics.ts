@@ -42,6 +42,7 @@ export class GameDiagnostics {
         health: state.health,
         position: this.player.object.position.toArray(),
         rotationY: this.player.object.rotation.y,
+        animation: this.player.getAnimationDiagnostics(),
         navigation: {
           ...this.player.getNavigationDiagnostics(),
           destinationBlocked: !this.collision.canOccupy(this.player.moveTarget.x, this.player.moveTarget.z, PLAYER_COLLISION_RADIUS),
@@ -139,6 +140,7 @@ export class GameDiagnostics {
         ),
       },
       terrainGrammar: this.gridWorld.getTerrainDiagnostics(),
+      gameOver: state.gameOver,
       paused: state.paused,
       profiler: this.profiler.snapshot(),
     };

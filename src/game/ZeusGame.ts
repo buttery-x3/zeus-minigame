@@ -103,6 +103,7 @@ export class ZeusGame {
   );
   private readonly spells = new SpellSystem(this.effects, this.enemies, {
     invalidCast: () => this.player.flash(0x657172),
+    castSucceeded: (spellId) => this.player.playSpellCast(spellId),
     canCastAt: (target) => this.canCastAt(target),
     canAffectEnemy: (enemy) => this.isEnemyVisible(enemy),
   });
@@ -170,6 +171,7 @@ export class ZeusGame {
     window.removeEventListener("resize", this.cameraRig.resize);
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     this.input.dispose();
+    this.player.dispose();
     this.ui.remove();
     this.visibilityOverlay.dispose();
     this.scene.dispose();
@@ -204,6 +206,12 @@ export class ZeusGame {
       visibilityOverlay: this.visibilityOverlay.getDiagnostics(),
       timing: this.simulationStepper.diagnostics(),
     };
+  }
+
+  defeatPlayerForVerification() {
+    if (import.meta.env.DEV) {
+      this.damagePlayer(PLAYER_MAX_HEALTH);
+    }
   }
 
   private readonly tick = (time: number) => {
@@ -268,6 +276,7 @@ export class ZeusGame {
     }
 
     if (this.state.gameOver) {
+      this.profiler.measure("playerAnimation", () => this.player.updateAnimation(dt));
       this.profiler.measure("effects", () => this.effects.update(dt));
       return ground;
     }
@@ -278,6 +287,7 @@ export class ZeusGame {
     }
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("effects", () => this.effects.update(dt));
+    this.profiler.measure("playerAnimation", () => this.player.updateAnimation(dt));
     return ground;
   }
 
