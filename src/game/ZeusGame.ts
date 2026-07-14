@@ -5,7 +5,6 @@ import {
   INITIAL_SPAWN_INTERVAL,
   PLAYER_MAX_HEALTH,
   PLAYER_MAX_MANA,
-  PLAYER_MANA_REGEN_PER_SECOND,
   VISIBILITY_LIGHT_EPSILON,
 } from "../config";
 import { CameraRig } from "./camera/CameraRig";
@@ -30,6 +29,8 @@ import { VisibilityOverlay } from "../render/VisibilityOverlay";
 import { createGameMaterials } from "../render/materials";
 import { GameUi } from "../ui/GameUi";
 import { GridWorld } from "../world/GridWorld";
+import { UpgradeSystem } from "./upgrades/UpgradeSystem";
+import type { UpgradeId } from "./upgrades/upgradeTypes";
 
 export class ZeusGame {
   private readonly clock = new THREE.Clock();
@@ -53,9 +54,10 @@ export class ZeusGame {
   private readonly effects = new GameEffects(this.groups.effects);
   private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
   private readonly audio = new AudioSystem();
+  private readonly upgrades = new UpgradeSystem();
   private readonly groundEffects = new GroundEffectSystem(this.gridWorld, {
     onCursedCleared: (cell, reward) => {
-      this.state.cursedEnergy += reward;
+      this.grantCursedEnergy(reward);
       const world = this.gridWorld.cellToWorldPoint(cell);
       this.effects.createEnergyAbsorption(world, this.player.object.position);
       this.effects.createShockwave(world, 0xc266f0, 4.8);
@@ -80,9 +82,10 @@ export class ZeusGame {
   private allowMaxRangeTargetSnap = true;
   private unlockUiEnabled = false;
   private terrainDebugMode = false;
+  private manualPaused = false;
   private readonly ui = new GameUi({
-    resume: () => this.setPaused(false),
-    togglePause: () => this.setPaused(!this.state.paused),
+    resume: () => this.setManualPaused(false),
+    togglePause: () => this.toggleManualPause(),
     enemyHealthBarMode: this.enemyHealthBarMode,
     setEnemyHealthBarMode: (mode) => this.setEnemyHealthBarMode(mode),
     quickCastEnabled: this.quickCastEnabled,
@@ -97,6 +100,8 @@ export class ZeusGame {
     setSfxVolume: (volume) => this.setSfxVolume(volume),
     setBgmVolume: (volume) => this.setBgmVolume(volume),
     setSpellFailureEnabled: (enabled) => this.setSpellFailureEnabled(enabled),
+    chooseUpgrade: (upgradeId) => this.chooseUpgrade(upgradeId),
+    skipUpgrade: () => this.skipUpgrade(),
   });
   private readonly hudPresenter = new HudPresenter(this.ui.hud, this.gridWorld);
   private readonly enemies = new EnemySystem(
@@ -111,6 +116,7 @@ export class ZeusGame {
       damagePlayer: (amount) => this.damagePlayer(amount),
       enemyDied: () => this.audio.play("minion-death"),
       waveStarted: () => this.audio.play("new-wave-announce"),
+      restoreMana: (amount) => this.restoreMana(amount),
     },
   );
   private readonly spells = new SpellSystem(this.effects, this.enemies, {
@@ -124,6 +130,7 @@ export class ZeusGame {
     },
     canCastAt: (target) => this.canCastAt(target),
     canAffectEnemy: (enemy) => this.isEnemyVisible(enemy),
+    getRunStats: () => this.upgrades.getStats(),
   });
   private readonly targeting = new TargetingRenderer(this.groups.targeting);
   private readonly terrain = new TerrainSystem(
@@ -211,11 +218,14 @@ export class ZeusGame {
         castMode: this.spells.castMode,
         cooldowns: { ...this.spells.cooldowns },
         mana: this.state.mana,
+        effectiveConfig: this.spells.spells,
       },
       groundEffects: {
         ...this.groundEffects.getDiagnostics(),
         cursedEnergy: this.state.cursedEnergy,
       },
+      upgrades: this.upgrades.getDiagnostics(),
+      pauseReason: this.upgrades.hasActiveOffer() ? "upgrade" : this.manualPaused ? "manual" : null,
       enemyHealthBars: {
         mode: this.enemyHealthBarMode,
         ...this.enemies.getHealthBarDiagnostics(),
@@ -232,7 +242,7 @@ export class ZeusGame {
 
   defeatPlayerForVerification() {
     if (import.meta.env.DEV) {
-      this.damagePlayer(PLAYER_MAX_HEALTH);
+      this.damagePlayer(this.upgrades.getStats().maxHealth);
     }
   }
 
@@ -246,7 +256,41 @@ export class ZeusGame {
 
   setPlayerManaForVerification(mana: number) {
     if (import.meta.env.DEV) {
-      this.state.mana = Math.max(0, Math.min(PLAYER_MAX_MANA, mana));
+      this.state.mana = Math.max(0, Math.min(this.upgrades.getStats().maxMana, mana));
+    }
+  }
+
+  openUpgradeOfferForVerification(cursedEnergy = 3, upgradeIds: UpgradeId[] = ["healthRegen", "spellCooldown", "shield"]) {
+    if (!import.meta.env.DEV || this.upgrades.hasActiveOffer()) {
+      return false;
+    }
+    this.state.cursedEnergy = cursedEnergy;
+    this.upgrades.beginOffer(performance.now(), upgradeIds);
+    this.syncPauseState();
+    return true;
+  }
+
+  applyUpgradeForVerification(upgradeId: UpgradeId) {
+    if (!import.meta.env.DEV) {
+      return false;
+    }
+    const previousStats = this.upgrades.getStats();
+    const applied = this.upgrades.applyUpgradeForVerification(upgradeId);
+    if (applied) {
+      this.applyDerivedStats(previousStats);
+    }
+    return applied;
+  }
+
+  damagePlayerForVerification(amount: number) {
+    if (import.meta.env.DEV) {
+      this.damagePlayer(amount);
+    }
+  }
+
+  advanceShieldRechargeForVerification(seconds: number) {
+    if (import.meta.env.DEV) {
+      this.upgrades.update(Math.max(0, seconds));
     }
   }
 
@@ -280,9 +324,14 @@ export class ZeusGame {
   private update(rawDt: number, discardForVisibility: boolean) {
     const playerPosition = this.player.object.position;
     let ground = this.groundEffects.getSnapshot();
+    const runStats = this.upgrades.getStats();
+
+    if (this.upgrades.expireOffer(performance.now())) {
+      this.syncPauseState();
+    }
 
     if (this.terrainDebugMode) {
-      this.state.health = PLAYER_MAX_HEALTH;
+      this.state.health = runStats.maxHealth;
     }
 
     this.profiler.measure("terrainGeneration", () => this.gridWorld.ensureTerrainGeneratedAroundWorld(playerPosition));
@@ -299,7 +348,12 @@ export class ZeusGame {
 
   private updateSimulation(dt: number, ground: ReturnType<GroundEffectSystem["getSnapshot"]>) {
     const playerPosition = this.player.object.position;
-    if (!this.state.gameOver && !this.state.paused) {
+    if (this.state.paused) {
+      return ground;
+    }
+
+    if (!this.state.gameOver) {
+      const runStats = this.upgrades.getStats();
       this.profiler.measure("player", () => {
         if (this.input.consumeMoveRequest()) {
           this.requestMoveTarget(this.input.pointerWorld.x, this.input.pointerWorld.z, false);
@@ -308,6 +362,9 @@ export class ZeusGame {
         this.terrain.prepare(playerPosition, this.terrainDebugMode);
       });
       ground = this.profiler.measure("groundEffects", () => this.groundEffects.update(dt, this.player.getGroundCell()));
+      if (this.state.paused) {
+        return ground;
+      }
       this.player.setGroundAura(
         ground.phase === "charged" && ground.cooldownRecoveryMultiplier > 1
           ? "charged"
@@ -315,10 +372,9 @@ export class ZeusGame {
             ? "cursed"
             : null,
       );
-      this.state.mana = Math.min(
-        PLAYER_MAX_MANA,
-        this.state.mana + dt * PLAYER_MANA_REGEN_PER_SECOND * ground.energyRecoveryMultiplier,
-      );
+      this.state.health = Math.min(runStats.maxHealth, this.state.health + dt * runStats.healthRegenPerSecond);
+      this.state.mana = Math.min(runStats.maxMana, this.state.mana + dt * runStats.manaRegenPerSecond * ground.energyRecoveryMultiplier);
+      this.upgrades.update(dt);
       this.profiler.measure("spells", () => this.spells.update(dt, ground.cooldownRecoveryMultiplier));
     }
 
@@ -330,7 +386,7 @@ export class ZeusGame {
 
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
     if (this.terrainDebugMode) {
-      this.state.health = PLAYER_MAX_HEALTH;
+      this.state.health = this.upgrades.getStats().maxHealth;
     }
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("effects", () => this.effects.update(dt));
@@ -340,6 +396,7 @@ export class ZeusGame {
 
   private updatePresentation(frameDt: number, simulatedDt: number, ground: ReturnType<GroundEffectSystem["getSnapshot"]>) {
     const playerPosition = this.player.object.position;
+    const runStats = this.upgrades.getStats();
 
     this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
     this.profiler.measure("terrain", () =>
@@ -362,7 +419,13 @@ export class ZeusGame {
       spells: this.spells.spells,
       ground: this.groundEffects.getSnapshot(),
       paused: this.state.paused,
+      runStats,
+      upgradeStacks: this.upgrades.getStacks(),
+      shield: this.upgrades.getShieldSnapshot(),
     }));
+    this.profiler.measure("upgradeUi", () =>
+      this.ui.updateUpgradeChoice(this.upgrades.getOfferSnapshot(performance.now()), this.state.cursedEnergy, this.upgrades.getStacks()),
+    );
 
     this.profiler.measure("enemyVisibility", () => this.enemies.updateVisibility((enemy) => this.isEnemyVisible(enemy)));
     this.profiler.measure("enemyHealthBars", () =>
@@ -384,8 +447,15 @@ export class ZeusGame {
   };
 
   private damagePlayer(amount: number) {
+    const maxHealth = this.upgrades.getStats().maxHealth;
     if (this.terrainDebugMode) {
-      this.state.health = PLAYER_MAX_HEALTH;
+      this.state.health = maxHealth;
+      return;
+    }
+
+    if (this.upgrades.absorbDamage()) {
+      this.player.flash(0x8fe9ff, () => !this.state.gameOver);
+      this.effects.createShockwave(this.player.object.position, 0x8fe9ff, 3.2);
       return;
     }
 
@@ -427,36 +497,58 @@ export class ZeusGame {
   }
 
   private restart() {
+    this.manualPaused = false;
+    this.upgrades.reset();
     this.state = createInitialState();
-    this.ui.setPaused(false);
+    this.ui.updateUpgradeChoice(null, 0, this.upgrades.getStacks());
     this.spells.reset();
     this.groundEffects.reset();
     this.audio.reset();
-    this.audio.setSuspended("pause", false);
     this.player.reset();
+    this.applyDerivedStats();
     this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
     this.visibility.reset();
     this.visibility.update(this.player.object.position);
     this.enemies.reset(this.state, this.player.object.position);
+    this.syncPauseState();
   }
 
   private handleEscape() {
-    if (this.state.paused) {
-      this.setPaused(false);
+    if (this.upgrades.hasActiveOffer()) {
+      return;
+    }
+    if (this.manualPaused) {
+      this.setManualPaused(false);
     } else if (this.spells.castMode) {
       this.spells.cancelTargeting();
     } else {
-      this.setPaused(true);
+      this.setManualPaused(true);
     }
   }
 
-  private setPaused(paused: boolean) {
-    this.state.paused = paused;
-    if (paused) {
+  private setManualPaused(paused: boolean) {
+    if (this.upgrades.hasActiveOffer()) {
+      return;
+    }
+    this.manualPaused = paused;
+    if (this.manualPaused) {
       this.spells.cancelTargeting();
     }
-    this.audio.setSuspended("pause", paused);
-    this.ui.setPaused(paused);
+    this.syncPauseState();
+  }
+
+  private toggleManualPause() {
+    if (!this.upgrades.hasActiveOffer()) {
+      this.setManualPaused(!this.manualPaused);
+    }
+  }
+
+  private syncPauseState() {
+    const upgradeChoiceActive = this.upgrades.hasActiveOffer();
+    this.state.paused = this.manualPaused || upgradeChoiceActive;
+    this.audio.setSuspended("pause", this.state.paused);
+    this.ui.setManualPaused(this.manualPaused);
+    this.ui.setSimulationPaused(this.state.paused, upgradeChoiceActive);
   }
 
   private setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {
@@ -480,11 +572,14 @@ export class ZeusGame {
   }
 
   private setTerrainDebugMode(enabled: boolean) {
+    if (this.upgrades.hasActiveOffer()) {
+      return;
+    }
     this.terrainDebugMode = enabled;
     this.cameraRig.setZoomMultiplier(enabled ? 3 : 1);
     this.visibilityOverlay.setDebugReveal(enabled);
     if (enabled) {
-      this.state.health = PLAYER_MAX_HEALTH;
+      this.state.health = this.upgrades.getStats().maxHealth;
     }
     this.ui.setTerrainDebugMode(enabled);
   }
@@ -506,6 +601,47 @@ export class ZeusGame {
 
   private toggleEnemyHealthBarMode() {
     this.setEnemyHealthBarMode(this.enemyHealthBarMode === "smart" ? "always" : "smart");
+  }
+
+  private grantCursedEnergy(amount: number) {
+    this.state.cursedEnergy += amount;
+    this.upgrades.beginOffer();
+    this.spells.cancelTargeting();
+    this.syncPauseState();
+  }
+
+  private chooseUpgrade(upgradeId: UpgradeId) {
+    const previousStats = this.upgrades.getStats();
+    const result = this.upgrades.choose(upgradeId, this.state.cursedEnergy);
+    if (!result) {
+      return;
+    }
+    this.state.cursedEnergy = result.cursedEnergy;
+    this.applyDerivedStats(previousStats);
+    this.syncPauseState();
+  }
+
+  private skipUpgrade() {
+    if (this.upgrades.skipOffer()) {
+      this.syncPauseState();
+    }
+  }
+
+  private applyDerivedStats(previousStats = this.upgrades.getStats()) {
+    const nextStats = this.upgrades.getStats();
+    if (previousStats.maxHealth !== nextStats.maxHealth) {
+      this.state.health = nextStats.maxHealth * (this.state.health / previousStats.maxHealth);
+    }
+    if (previousStats.maxMana !== nextStats.maxMana) {
+      this.state.mana = nextStats.maxMana * (this.state.mana / previousStats.maxMana);
+    }
+    this.player.setMoveSpeed(nextStats.moveSpeed);
+    this.state.health = Math.min(nextStats.maxHealth, this.state.health);
+    this.state.mana = Math.min(nextStats.maxMana, this.state.mana);
+  }
+
+  private restoreMana(amount: number) {
+    this.state.mana = Math.min(this.upgrades.getStats().maxMana, this.state.mana + amount);
   }
 
 }

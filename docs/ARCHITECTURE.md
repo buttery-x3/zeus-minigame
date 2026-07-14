@@ -30,6 +30,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
 - `src/game/terrain/TerrainSystem.ts`: visible hex terrain window rendering.
 - `src/game/terrain/GroundEffectSystem.ts`: per-run charged capacity, cursed cleansing, recovery modifiers, and runtime terrain-state overrides.
+- `src/game/upgrades/UpgradeSystem.ts`: run-local upgrade stacks, randomized offers, derived stats, offer deadlines, and shield lifecycle.
+- `src/game/upgrades/upgradeCatalog.ts`: upgrade presentation metadata and repeatability rules; card price is deliberately not stored in the catalog.
 - `src/world/GridWorld.ts`: unbounded axial hex-to-world mapping, cached terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
 - `src/world/HexTerrainCatalog.ts`: patch tile catalog, canonical patch micro-hex coordinates, and patch edge ordering.
 - `src/world/HexTerrainRules.ts`: patch edge compatibility, diagnostics validation, and surface/blocking helper rules.
@@ -47,6 +49,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/ui/window`: small DOM window manager with movable, closable, modal, and lockable windows.
 - `src/ui/Hud.ts`: DOM HUD window creation and updates.
 - `src/ui/GameUi.ts`: composition root for HUD windows, pause menu, diagnostics, and toolbar controls.
+- `src/ui/UpgradeChoiceMenu.ts`: timed three-card Cursed Energy modal, affordability state, and save-energy action.
 - `src/lib/math.ts`: numeric helpers.
 - `src/lib/dom.ts`: DOM query helper.
 - `scripts/verify-render.mjs`: headless browser smoke test for rendering, HUD, and core interactions.
@@ -70,6 +73,12 @@ The default provider is `WfcTerrainProvider`, which uses the explicit patch tile
 Terrain starts with a declarative patch grammar. A micro hex is an actual gameplay terrain cell. A patch tile is a non-overlapping radius-2 group of micro hexes used as one generation unit. A patch edge signature is an ordered list of socket values along one patch side. The patch generator creates internally valid patch variants before runtime selection; the world is not stamped or mutated after selection.
 
 `WfcTerrainProvider` commits terrain one patch at a time as the player moves. It keeps committed patch variants by patch coordinate and expanded micro cells by micro coordinate. The active generation radius is measured in patch coordinates around the player's current patch. Missing patches are generated in deterministic ring order, filtered against already-committed neighbor edge signatures, then committed permanently. Existing patches are never regenerated.
+
+## Run Progression and Pause Ownership
+
+`UpgradeSystem` stores only run-local stacks and derives effective player and spell values from immutable base configuration. Percentage modifiers compose multiplicatively, so repeated cooldown and spell-cost reductions remain positive without mutating the shared `SPELLS` definitions. Restart resets the system before the player, spells, HUD, and enemies are restored.
+
+Manual pause and upgrade-choice pause are distinct reasons coordinated by `ZeusGame`. Either reason freezes the fixed-step simulation and suspends SFX, but only manual pause opens `PauseMenu`. An active upgrade offer owns the modal UI and blocks pause shortcuts until selection, saving, or timeout. Its ten-second deadline is read from presentation-time `performance.now()`, allowing the timer to continue while simulation time remains at zero.
 
 The origin starts with a small open safe patch radius. Runtime patch selection uses local edge compatibility rather than solving a precomputed finite island. If a requested micro hex belongs to an uncommitted patch, the provider lazily commits that containing patch before returning the terrain cell.
 

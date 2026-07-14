@@ -178,6 +178,35 @@
   transform: rotate(45deg);
 }
 
+.hud__upgrade-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 3px;
+  border-top: 1px solid rgb(210 142 240 / 18%);
+}
+
+.hud__upgrade-summary[hidden] {
+  display: none;
+}
+
+.hud__upgrade-summary span,
+.hud__upgrade-summary strong {
+  padding: 3px 5px;
+  border: 1px solid rgb(210 142 240 / 24%);
+  border-radius: 4px;
+  background: rgb(91 37 108 / 24%);
+  color: #dfc6e9;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.hud__upgrade-summary strong {
+  border-color: rgb(116 218 237 / 38%);
+  color: #aeeeff;
+}
+
 .hud__currency--gained .hud__currency-icon,
 .hud__currency--gained strong {
   animation: cursed-energy-gain 420ms ease-out 2 alternate;

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PLAYER_COLLISION_RADIUS, PLAYER_PATHFINDING_BUDGET_MS, PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS } from "../../config";
+import { PLAYER_COLLISION_RADIUS, PLAYER_MOVE_SPEED, PLAYER_PATHFINDING_BUDGET_MS, PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS } from "../../config";
 import { distance2D } from "../../lib/math";
 import type { GameMaterials } from "../../render/materials";
 import type { GameEffects } from "../../render/GameEffects";
@@ -16,6 +16,7 @@ type MoveTargetOptions = {
 };
 
 export class PlayerController {
+  private moveSpeed = PLAYER_MOVE_SPEED;
   readonly model: ReturnType<typeof createPlayerModel>;
   readonly object: THREE.Group;
   readonly moveMarker = new THREE.Group();
@@ -64,7 +65,7 @@ export class PlayerController {
       return;
     }
 
-    const step = Math.min(distance, 18 * dt);
+    const step = Math.min(distance, this.moveSpeed * dt);
     offset.normalize();
     const nextPosition = this.collision.moveWithCollision(
       this.object.position,
@@ -99,6 +100,10 @@ export class PlayerController {
 
   updateAnimation(dt: number) {
     this.character.update(dt);
+  }
+
+  setMoveSpeed(moveSpeed: number) {
+    this.moveSpeed = moveSpeed;
   }
 
   playSpellCast(spellId: SpellId, target: THREE.Vector3) {
@@ -167,6 +172,7 @@ export class PlayerController {
     this.moveTarget.set(0, 0, 0);
     this.moveMarker.position.set(0, 0.08, 0);
     this.path = [];
+    this.moveSpeed = PLAYER_MOVE_SPEED;
     this.lastRequestedCellKey = "";
     this.lastRequestedBlocked = false;
     this.character.reset();
@@ -192,6 +198,7 @@ export class PlayerController {
       groundCellKey: this.groundCellKey,
       groundAuraMode: this.groundAura ?? "normal",
       groundAuraColor: auraMaterial instanceof THREE.MeshBasicMaterial ? `#${auraMaterial.color.getHexString()}` : null,
+      moveSpeed: this.moveSpeed,
     };
   }
 
