@@ -108,15 +108,17 @@ export class EnemySystem {
       this.navigation.recordMovement(enemy, targetProgress, dt, playerPosition);
 
       enemy.group.position.y = Math.sin(performance.now() * 0.006 + enemy.id) * 0.06;
-      enemy.touchCooldown = Math.max(0, enemy.touchCooldown - dt);
+      enemy.touchCooldown -= dt;
       enemy.flashTimer = Math.max(0, enemy.flashTimer - dt);
       enemy.visibilityHintTimer = Math.max(0, enemy.visibilityHintTimer - dt);
       enemy.body.material = enemy.flashTimer > 0 ? this.materials.enemyHit : this.materials.enemy;
 
       const playerDistance = distance2D(playerPosition.x, playerPosition.z, enemy.group.position.x, enemy.group.position.z);
       if (playerDistance < 2.25 && enemy.touchCooldown <= 0) {
-        enemy.touchCooldown = 0.58;
+        enemy.touchCooldown += 0.58;
         this.callbacks.damagePlayer(8 + state.wave);
+      } else if (enemy.touchCooldown < 0) {
+        enemy.touchCooldown = 0;
       }
     }
   }
@@ -132,7 +134,7 @@ export class EnemySystem {
     }
 
     if (state.spawnTimer <= 0) {
-      state.spawnTimer = state.spawnInterval;
+      state.spawnTimer += state.spawnInterval;
       this.spawn(state, playerPosition);
     }
   }

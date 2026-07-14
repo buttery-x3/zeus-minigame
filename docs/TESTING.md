@@ -25,6 +25,7 @@ npm run verify
 - Launches a Chromium-based browser through `playwright-core`.
 - Loads the supported desktop viewport at 1280x720.
 - Checks that the follow camera keeps a stable orientation while click movement changes direction.
+- Injects controlled 160–320 ms main-thread stalls and checks that active gameplay catches up through bounded simulation substeps, long stalls remain capped, pause remains frozen, and visibility resets discard hidden-tab time.
 - Moves away from origin and checks that the key-light shadow rig follows the active play area.
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.

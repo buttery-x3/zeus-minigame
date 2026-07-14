@@ -17,6 +17,7 @@ import { GameInput } from "./input/GameInput";
 import { Profiler } from "./perf/Profiler";
 import { PlayerController } from "./player/PlayerController";
 import { GameScene } from "./scene/GameScene";
+import { getBoundedFrameDelta, SimulationStepper } from "./SimulationStepper";
 import { SpellSystem } from "./spells/SpellSystem";
 import { TargetingRenderer } from "./spells/TargetingRenderer";
 import { TerrainSystem } from "./terrain/TerrainSystem";
@@ -32,6 +33,7 @@ import { GridWorld } from "../world/GridWorld";
 export class ZeusGame {
   private readonly clock = new THREE.Clock();
   private readonly profiler = new Profiler();
+  private readonly simulationStepper = new SimulationStepper();
   private readonly gridWorld = new GridWorld();
   private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
   private readonly visibility = new VisibilitySystem(this.gridWorld);
@@ -134,6 +136,7 @@ export class ZeusGame {
   private state = createInitialState();
   private lastTime = 0;
   private animationId = 0;
+  private discardNextFrameDelta = false;
 
   constructor() {
     this.scene.mount({
@@ -154,6 +157,7 @@ export class ZeusGame {
     this.visibility.update(this.player.object.position, 0);
 
     window.addEventListener("resize", this.cameraRig.resize);
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
     this.cameraRig.resize();
     this.enemies.spawnInitial(this.state, this.player.object.position);
     this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
@@ -164,6 +168,7 @@ export class ZeusGame {
   dispose() {
     window.cancelAnimationFrame(this.animationId);
     window.removeEventListener("resize", this.cameraRig.resize);
+    document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     this.input.dispose();
     this.ui.remove();
     this.visibilityOverlay.dispose();
@@ -197,22 +202,27 @@ export class ZeusGame {
       enemyAvoidance: this.enemies.getAvoidanceDiagnostics(),
       terrain: this.terrain.getDiagnostics(),
       visibilityOverlay: this.visibilityOverlay.getDiagnostics(),
+      timing: this.simulationStepper.diagnostics(),
     };
   }
 
   private readonly tick = (time: number) => {
-    const dt = Math.min(0.05, this.clock.getDelta() || (time - this.lastTime) / 1000 || 0.016);
+    const rawDt = this.clock.getDelta() || (time - this.lastTime) / 1000 || 0.016;
     this.lastTime = time;
+    const discardForVisibility = document.hidden || this.discardNextFrameDelta;
+    if (!document.hidden) {
+      this.discardNextFrameDelta = false;
+    }
 
     this.profiler.beginFrame(time);
-    this.profiler.measure("gameLogic", () => this.update(dt));
+    this.profiler.measure("gameLogic", () => this.update(rawDt, discardForVisibility));
     this.profiler.measure("render", () => this.scene.render());
     this.profiler.endFrame();
     this.ui.updateDiagnostics(this.profiler.snapshot());
     this.animationId = window.requestAnimationFrame(this.tick);
   };
 
-  private update(dt: number) {
+  private update(rawDt: number, discardForVisibility: boolean) {
     const playerPosition = this.player.object.position;
     let ground = this.groundEffects.getSnapshot();
 
@@ -221,14 +231,26 @@ export class ZeusGame {
     }
 
     this.profiler.measure("terrainGeneration", () => this.gridWorld.ensureTerrainGeneratedAroundWorld(playerPosition));
-    this.profiler.measure("camera", () => this.cameraRig.update(dt, playerPosition));
-    this.profiler.measure("input", () => this.input.update(dt));
+    this.profiler.measure("terrainPreparation", () => this.terrain.prepare(playerPosition, this.terrainDebugMode));
+    const frameDt = getBoundedFrameDelta(rawDt, discardForVisibility);
+    this.profiler.measure("camera", () => this.cameraRig.update(frameDt, playerPosition));
+    this.profiler.measure("input", () => this.input.update(frameDt));
+
+    const timing = this.simulationStepper.advance(rawDt, this.state.paused, discardForVisibility, (dt) => {
+      ground = this.updateSimulation(dt, ground);
+    });
+    this.updatePresentation(frameDt, timing.simulatedDeltaSeconds, ground);
+  }
+
+  private updateSimulation(dt: number, ground: ReturnType<GroundEffectSystem["getSnapshot"]>) {
+    const playerPosition = this.player.object.position;
     if (!this.state.gameOver && !this.state.paused) {
       this.profiler.measure("player", () => {
         if (this.input.consumeMoveRequest()) {
           this.requestMoveTarget(this.input.pointerWorld.x, this.input.pointerWorld.z, false);
         }
         this.player.update(dt);
+        this.terrain.prepare(playerPosition, this.terrainDebugMode);
       });
       ground = this.profiler.measure("groundEffects", () => this.groundEffects.update(dt, this.player.getGroundCell()));
       this.player.setGroundAura(
@@ -245,11 +267,28 @@ export class ZeusGame {
       this.profiler.measure("spells", () => this.spells.update(dt, ground.cooldownRecoveryMultiplier));
     }
 
+    if (this.state.gameOver) {
+      this.profiler.measure("effects", () => this.effects.update(dt));
+      return ground;
+    }
+
+    this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
+    if (this.terrainDebugMode) {
+      this.state.health = PLAYER_MAX_HEALTH;
+    }
+    this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
+    this.profiler.measure("effects", () => this.effects.update(dt));
+    return ground;
+  }
+
+  private updatePresentation(frameDt: number, simulatedDt: number, ground: ReturnType<GroundEffectSystem["getSnapshot"]>) {
+    const playerPosition = this.player.object.position;
+
     this.profiler.measure("visibility", () => this.visibility.update(playerPosition));
     this.profiler.measure("terrain", () =>
-      this.terrain.update(this.state.paused ? 0 : dt, playerPosition, ground, this.visibility, this.terrainDebugMode),
+      this.terrain.update(this.state.paused ? 0 : simulatedDt, playerPosition, ground, this.visibility, this.terrainDebugMode),
     );
-    this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, dt, playerPosition));
+    this.profiler.measure("visibilityOverlay", () => this.visibilityOverlay.update(this.visibility, frameDt, playerPosition));
     this.profiler.measure("targeting", () => this.targeting.update({
       castMode: this.spells.castMode,
       spells: this.spells.spells,
@@ -268,34 +307,10 @@ export class ZeusGame {
       paused: this.state.paused,
     }));
 
-    if (this.state.gameOver || this.state.paused) {
-      this.profiler.measure("enemyVisibility", () => this.enemies.updateVisibility((enemy) => this.isEnemyVisible(enemy)));
-      this.profiler.measure("enemyHealthBars", () =>
-        this.enemies.updateHealthBars(
-          0,
-          this.scene.camera,
-          this.enemyHealthBarMode,
-          playerPosition,
-          this.input.pointerWorld,
-          (enemy) => this.isEnemyVisible(enemy),
-        ),
-      );
-      this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
-      if (this.state.gameOver) {
-        this.profiler.measure("effects", () => this.effects.update(dt));
-      }
-      return;
-    }
-
-    this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
-    if (this.terrainDebugMode) {
-      this.state.health = PLAYER_MAX_HEALTH;
-    }
-    this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
     this.profiler.measure("enemyVisibility", () => this.enemies.updateVisibility((enemy) => this.isEnemyVisible(enemy)));
     this.profiler.measure("enemyHealthBars", () =>
       this.enemies.updateHealthBars(
-        dt,
+        this.state.gameOver || this.state.paused ? 0 : simulatedDt,
         this.scene.camera,
         this.enemyHealthBarMode,
         playerPosition,
@@ -303,9 +318,12 @@ export class ZeusGame {
         (enemy) => this.isEnemyVisible(enemy),
       ),
     );
-    this.profiler.measure("effects", () => this.effects.update(dt));
     this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
   }
+
+  private readonly handleVisibilityChange = () => {
+    this.discardNextFrameDelta = true;
+  };
 
   private damagePlayer(amount: number) {
     if (this.terrainDebugMode) {

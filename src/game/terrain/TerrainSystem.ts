@@ -19,6 +19,7 @@ const DEBUG_RENDER_RADIUS = 56;
 
 export class TerrainSystem {
   private terrainWindowKey = "";
+  private preparedTerrainWindowKey = "";
   private readonly blockers: BlockerRecord[] = [];
   private readonly specialEffects: SpecialGroundEffects;
   private visibilityVersion = -1;
@@ -36,6 +37,24 @@ export class TerrainSystem {
     private readonly groundEffects: GroundEffectSystem,
   ) {
     this.specialEffects = new SpecialGroundEffects(gridWorld, terrainGroup);
+  }
+
+  prepare(playerPosition: THREE.Vector3, revealAll = false) {
+    const center = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
+    const radius = revealAll ? DEBUG_RENDER_RADIUS : NORMAL_RENDER_RADIUS;
+    const key = `${Math.floor(center.q / 2)},${Math.floor(center.r / 2)},${radius},${revealAll}`;
+    if (key === this.preparedTerrainWindowKey) {
+      return;
+    }
+
+    this.preparedTerrainWindowKey = key;
+    if (revealAll) {
+      return;
+    }
+
+    this.gridWorld.forEachCellInRange(center, radius, (q, r) => {
+      this.gridWorld.getCell(q, r);
+    });
   }
 
   update(

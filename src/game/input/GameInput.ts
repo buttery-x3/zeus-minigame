@@ -64,7 +64,9 @@ export class GameInput {
     this.heldMoveRefireIn -= dt;
     if (this.heldMoveRefireIn <= 0) {
       this.moveRequestPending = true;
-      this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
+      do {
+        this.heldMoveRefireIn += HELD_MOVE_REFIRE_SECONDS;
+      } while (this.heldMoveRefireIn <= 0);
     }
   }
 

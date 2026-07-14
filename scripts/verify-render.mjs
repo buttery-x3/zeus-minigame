@@ -56,6 +56,8 @@ async function verifyInBrowser() {
 
       await verifyHudTransparency(page, viewport);
       await reloadGame(page);
+      await verifyFrameTiming(page, viewport);
+      await reloadGame(page);
       await verifyTerrainGrammar(page, viewport);
       await verifyGroundEffects(page, viewport);
       await reloadGame(page);
@@ -83,6 +85,104 @@ async function verifyInBrowser() {
   }
 
   return results;
+}
+
+async function verifyFrameTiming(page, viewport) {
+  const initial = await readDiagnostics(page);
+  if (
+    initial.timing?.maxStepSeconds !== 0.05 ||
+    initial.timing?.maxCatchUpSeconds !== 0.25 ||
+    typeof initial.timing?.multiStepFrameCount !== "number"
+  ) {
+    throw new Error(`${viewport.name} missing bounded simulation timing diagnostics: ${JSON.stringify(initial.timing)}`);
+  }
+
+  const target = await getVisibleInteractionPoint(page, viewport, 0.55, 0.48);
+  await page.mouse.move(target.x, target.y);
+  await releaseSpellKeys(page);
+  await page.keyboard.down("KeyQ");
+  await waitForCastMode(page, "chain");
+  await page.keyboard.up("KeyQ");
+  await waitForSpellCooldown(page, "chain");
+
+  const beforeHitch = await readDiagnostics(page);
+  const multiStepFramesBefore = beforeHitch.timing.multiStepFrameCount;
+  await stallMainThreadOnAnimationFrame(page, 180);
+  await page.waitForFunction(
+    (previousCount) => window.__ZEUS_GAME__?.getDiagnostics().timing?.multiStepFrameCount > previousCount,
+    multiStepFramesBefore,
+  );
+
+  const afterHitch = await readDiagnostics(page);
+  const catchUp = afterHitch.timing.lastMultiStepFrame;
+  const expectedSimulated = Math.min(catchUp?.rawDeltaSeconds ?? 0, afterHitch.timing.maxCatchUpSeconds);
+  const cooldownRecovered = beforeHitch.spells.cooldowns.chain - afterHitch.spells.cooldowns.chain;
+  if (
+    !catchUp ||
+    catchUp.rawDeltaSeconds < 0.14 ||
+    catchUp.substeps < 3 ||
+    Math.abs(catchUp.simulatedDeltaSeconds - expectedSimulated) > 0.01 ||
+    cooldownRecovered < expectedSimulated - 0.04
+  ) {
+    throw new Error(
+      `${viewport.name} lagged frame did not catch up simulation time: timing=${JSON.stringify(afterHitch.timing)}, cooldownRecovered=${cooldownRecovered}`,
+    );
+  }
+
+  const multiStepFramesBeforeCap = afterHitch.timing.multiStepFrameCount;
+  await stallMainThreadOnAnimationFrame(page, 320);
+  await page.waitForFunction(
+    (previousCount) => window.__ZEUS_GAME__?.getDiagnostics().timing?.multiStepFrameCount > previousCount,
+    multiStepFramesBeforeCap,
+  );
+  const afterCappedHitch = await readDiagnostics(page);
+  const cappedCatchUp = afterCappedHitch.timing.lastMultiStepFrame;
+  if (
+    !cappedCatchUp ||
+    cappedCatchUp.rawDeltaSeconds < 0.28 ||
+    cappedCatchUp.substeps !== 5 ||
+    Math.abs(cappedCatchUp.simulatedDeltaSeconds - afterCappedHitch.timing.maxCatchUpSeconds) > 0.01 ||
+    cappedCatchUp.cappedSeconds < 0.03
+  ) {
+    throw new Error(`${viewport.name} long lagged frame was not bounded: ${JSON.stringify(afterCappedHitch.timing)}`);
+  }
+
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === true);
+  const pausedStart = await readDiagnostics(page);
+  await stallMainThread(page, 160);
+  await page.waitForTimeout(50);
+  const pausedEnd = await readDiagnostics(page);
+  if (
+    Math.abs(pausedStart.spells.cooldowns.chain - pausedEnd.spells.cooldowns.chain) > 0.02 ||
+    !pausedEnd.timing.paused ||
+    pausedEnd.timing.simulatedDeltaSeconds !== 0 ||
+    pausedEnd.timing.substeps !== 0
+  ) {
+    throw new Error(`${viewport.name} pause advanced during a lagged frame: ${JSON.stringify(pausedEnd.timing)}`);
+  }
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+
+  const beforeVisibilityReset = await readDiagnostics(page);
+  await page.evaluate((duration) => {
+    document.dispatchEvent(new Event("visibilitychange"));
+    const deadline = performance.now() + duration;
+    while (performance.now() < deadline) {
+      // Keep the visibility reset and blocked interval in the same browser task.
+    }
+  }, 160);
+  await page.waitForFunction(
+    (discardedBefore) => window.__ZEUS_GAME__?.getDiagnostics().timing?.totalVisibilityDiscardedSeconds > discardedBefore + 0.12,
+    beforeVisibilityReset.timing.totalVisibilityDiscardedSeconds,
+  );
+  const afterVisibilityReset = await readDiagnostics(page);
+  const visibilityRecovery = beforeVisibilityReset.spells.cooldowns.chain - afterVisibilityReset.spells.cooldowns.chain;
+  if (visibilityRecovery > 0.1) {
+    throw new Error(
+      `${viewport.name} visibility reset caught up hidden time: recovery=${visibilityRecovery}, timing=${JSON.stringify(afterVisibilityReset.timing)}`,
+    );
+  }
 }
 
 async function verifyTerrainGrammar(page, viewport) {
@@ -116,6 +216,31 @@ async function verifyTerrainGrammar(page, viewport) {
   if (wfc.patchSocketMismatchSample) {
     throw new Error(`${viewport.name} rolling patch terrain produced a socket mismatch: ${JSON.stringify(wfc.patchSocketMismatchSample)}`);
   }
+}
+
+async function stallMainThreadOnAnimationFrame(page, durationMs) {
+  await page.evaluate(
+    (duration) =>
+      new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          const deadline = performance.now() + duration;
+          while (performance.now() < deadline) {
+            // Intentionally block one rendered frame to verify simulation catch-up.
+          }
+          resolve();
+        });
+      }),
+    durationMs,
+  );
+}
+
+async function stallMainThread(page, durationMs) {
+  await page.evaluate((duration) => {
+    const deadline = performance.now() + duration;
+    while (performance.now() < deadline) {
+      // Intentionally block the page thread to exercise pause and visibility timing.
+    }
+  }, durationMs);
 }
 
 async function verifyGroundEffects(page, viewport) {
