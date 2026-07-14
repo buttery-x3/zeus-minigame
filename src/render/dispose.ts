@@ -6,10 +6,12 @@ type DisposableObject = THREE.Object3D & {
 };
 
 type DisposeOptions = {
+  preserveGeometries?: Iterable<THREE.BufferGeometry>;
   preserveMaterials?: Iterable<THREE.Material>;
 };
 
 export function disposeObject3D(root: THREE.Object3D, options: DisposeOptions = {}) {
+  const preservedGeometries = new Set(options.preserveGeometries ?? []);
   const preservedMaterials = new Set(options.preserveMaterials ?? []);
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
@@ -31,7 +33,9 @@ export function disposeObject3D(root: THREE.Object3D, options: DisposeOptions = 
   });
 
   for (const geometry of geometries) {
-    geometry.dispose();
+    if (!preservedGeometries.has(geometry)) {
+      geometry.dispose();
+    }
   }
 
   for (const material of materials) {

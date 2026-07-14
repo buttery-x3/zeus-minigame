@@ -1,4 +1,5 @@
 import type * as THREE from "three";
+import type { EnemyCharacter } from "./game/enemies/EnemyCharacter";
 
 export type SpellId = "chain" | "bolt";
 
@@ -32,7 +33,7 @@ export type TerrainCell = {
 export type EnemyState = {
   id: number;
   group: THREE.Group;
-  body: THREE.Mesh;
+  character: EnemyCharacter;
   path: THREE.Vector3[];
   pathQueued: boolean;
   hp: number;
