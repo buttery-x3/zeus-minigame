@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 
-const ENEMY_CHARACTER_HEIGHT = 3.2;
+const ENEMY_CHARACTER_HEIGHT = 1.92;
 const ENEMY_CHARACTER_URL = `${import.meta.env.BASE_URL}assets/models/enemies/melee-enemy/melee-enemy.glb`;
 
 type EnemyCharacterAsset = {
