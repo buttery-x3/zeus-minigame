@@ -171,6 +171,7 @@ export class ZeusGame {
     window.removeEventListener("resize", this.cameraRig.resize);
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     this.input.dispose();
+    this.enemies.clear();
     this.player.dispose();
     this.ui.remove();
     this.visibilityOverlay.dispose();
@@ -202,6 +203,7 @@ export class ZeusGame {
       },
       enemyVisibility: this.enemies.getVisibilityDiagnostics(),
       enemyAvoidance: this.enemies.getAvoidanceDiagnostics(),
+      enemyAnimations: this.enemies.getAnimationDiagnostics(),
       terrain: this.terrain.getDiagnostics(),
       visibilityOverlay: this.visibilityOverlay.getDiagnostics(),
       timing: this.simulationStepper.diagnostics(),
@@ -212,6 +214,10 @@ export class ZeusGame {
     if (import.meta.env.DEV) {
       this.damagePlayer(PLAYER_MAX_HEALTH);
     }
+  }
+
+  triggerEnemyAttackForVerification() {
+    return import.meta.env.DEV && this.enemies.triggerAttackForVerification();
   }
 
   private readonly tick = (time: number) => {

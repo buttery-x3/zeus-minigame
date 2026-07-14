@@ -11,6 +11,8 @@ export type PlayerModel = {
 
 export type EnemyModel = {
   group: THREE.Group;
+  visualRoot: THREE.Group;
+  fallback: THREE.Group;
   body: THREE.Mesh;
 };
 
@@ -52,6 +54,8 @@ export function createPlayerModel(playerMaterial: THREE.Material): PlayerModel {
 
 export function createEnemyModel(enemyMaterial: THREE.Material): EnemyModel {
   const group = new THREE.Group();
+  const visualRoot = new THREE.Group();
+  const fallback = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 1.05, 5, 12), enemyMaterial);
   body.position.y = 1.22;
   body.castShadow = true;
@@ -63,8 +67,10 @@ export function createEnemyModel(enemyMaterial: THREE.Material): EnemyModel {
   const rightEye = leftEye.clone();
   rightEye.position.x = 0.28;
 
-  group.add(body, leftEye, rightEye);
-  return { group, body };
+  fallback.add(body, leftEye, rightEye);
+  visualRoot.add(fallback);
+  group.add(visualRoot);
+  return { group, visualRoot, fallback, body };
 }
 
 export function createChargedGlyph(x: number, z: number): GroundGlyphModel {

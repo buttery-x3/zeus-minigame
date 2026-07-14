@@ -55,6 +55,7 @@ async function verifyInBrowser() {
       await page.waitForSelector(".ui-toolbar");
       await waitForPlayerModel(page, viewport);
       await verifyPlayerAnimationLifecycle(page, viewport);
+      await verifyEnemyAnimationLifecycle(page, viewport);
 
       await verifyHudTransparency(page, viewport);
       await reloadGame(page);
@@ -1361,6 +1362,55 @@ async function verifyPlayerAnimationLifecycle(page, viewport) {
   const restarted = await readDiagnostics(page);
   if (restarted.player.animation.activeState !== "idle" || restarted.player.animation.defeated) {
     throw new Error(`${viewport.name} restart did not restore Idle_8: ${JSON.stringify(restarted.player.animation)}`);
+  }
+}
+
+async function verifyEnemyAnimationLifecycle(page, viewport) {
+  await page.waitForFunction(() => {
+    const animation = window.__ZEUS_GAME__?.getDiagnostics().enemyAnimations;
+    return animation && animation.total > 0 && animation.loading === 0;
+  });
+
+  const expectedClips = ["Running", "Stylish_Walk_inplace", "Walking_Woman", "Walking"];
+  const initial = await readDiagnostics(page);
+  const animation = initial.enemyAnimations;
+  const available = [...animation.availableClips].sort();
+  if (
+    animation.errors !== 0 ||
+    animation.ready !== animation.total ||
+    animation.walking !== animation.ready ||
+    !animation.activeClips.includes("Walking_Woman") ||
+    !animation.modelSource.endsWith("/assets/models/enemies/melee-enemy/melee-enemy.glb") ||
+    !(animation.modelScale > 0) ||
+    JSON.stringify(available) !== JSON.stringify([...expectedClips].sort())
+  ) {
+    throw new Error(`${viewport.name} animated melee enemies did not initialize correctly: ${JSON.stringify(animation)}`);
+  }
+
+  const triggered = await page.evaluate(() => window.__ZEUS_GAME__?.triggerEnemyAttackForVerification());
+  if (!triggered) {
+    throw new Error(`${viewport.name} could not trigger a melee enemy attack for verification`);
+  }
+
+  await page.waitForFunction(
+    (previousCount) => {
+      const current = window.__ZEUS_GAME__?.getDiagnostics().enemyAnimations;
+      return current && current.attackCount > previousCount && current.attacking > 0;
+    },
+    animation.attackCount,
+  );
+  const attacking = (await readDiagnostics(page)).enemyAnimations;
+  if (!attacking.activeClips.includes("Stylish_Walk_inplace")) {
+    throw new Error(`${viewport.name} melee enemy did not use Stylish_Walk_inplace: ${JSON.stringify(attacking)}`);
+  }
+
+  await page.waitForFunction(() => {
+    const current = window.__ZEUS_GAME__?.getDiagnostics().enemyAnimations;
+    return current && current.attacking === 0 && current.walking === current.ready;
+  });
+  const resumed = (await readDiagnostics(page)).enemyAnimations;
+  if (!resumed.activeClips.includes("Walking_Woman")) {
+    throw new Error(`${viewport.name} melee enemy did not return to Walking_Woman: ${JSON.stringify(resumed)}`);
   }
 }
 

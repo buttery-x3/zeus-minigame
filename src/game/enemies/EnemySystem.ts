@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import {
+  ENEMY_ATTACK_INTERVAL,
   ENEMY_COLLISION_RADIUS,
   ENEMY_UNIT_SEPARATION_RADIUS,
   INITIAL_ENEMY_COUNT,
@@ -9,7 +10,6 @@ import {
 } from "../../config";
 import { distance2D, randomBetween } from "../../lib/math";
 import type { GameEffects } from "../../render/GameEffects";
-import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterials } from "../../render/materials";
 import { createEnemyModel } from "../../render/meshes";
 import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from "../../types";
@@ -17,6 +17,7 @@ import type { GridWorld } from "../../world/GridWorld";
 import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { Profiler } from "../perf/Profiler";
 import { EnemyAvoidance } from "./EnemyAvoidance";
+import { EnemyCharacter } from "./EnemyCharacter";
 import { EnemyHealthBars } from "./EnemyHealthBars";
 import { EnemyNavigation } from "./navigation/EnemyNavigation";
 
@@ -80,6 +81,7 @@ export class EnemySystem {
     }
 
     for (const { enemy, navigationTarget, velocity } of movePlans) {
+      enemy.character.update(dt);
       let movedDistance = 0;
       let targetProgress = 0;
 
@@ -111,11 +113,12 @@ export class EnemySystem {
       enemy.touchCooldown -= dt;
       enemy.flashTimer = Math.max(0, enemy.flashTimer - dt);
       enemy.visibilityHintTimer = Math.max(0, enemy.visibilityHintTimer - dt);
-      enemy.body.material = enemy.flashTimer > 0 ? this.materials.enemyHit : this.materials.enemy;
+      enemy.character.setHitFlashing(enemy.flashTimer > 0);
 
       const playerDistance = distance2D(playerPosition.x, playerPosition.z, enemy.group.position.x, enemy.group.position.z);
       if (playerDistance < 2.25 && enemy.touchCooldown <= 0) {
-        enemy.touchCooldown += 0.58;
+        enemy.touchCooldown += ENEMY_ATTACK_INTERVAL;
+        enemy.character.playAttack();
         this.callbacks.damagePlayer(8 + state.wave);
       } else if (enemy.touchCooldown < 0) {
         enemy.touchCooldown = 0;
@@ -256,20 +259,50 @@ export class EnemySystem {
     return this.avoidance.diagnostics();
   }
 
+  getAnimationDiagnostics() {
+    const animations = this.enemies.map((enemy) => enemy.character.getDiagnostics());
+    const representative = animations.find((animation) => animation.loadState === "ready") ?? animations[0];
+    return {
+      total: animations.length,
+      ready: animations.filter((animation) => animation.loadState === "ready").length,
+      loading: animations.filter((animation) => animation.loadState === "loading").length,
+      errors: animations.filter((animation) => animation.loadState === "error").length,
+      modelSource: representative?.modelSource ?? null,
+      modelScale: representative?.modelScale ?? null,
+      availableClips: representative?.availableClips ?? [],
+      activeClips: [...new Set(animations.flatMap((animation) => (animation.activeClip ? [animation.activeClip] : [])))],
+      walking: animations.filter((animation) => animation.activeState === "walk").length,
+      attacking: animations.filter((animation) => animation.activeState === "attack").length,
+      attackCount: animations.reduce((total, animation) => total + animation.attackCount, 0),
+      loadErrors: animations.flatMap((animation) => (animation.loadError ? [animation.loadError] : [])),
+    };
+  }
+
+  triggerAttackForVerification() {
+    const enemy = this.enemies.find((candidate) => candidate.character.getDiagnostics().loadState === "ready");
+    if (!enemy) {
+      return false;
+    }
+    enemy.character.playAttack();
+    return true;
+  }
+
   private spawn(state: GameRuntimeState, playerPosition: THREE.Vector3, initial = false) {
     const spawnPoint = this.findSpawnPoint(playerPosition, initial);
     if (!spawnPoint) {
       return false;
     }
 
-    const { group, body } = createEnemyModel(this.materials.enemy);
+    const model = createEnemyModel(this.materials.enemy);
+    const { group } = model;
+    const character = new EnemyCharacter(model, this.materials.enemy, this.materials.enemyHit);
     group.position.copy(spawnPoint);
     this.group.add(group);
 
     const enemy: EnemyState = {
       id: this.enemyId,
       group,
-      body,
+      character,
       path: [],
       pathQueued: false,
       hp: 70 + state.wave * 9,
@@ -327,6 +360,6 @@ export class EnemySystem {
   private disposeEnemy(enemy: EnemyState) {
     this.navigation.clearEnemy(enemy);
     this.healthBars.remove(enemy);
-    disposeObject3D(enemy.group, { preserveMaterials: Object.values(this.materials) });
+    enemy.character.dispose();
   }
 }
