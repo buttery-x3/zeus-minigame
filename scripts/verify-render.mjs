@@ -130,7 +130,8 @@ async function verifyGroundEffects(page, viewport) {
       diagnostics.terrain?.specialGround?.ambientUpdatesPerSecond !== 0 ||
       diagnostics.terrain?.specialGround?.animatedTileCount !== 0 ||
       diagnostics.terrain?.specialGround?.activationSource !== "player-cell" ||
-      diagnostics.terrain?.specialGround?.particleSizeMultiplier !== 8
+      diagnostics.terrain?.specialGround?.particleSizeMultiplier !== 8 ||
+      diagnostics.player?.navigation?.groundAuraColor !== "#f2a43a"
     ) {
       throw new Error(`${viewport.name} special ground performed dormant tile work: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
     }
@@ -177,6 +178,8 @@ async function verifyGroundEffects(page, viewport) {
       recoveryEnd.terrain?.specialGround?.activeParticleCount !== 7 ||
       recoveryEnd.terrain?.specialGround?.activeParticleKind !== "charged" ||
       recoveryEnd.terrain?.specialGround?.animatedTileCount !== 1 ||
+      recoveryEnd.player?.navigation?.groundAuraMode !== "charged" ||
+      recoveryEnd.player?.navigation?.groundAuraColor !== "#ffc857" ||
       recoveryEnd.player?.navigation?.groundCellKey !== chargedKey
     ) {
       throw new Error(`${viewport.name} charged ground did not use the single active particle system: ${JSON.stringify(recoveryEnd.terrain?.specialGround)}`);
@@ -250,7 +253,8 @@ async function verifyGroundEffects(page, viewport) {
     if (
       diagnostics.terrain?.specialGround?.activeParticleSystems !== 1 ||
       diagnostics.terrain?.specialGround?.activeParticleKind !== "cursed" ||
-      diagnostics.terrain?.specialGround?.animatedTileCount !== 1
+      diagnostics.terrain?.specialGround?.animatedTileCount !== 1 ||
+      diagnostics.player?.navigation?.groundAuraColor !== "#d475ff"
     ) {
       throw new Error(`${viewport.name} cursed ground did not activate focused particles: ${JSON.stringify(diagnostics.terrain?.specialGround)}`);
     }

@@ -46,6 +46,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Cleansing grants `1` Cursed Energy, changes the hex to scarred ground, and cannot reward the player again during that run.
 - Cursed Energy is run-local in this pass and resets on restart. Spending it on upgrades is reserved for a later progression feature.
 - Special-ground runes stay static and subdued at a distance and do not emit ambient particles. The occupied charged or cursed hex becomes animated and receives a focused particle effect with points eight times the original size. Charged ground keeps its subdued tile color but brightens its active green rune and ring; cursed ground keeps its existing violet charging color.
+- Zeus's normal and charged outline ring is golden-orange so it stays distinct from charged ground's green feedback. The outline changes to violet while cleansing cursed ground.
 - The dedicated Currencies HUD window starts locked and transparent at the bottom-left. The pause menu's Unlock UI setting exposes its lock control and allows it to be moved like the Vitals and Abilities windows.
 
 ## Enemies

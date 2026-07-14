@@ -4,7 +4,7 @@ import { distance2D } from "../../lib/math";
 import type { GameMaterials } from "../../render/materials";
 import type { GameEffects } from "../../render/GameEffects";
 import { createCrosshair, createRing } from "../../render/primitives";
-import { createPlayerModel } from "../../render/meshes";
+import { createPlayerModel, PLAYER_AURA_COLOR, PLAYER_CHARGED_AURA_COLOR } from "../../render/meshes";
 import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { GridWorld, HexCoord } from "../../world/GridWorld";
 
@@ -97,7 +97,7 @@ export class PlayerController {
     if (!(material instanceof THREE.MeshBasicMaterial)) {
       return;
     }
-    material.color.set(mode === "cursed" ? 0xd475ff : mode === "charged" ? 0x8ffff0 : 0x7bd7ff);
+    material.color.set(mode === "cursed" ? 0xd475ff : mode === "charged" ? PLAYER_CHARGED_AURA_COLOR : PLAYER_AURA_COLOR);
     material.opacity = mode ? 0.82 : 0.54;
   }
 
@@ -163,12 +163,15 @@ export class PlayerController {
   }
 
   getNavigationDiagnostics() {
+    const auraMaterial = this.model.aura.material;
     return {
       moveTarget: this.moveTarget.toArray(),
       pathLength: this.path.length,
       requestedBlocked: this.lastRequestedBlocked,
       groundCell: { ...this.groundCell },
       groundCellKey: this.groundCellKey,
+      groundAuraMode: this.groundAura ?? "normal",
+      groundAuraColor: auraMaterial instanceof THREE.MeshBasicMaterial ? `#${auraMaterial.color.getHexString()}` : null,
     };
   }
 

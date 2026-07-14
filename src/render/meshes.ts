@@ -24,6 +24,9 @@ export type GroundParticleModel = {
   count: number;
 };
 
+export const PLAYER_AURA_COLOR = 0xf2a43a;
+export const PLAYER_CHARGED_AURA_COLOR = 0xffc857;
+
 export function createPlayerModel(playerMaterial: THREE.Material): PlayerModel {
   const group = new THREE.Group();
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(1.05, 1.65, 6, 16), playerMaterial);
@@ -32,7 +35,7 @@ export function createPlayerModel(playerMaterial: THREE.Material): PlayerModel {
 
   const aura = new THREE.Mesh(
     new THREE.TorusGeometry(1.62, 0.045, 8, 64),
-    new THREE.MeshBasicMaterial({ color: 0x7bd7ff, transparent: true, opacity: 0.54 }),
+    new THREE.MeshBasicMaterial({ color: PLAYER_AURA_COLOR, transparent: true, opacity: 0.54 }),
   );
   aura.rotation.x = Math.PI / 2;
   aura.position.y = 0.08;
