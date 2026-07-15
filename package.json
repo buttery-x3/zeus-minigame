@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
     "test:terrain": "vitest run src/world",
-    "test:game": "vitest run src/game/collision src/game/enemies/navigation src/game/navigation src/game/perf",
+    "test:game": "vitest run src/game/collision src/game/enemies src/game/navigation src/game/perf",
     "preview": "vite preview --host 127.0.0.1",
     "start": "node server/static-server.mjs",
     "pm2:start": "pm2 start ecosystem.config.cjs",

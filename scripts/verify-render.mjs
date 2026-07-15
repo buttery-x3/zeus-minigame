@@ -1371,6 +1371,13 @@ async function verifyHeldClickTracksCamera(page, viewport) {
 
   await page.mouse.down();
   try {
+    await page.waitForTimeout(25);
+    const submitted = await readDiagnostics(page);
+    const reticleError = groundDistance(submitted.player.navigation.requestedTarget, submitted.input.pointerWorld);
+    if (reticleError > 0.5) {
+      throw new Error(`${viewport.name} held-click reticle did not immediately track the submitted target: ${reticleError}`);
+    }
+
     await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().player.animation.activeClip === "Run_03");
     await page.waitForTimeout(120);
     const initialHold = await readDiagnostics(page);
@@ -1386,6 +1393,9 @@ async function verifyHeldClickTracksCamera(page, viewport) {
     }
     if (targetShift < 2) {
       throw new Error(`${viewport.name} held-click target did not refresh as the camera moved: ${targetShift}`);
+    }
+    if (afterHold.player.navigation.appliedRoutes <= before.player.navigation.appliedRoutes) {
+      throw new Error(`${viewport.name} held-click route never completed while requests were being refreshed`);
     }
     if (initialHold.player.animation.activeState !== "run" || initialHold.player.animation.activeClip !== "Run_03") {
       throw new Error(`${viewport.name} movement did not use Run_03: ${JSON.stringify(initialHold.player.animation)}`);
@@ -1429,7 +1439,7 @@ async function verifyWindowUi(page, viewport) {
   await page.waitForSelector('[data-window-id="diagnostics"]:not([hidden])');
   await page.waitForFunction(() => {
     const text = document.querySelector('[data-window-id="diagnostics"]')?.textContent ?? "";
-    return text.includes("Flow") && text.includes("Frame") && text.includes("Resources") && text.includes("Vectors cyan target");
+    return text.includes("Flow") && text.includes("Player route") && text.includes("Frame") && text.includes("Resources") && text.includes("Vectors cyan target");
   });
   const diagnosticsBounds = await page.$eval('[data-window-id="diagnostics"]', (element) => {
     const rect = element.getBoundingClientRect();
@@ -1936,6 +1946,11 @@ async function verifyCameraRigStability(page, viewport) {
 }
 
 async function verifyBlockerNavigation(page, viewport) {
+  await page.waitForFunction(() => {
+    const navigation = window.__ZEUS_GAME__?.getDiagnostics().player.navigation;
+    return navigation && navigation.pathLength === 0 && !navigation.pathJob && !navigation.pendingPath;
+  });
+  await page.waitForTimeout(100);
   const before = await readDiagnostics(page);
   const blocker = before.nearestBlockedCell;
   if (!blocker) {
@@ -1946,8 +1961,24 @@ async function verifyBlockerNavigation(page, viewport) {
     throw new Error(`${viewport.name} visible blocker projected outside viewport: ${JSON.stringify(blocker.screen)}`);
   }
 
-  await page.mouse.click(blocker.screen.x, blocker.screen.y);
-  await page.waitForTimeout(450);
+  await page.mouse.move(blocker.screen.x, blocker.screen.y);
+  await page.mouse.down();
+  let submitted;
+  try {
+    await page.waitForTimeout(25);
+    submitted = await readDiagnostics(page);
+    await page.waitForTimeout(425);
+  } finally {
+    await page.mouse.up();
+  }
+
+  const reticleDistance = groundDistance(submitted.player.navigation.requestedTarget, submitted.input.pointerWorld);
+  const completedBeforeSnapshot = submitted.player.navigation.appliedRoutes > before.player.navigation.appliedRoutes;
+  if (!completedBeforeSnapshot && reticleDistance > 0.5) {
+    throw new Error(
+      `${viewport.name} pending held blocker reticle did not match its submitted target: ${reticleDistance}`,
+    );
+  }
 
   const after = await readDiagnostics(page);
   const navigation = after.player.navigation;
@@ -1959,6 +1990,9 @@ async function verifyBlockerNavigation(page, viewport) {
   }
   if (!navigation.destinationDiscovered) {
     throw new Error(`${viewport.name} blocker navigation resolved into undiscovered space: ${JSON.stringify(navigation)}`);
+  }
+  if (navigation.appliedRoutes <= before.player.navigation.appliedRoutes) {
+    throw new Error(`${viewport.name} held blocker navigation did not apply a completed route`);
   }
 
   const moveTarget = navigation.moveTarget;

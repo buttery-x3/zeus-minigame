@@ -363,7 +363,11 @@ export class ZeusGame {
       this.nextResourceSampleAt = time + 1000;
     }
     this.profiler.endFrame();
-    this.ui.updateDiagnostics(this.profiler.snapshot(), () => this.enemies.getNavigationDebugDiagnostics());
+    this.ui.updateDiagnostics(
+      this.profiler.snapshot(),
+      () => this.enemies.getNavigationDebugDiagnostics(),
+      () => this.player.getNavigationDiagnostics(),
+    );
     this.animationId = window.requestAnimationFrame(this.tick);
   };
 

@@ -5,6 +5,7 @@ import type { GridWorld } from "../../world/GridWorld";
 import { LinecastJob } from "./linecast";
 import { canOccupyWorld, getCellCenter } from "./occupancy";
 import { PathSearchJob, type PathResult } from "./pathfinding";
+import type { PathSearchCompletionReason } from "./pathfinding";
 
 export type ResolvedPath = PathResult & {
   destination: THREE.Vector3;
@@ -18,6 +19,7 @@ export type PathResolutionOptions = {
 };
 
 type ResolutionStage = "direct" | "scanCandidates" | "candidatePath" | "fallback" | "complete" | "failed";
+export type PathResolutionCompletionReason = "running" | "requested" | "candidate" | "fallback" | "failed";
 
 const MIN_LINE_FALLBACK_DISTANCE = 0.75;
 const MAX_CANDIDATE_RING = 6;
@@ -48,6 +50,11 @@ export class PathResolutionJob {
   private fallbackLinecast: LinecastJob | null = null;
   private fallbackPoint: THREE.Vector3 | null = null;
   private accumulatedMs = 0;
+  private completionReason: PathResolutionCompletionReason = "running";
+  private searchCount = 0;
+  private completedSearchIterations = 0;
+  private completedSearchVisitedNodes = 0;
+  private lastSearchCompletion: PathSearchCompletionReason | null = null;
 
   constructor(
     private readonly gridWorld: GridWorld,
@@ -125,6 +132,7 @@ export class PathResolutionJob {
   }
 
   diagnostics() {
+    const activeDiagnostics = this.activePath?.diagnostics() ?? null;
     return {
       stage: this.stage,
       accumulatedMs: this.accumulatedMs,
@@ -133,7 +141,12 @@ export class PathResolutionJob {
       candidateIndex: this.candidateIndex,
       candidateCount: this.candidates.length,
       fallbackSteps: this.fallbackSteps,
-      activePath: this.activePath?.diagnostics() ?? null,
+      activePath: activeDiagnostics,
+      completionReason: this.completionReason,
+      searchCount: this.searchCount,
+      iterations: this.completedSearchIterations + (activeDiagnostics?.iterations ?? 0),
+      visitedNodes: this.completedSearchVisitedNodes + (activeDiagnostics?.visitedNodes ?? 0),
+      lastSearchCompletion: activeDiagnostics?.completionReason ?? this.lastSearchCompletion,
     };
   }
 
@@ -147,6 +160,7 @@ export class PathResolutionJob {
 
   private completeFromActivePath() {
     const path = this.activePath?.getResult();
+    this.captureActivePathDiagnostics();
     if (!path || !this.activeDestination) {
       this.activePath = null;
       this.activeDestination = null;
@@ -158,6 +172,9 @@ export class PathResolutionJob {
       requestedBlocked: this.requestedBlocked,
     };
     this.stage = "complete";
+    this.completionReason = "requested";
+    this.activePath = null;
+    this.activeDestination = null;
     return true;
   }
 
@@ -217,6 +234,7 @@ export class PathResolutionJob {
     }
 
     const path = this.activePath.getResult();
+    this.captureActivePathDiagnostics();
     if (path) {
       const resolved: ResolvedPath = {
         ...path,
@@ -242,6 +260,7 @@ export class PathResolutionJob {
     if (this.bestCandidate) {
       this.result = this.bestCandidate;
       this.stage = "complete";
+      this.completionReason = "candidate";
       return true;
     }
 
@@ -296,6 +315,7 @@ export class PathResolutionJob {
     const requestedDistance = distance2D(this.start.x, this.start.z, this.requested.x, this.requested.z);
     if (requestedDistance <= MIN_LINE_FALLBACK_DISTANCE) {
       this.stage = "failed";
+      this.completionReason = "failed";
       return true;
     }
 
@@ -304,6 +324,7 @@ export class PathResolutionJob {
       const distance = distance2D(this.start.x, this.start.z, destination.x, destination.z);
       if (distance < MIN_LINE_FALLBACK_DISTANCE) {
         this.stage = "failed";
+        this.completionReason = "failed";
         return true;
       }
       this.result = {
@@ -314,6 +335,7 @@ export class PathResolutionJob {
         requestedBlocked: this.requestedBlocked,
       };
       this.stage = "complete";
+      this.completionReason = "fallback";
       return true;
     }
 
@@ -346,10 +368,21 @@ export class PathResolutionJob {
   }
 
   private createPath(destination: THREE.Vector3) {
+    this.searchCount += 1;
     return new PathSearchJob(this.gridWorld, this.start, destination, {
       radius: this.radius,
       maxIterations: this.maxIterations,
     });
+  }
+
+  private captureActivePathDiagnostics() {
+    const diagnostics = this.activePath?.diagnostics();
+    if (!diagnostics) {
+      return;
+    }
+    this.completedSearchIterations += diagnostics.iterations;
+    this.completedSearchVisitedNodes += diagnostics.visitedNodes;
+    this.lastSearchCompletion = diagnostics.completionReason;
   }
 }
 

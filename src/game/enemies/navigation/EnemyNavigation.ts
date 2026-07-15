@@ -16,6 +16,7 @@ const STALL_RESET_PROGRESS = 0.02;
 export class EnemyNavigation {
   private readonly flowField: EnemyFlowField;
   private readonly pathQueue: EnemyPathQueue;
+  private readonly forcedFallbacks = new Set<number>();
   private readonly flowWorkSource: NavigationWorkSource = {
     id: "flow",
     hasWork: () => this.flowField.hasWork(),
@@ -72,6 +73,7 @@ export class EnemyNavigation {
 
   reset(playerPosition: THREE.Vector3) {
     this.pathQueue.clear();
+    this.forcedFallbacks.clear();
     this.flowField.clear();
     this.flowField.request(playerPosition);
   }
@@ -80,6 +82,11 @@ export class EnemyNavigation {
     const intent = getMeleeChaseIntent();
     if (intent.kind !== "meleeChase") {
       return this.wait(enemy, playerPosition);
+    }
+
+    const forcedFallback = this.getForcedFallbackTarget(enemy);
+    if (forcedFallback) {
+      return forcedFallback;
     }
 
     if (this.collision.hasLineOfSight(enemy.group.position, playerPosition, ENEMY_COLLISION_RADIUS)) {
@@ -106,8 +113,14 @@ export class EnemyNavigation {
     return this.wait(enemy, playerPosition);
   }
 
-  recordMovement(enemy: EnemyState, targetProgress: number, dt: number, playerPosition: THREE.Vector3) {
-    if (enemy.navigationMode === "direct" || targetProgress > STALL_RESET_PROGRESS) {
+  recordMovement(
+    enemy: EnemyState,
+    targetProgress: number,
+    dt: number,
+    playerPosition: THREE.Vector3,
+    intendedMovement: boolean,
+  ) {
+    if (!intendedMovement || targetProgress > STALL_RESET_PROGRESS) {
       enemy.stallTimer = 0;
       return;
     }
@@ -121,11 +134,13 @@ export class EnemyNavigation {
     const fallbackGoal = enemy.navigationMode === "flow" ? playerPosition : (acquisitionTarget ?? playerPosition);
     enemy.navigationMode = "waiting";
     enemy.stallTimer = 0;
+    this.forcedFallbacks.add(enemy.id);
     this.pathQueue.request(enemy, fallbackGoal);
   }
 
   clearEnemy(enemy: EnemyState) {
     this.pathQueue.clearEnemy(enemy);
+    this.forcedFallbacks.delete(enemy.id);
   }
 
   private getFallbackWaypoint(enemy: EnemyState) {
@@ -137,6 +152,21 @@ export class EnemyNavigation {
     }
 
     return enemy.path[0] ?? null;
+  }
+
+  private getForcedFallbackTarget(enemy: EnemyState) {
+    if (!this.forcedFallbacks.has(enemy.id)) {
+      return null;
+    }
+    const waypoint = this.getFallbackWaypoint(enemy);
+    if (waypoint) {
+      return this.result(enemy, "fallback", waypoint);
+    }
+    if (enemy.pathQueued) {
+      return this.result(enemy, "waiting", enemy.group.position);
+    }
+    this.forcedFallbacks.delete(enemy.id);
+    return null;
   }
 
   private wait(enemy: EnemyState, playerPosition: THREE.Vector3) {

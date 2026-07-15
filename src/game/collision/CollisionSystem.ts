@@ -14,6 +14,7 @@ export type { ResolvedPath } from "./PathResolutionJob";
 type ResolvePathOptions = {
   canUseDestination?: (destination: THREE.Vector3) => boolean;
   maxCandidatePathAttempts?: number;
+  maxIterations?: number;
 };
 
 export type CollisionMoveTrace = {
@@ -52,7 +53,7 @@ export class CollisionSystem {
     return new PathResolutionJob(this.gridWorld, start, requestedTarget, radius, {
       canUseDestination: options.canUseDestination,
       maxCandidatePathAttempts: options.maxCandidatePathAttempts,
-      maxIterations: PATHFINDING_MAX_ITERATIONS,
+      maxIterations: options.maxIterations ?? PATHFINDING_MAX_ITERATIONS,
     });
   }
 

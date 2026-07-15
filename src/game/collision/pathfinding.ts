@@ -50,6 +50,14 @@ type PendingNeighbor = {
 };
 
 type SearchStage = "direct" | "search" | "smooth" | "complete" | "failed";
+export type PathSearchCompletionReason =
+  | "running"
+  | "direct"
+  | "path"
+  | "invalid-endpoint"
+  | "open-exhausted"
+  | "iteration-limit"
+  | "smoothing-failed";
 
 export class PathSearchJob {
   private readonly radius: number;
@@ -76,6 +84,7 @@ export class PathSearchJob {
   private iterations = 0;
   private accumulatedMs = 0;
   private lineCellsChecked = 0;
+  private completionReason: PathSearchCompletionReason = "running";
 
   constructor(
     private readonly gridWorld: GridWorld,
@@ -98,6 +107,7 @@ export class PathSearchJob {
       !canOccupyWorld(gridWorld, this.goalPoint.x, this.goalPoint.z, this.radius)
     ) {
       this.stage = "failed";
+      this.completionReason = "invalid-endpoint";
     }
   }
 
@@ -118,6 +128,7 @@ export class PathSearchJob {
         if (this.directLinecast.isClear()) {
           this.result = pathResult([this.startPoint, this.goalPoint], 0);
           this.stage = "complete";
+          this.completionReason = "direct";
           break;
         }
         this.initializeSearch();
@@ -160,6 +171,7 @@ export class PathSearchJob {
       lineCellsChecked: this.lineCellsChecked,
       openNodes: this.open.size(),
       visitedNodes: this.nodes.size,
+      completionReason: this.completionReason,
     };
   }
 
@@ -191,9 +203,15 @@ export class PathSearchJob {
     }
 
     if (!this.current) {
-      const node = this.popOpenNode();
-      if (!node || this.iterations >= this.maxIterations) {
+      if (this.iterations >= this.maxIterations) {
         this.stage = "failed";
+        this.completionReason = "iteration-limit";
+        return true;
+      }
+      const node = this.popOpenNode();
+      if (!node) {
+        this.stage = "failed";
+        this.completionReason = "open-exhausted";
         return true;
       }
       if (node.key === this.goalKey) {
@@ -304,6 +322,7 @@ export class PathSearchJob {
     if (points.length <= 2) {
       this.result = pathResult(points, this.iterations);
       this.stage = "complete";
+      this.completionReason = "path";
       return;
     }
     this.smoothedPoints = [points[0]];
@@ -316,6 +335,7 @@ export class PathSearchJob {
     if (this.smoothAnchorIndex >= this.rawPoints.length - 1) {
       this.result = pathResult(this.smoothedPoints, this.iterations);
       this.stage = "complete";
+      this.completionReason = "path";
       return true;
     }
 
@@ -341,6 +361,7 @@ export class PathSearchJob {
       this.smoothNextIndex -= 1;
       if (this.smoothNextIndex <= this.smoothAnchorIndex) {
         this.stage = "failed";
+        this.completionReason = "smoothing-failed";
       }
     }
     this.smoothLinecast = null;

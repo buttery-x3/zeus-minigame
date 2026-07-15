@@ -21,6 +21,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/collision`: hex occupancy, resumable hex linecasts, incremental Theta* individual pathfinding, destination resolution, and movement collision helpers.
 - `src/game/diagnostics/GameDiagnostics.ts`: dev/test diagnostics snapshot and world-to-screen probes.
 - `src/game/enemies/EnemySystem.ts`: enemy spawning, movement, contact damage, kill handling, and wave spawn timing.
+- `src/game/enemies/EnemyMovement.ts`: obstacle-aware choice between crowd-avoidance steering and the navigation-preferred enemy move.
 - `src/game/enemies/EnemyHealthBars.ts`: in-world enemy health bar lifecycle, visibility modes, and diagnostics.
 - `src/game/enemies/navigation`: hybrid enemy navigation with direct chase, incrementally rebuilt weighted flow fields, acquisition steering, typed future intents, and a resumable fallback path queue.
 - `src/game/navigation/NavigationScheduler.ts`: frame-level round-robin budget shared by player paths, flow-field work, and enemy fallbacks.
@@ -28,7 +29,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/input/GameInput.ts`: pointer/keyboard input and ground-plane raycasting.
 - `src/game/perf/Profiler.ts`: rolling frame, subsystem, render, pathfinding, flow-build, and navigation-scheduler timing metrics.
 - `src/game/perf/RuntimePerformanceMonitor.ts`: fixed-capacity animation-frame pacing history, feature-detected approximate JS heap sampling, GC-correlated hitch counts, and renderer/world resource counters.
-- `src/game/player/PlayerController.ts`: player mesh, movement target, move marker, and player visual state.
+- `src/game/player/PlayerController.ts`: player mesh, movement target, immediate request marker, resumable route request/application policy, and player visual state.
 - `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, shadow rig, and ground setup.
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
@@ -82,6 +83,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 - Navigation and future vision checks should share the hex linecast helper so blocker semantics stay consistent.
 - Normal melee enemies should not call Theta* directly during frame update; shared flow fields handle swarm chase and the path queue handles rare fallback paths.
 - Navigation work that can traverse many cells must be resumable. The scheduler owns the frame budget; callers enqueue or coalesce requests instead of running long searches inside input or simulation updates.
+- Completed player routes are rebased against the player's current position before application. A superseded result may establish an initial route, but it does not replace a route that is already usable while the newest held request remains queued.
+- Enemy crowd avoidance is advisory near structural collision: a steered move that makes no target progress is compared with the original navigation move, and sustained lack of progress forces the shared fallback queue even when direct line of sight exists.
 - Flow builds read only already-generated terrain and keep the last complete field active until a replacement is ready. Structural walkability caches are invalidated explicitly if runtime collision ever becomes mutable.
 
 ## Hex World

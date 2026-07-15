@@ -59,6 +59,37 @@ describe("scheduled pathfinding", () => {
     expect(job.getResult()).not.toBeNull();
     expect(job.getResult()?.waypoints.length).toBeGreaterThan(1);
     expect(job.diagnostics().iterations).toBeGreaterThan(0);
+    expect(job.diagnostics().completionReason).toBe("path");
+  });
+
+  it("reports the iteration limit distinctly from an exhausted search", () => {
+    const world = new GridWorld(new TestTerrainProvider(new Set(["1,0", "2,0"])));
+    const start = world.cellToWorldPoint({ q: 0, r: 0 });
+    const goal = world.cellToWorldPoint({ q: 8, r: 0 });
+    const job = new PathSearchJob(world, start, goal, { radius: PLAYER_COLLISION_RADIUS, maxIterations: 1 });
+    while (!job.isComplete()) {
+      job.step(Number.POSITIVE_INFINITY, 1);
+    }
+
+    expect(job.getResult()).toBeNull();
+    expect(job.diagnostics().completionReason).toBe("iteration-limit");
+  });
+
+  it("finishes a long incremental route around an extended barrier", () => {
+    const blocked = new Set(Array.from({ length: 15 }, (_, index) => `${index + 1},0`));
+    const world = new GridWorld(new TestTerrainProvider(blocked));
+    const start = world.cellToWorldPoint({ q: 0, r: 0 });
+    const goal = world.cellToWorldPoint({ q: 20, r: 0 });
+    const job = new PathSearchJob(world, start, goal, { radius: PLAYER_COLLISION_RADIUS, maxIterations: 4000 });
+    let steps = 0;
+    while (!job.isComplete() && steps < 50000) {
+      job.step(Number.POSITIVE_INFINITY, 1);
+      steps += 1;
+    }
+
+    expect(job.getResult()).not.toBeNull();
+    expect(job.diagnostics().completionReason).toBe("path");
+    expect(job.diagnostics().iterations).toBeGreaterThan(10);
   });
 
   it("resolves a blocked request to a nearby reachable destination", () => {
@@ -78,5 +109,7 @@ describe("scheduled pathfinding", () => {
     expect(result).not.toBeNull();
     expect(result?.requestedBlocked).toBe(true);
     expect(world.isBlockedWorld(result?.destination.x ?? 0, result?.destination.z ?? 0)).toBe(false);
+    expect(job.diagnostics().completionReason).toBe("candidate");
+    expect(job.diagnostics().iterations).toBeGreaterThan(0);
   });
 });

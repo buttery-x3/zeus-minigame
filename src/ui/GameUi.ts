@@ -11,6 +11,7 @@ import type { UpgradeId, UpgradeOfferSnapshot, UpgradeStacks } from "../game/upg
 import type { HudPanelId, HudPanelPositions, RenderMode } from "../game/preferences/GamePreferences";
 import type { NormalizedWindowPosition } from "./window/types";
 import type { NavigationDebugDiagnostics, NavigationDebugMode } from "../game/enemies/navigation/NavigationDebugTypes";
+import type { PlayerNavigationDiagnostics } from "../game/player/PlayerController";
 
 type GameUiCallbacks = {
   resume: () => void;
@@ -149,8 +150,12 @@ export class GameUi {
     this.toolbar.setDiagnosticsOpen(this.diagnostics.isOpen());
   }
 
-  updateDiagnostics(snapshot: ProfilerSnapshot, getNavigationDebug: () => NavigationDebugDiagnostics) {
-    this.diagnostics.update(snapshot, getNavigationDebug);
+  updateDiagnostics(
+    snapshot: ProfilerSnapshot,
+    getNavigationDebug: () => NavigationDebugDiagnostics,
+    getPlayerNavigation: () => PlayerNavigationDiagnostics,
+  ) {
+    this.diagnostics.update(snapshot, getNavigationDebug, getPlayerNavigation);
   }
 
   remove() {

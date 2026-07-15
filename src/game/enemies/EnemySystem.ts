@@ -20,6 +20,7 @@ import { NavigationDebugRenderer } from "../../render/NavigationDebugRenderer";
 import { EnemyAvoidance } from "./EnemyAvoidance";
 import { EnemyCharacter } from "./EnemyCharacter";
 import { EnemyHealthBars } from "./EnemyHealthBars";
+import { chooseEnemyMove } from "./EnemyMovement";
 import { EnemyNavigation } from "./navigation/EnemyNavigation";
 import type { NavigationDebugMode } from "./navigation/NavigationDebugTypes";
 import type { NavigationWorkSource } from "../navigation/NavigationScheduler";
@@ -107,9 +108,7 @@ export class EnemySystem {
       let movedDistance = 0;
       let targetProgress = 0;
       const hasMovement = steeredVelocity.lengthSq() > 0.000001;
-      const attemptedDelta = hasMovement
-        ? new THREE.Vector3(steeredVelocity.x * dt, 0, steeredVelocity.z * dt)
-        : ZERO_DELTA;
+      let attemptedDelta = ZERO_DELTA;
       const trace = this.navigationDebug.isEnabled() ? this.getCollisionTrace(enemy.id) : undefined;
       const actualDelta = trace?.actualDelta ?? null;
       if (trace) {
@@ -118,21 +117,24 @@ export class EnemySystem {
       }
 
       if (hasMovement) {
-        const startX = enemy.group.position.x;
-        const startZ = enemy.group.position.z;
-        const startDistanceToTarget = distance2D(startX, startZ, navigationTarget.x, navigationTarget.z);
-        const nextPosition = this.collision.moveWithCollision(
+        const move = chooseEnemyMove(
+          this.collision,
           enemy.group.position,
-          attemptedDelta,
-          ENEMY_COLLISION_RADIUS,
+          navigationTarget,
+          desiredVelocity,
+          steeredVelocity,
+          dt,
           trace,
         );
+        const nextPosition = move.nextPosition;
+        attemptedDelta = move.attemptedDelta;
         const actualX = nextPosition.x - enemy.group.position.x;
         const actualZ = nextPosition.z - enemy.group.position.z;
         actualDelta?.set(actualX, 0, actualZ);
 
-        movedDistance = distance2D(startX, startZ, nextPosition.x, nextPosition.z);
-        targetProgress = startDistanceToTarget - distance2D(nextPosition.x, nextPosition.z, navigationTarget.x, navigationTarget.z);
+        movedDistance = move.movedDistance;
+        targetProgress = move.targetProgress;
+        this.avoidance.recordObstacleFallback(move.avoidanceFallbackAttempted, move.usedPreferredFallback);
         if (movedDistance > 0.001) {
           enemy.group.position.x = nextPosition.x;
           enemy.group.position.z = nextPosition.z;
@@ -141,7 +143,7 @@ export class EnemySystem {
       }
 
       this.avoidance.recordSpeedRatio(movedDistance / Math.max(enemy.speed * dt, 0.0001));
-      this.navigation.recordMovement(enemy, targetProgress, dt, playerPosition);
+      this.navigation.recordMovement(enemy, targetProgress, dt, playerPosition, desiredVelocity.lengthSq() > 0.000001);
       if (trace && actualDelta) {
         this.navigationDebug.record(
           enemy,

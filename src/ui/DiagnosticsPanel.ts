@@ -2,6 +2,7 @@ import type { ProfilerSnapshot } from "../game/perf/Profiler";
 import type { GameWindow } from "./window/GameWindow";
 import type { WindowManager } from "./window/WindowManager";
 import type { NavigationDebugDiagnostics } from "../game/enemies/navigation/NavigationDebugTypes";
+import type { PlayerNavigationDiagnostics } from "../game/player/PlayerController";
 
 const METRICS = [
   ["frameTotal", "Frame"],
@@ -28,6 +29,7 @@ export class DiagnosticsPanel {
   private readonly flowValue: HTMLElement;
   private readonly modesValue: HTMLElement;
   private readonly schedulerValue: HTMLElement;
+  private readonly playerNavigationValue: HTMLElement;
   private readonly framePacingValue: HTMLElement;
   private readonly memoryValue: HTMLElement;
   private readonly resourcesValue: HTMLElement;
@@ -44,6 +46,7 @@ export class DiagnosticsPanel {
       <div class="diagnostics__path" data-path></div>
       <div class="diagnostics__path" data-flow></div>
       <div class="diagnostics__path" data-scheduler></div>
+      <div class="diagnostics__path" data-player-navigation></div>
       <div class="diagnostics__path" data-modes></div>
       <div class="diagnostics__path" data-frame-pacing></div>
       <div class="diagnostics__path" data-memory></div>
@@ -64,6 +67,7 @@ export class DiagnosticsPanel {
     this.pathValue = content.querySelector("[data-path]") as HTMLElement;
     this.flowValue = content.querySelector("[data-flow]") as HTMLElement;
     this.schedulerValue = content.querySelector("[data-scheduler]") as HTMLElement;
+    this.playerNavigationValue = content.querySelector("[data-player-navigation]") as HTMLElement;
     this.modesValue = content.querySelector("[data-modes]") as HTMLElement;
     this.framePacingValue = content.querySelector("[data-frame-pacing]") as HTMLElement;
     this.memoryValue = content.querySelector("[data-memory]") as HTMLElement;
@@ -96,7 +100,11 @@ export class DiagnosticsPanel {
     return this.window.isVisible();
   }
 
-  update(snapshot: ProfilerSnapshot, getNavigationDebug: () => NavigationDebugDiagnostics) {
+  update(
+    snapshot: ProfilerSnapshot,
+    getNavigationDebug: () => NavigationDebugDiagnostics,
+    getPlayerNavigation: () => PlayerNavigationDiagnostics,
+  ) {
     if (!this.window.isVisible() || performance.now() < this.nextUpdateAt) {
       return;
     }
@@ -117,6 +125,12 @@ export class DiagnosticsPanel {
     this.pathValue.textContent = `Path ${path.calls} calls, ${path.totalMs.toFixed(2)} ms, avg ${path.avgMs.toFixed(2)}, max ${path.maxMs.toFixed(2)}, iter ${path.iterations}/${path.maxIterations}`;
     this.flowValue.textContent = `Flow ${nav.flowVisited} cells, slice ${nav.flowSliceMs.toFixed(2)} ms, total ${nav.flowRebuildMs.toFixed(2)} ms, build ${nav.flowBuilding ? nav.flowBuildVisited : "idle"}, lag ${nav.flowRootLag}, queue ${nav.queueLength}`;
     this.schedulerValue.textContent = `Nav ${scheduler.usedMs.toFixed(2)}/${scheduler.budgetMs.toFixed(2)} ms, max slice ${scheduler.maxSliceMs.toFixed(2)}, over ${scheduler.overshootMs.toFixed(2)}, work P${scheduler.slices.player}/F${scheduler.slices.flow}/E${scheduler.slices.fallback}`;
+    const playerNavigation = getPlayerNavigation();
+    const activePlayerRoute = playerNavigation.pathJob;
+    const lastPlayerRoute = playerNavigation.lastRouteResult;
+    this.playerNavigationValue.textContent = activePlayerRoute
+      ? `Player route ${activePlayerRoute.stage}, d${playerNavigation.activePathGoalDistance}, slices ${playerNavigation.activePathSlices}, iter ${activePlayerRoute.iterations}, pending ${playerNavigation.pendingPath ? "yes" : "no"}`
+      : `Player route idle, applied ${playerNavigation.appliedRoutes}, superseded ${playerNavigation.supersededRoutes}, failed ${playerNavigation.failedRoutes}${lastPlayerRoute ? `, last ${lastPlayerRoute.application}/${lastPlayerRoute.completionReason} ${lastPlayerRoute.latencyMs.toFixed(1)} ms` : ""}`;
     this.modesValue.textContent = `Modes direct ${nav.direct}, flow ${nav.flow}, acquire ${nav.acquire}, fallback ${nav.fallback}, wait ${nav.waiting}`;
     const pacing = snapshot.framePacing;
     this.framePacingValue.textContent = `Frame Δ ${pacing.lastDeltaMs.toFixed(1)} ms, CPU ${pacing.lastCpuMs.toFixed(1)}, p95 ${pacing.p95DeltaMs.toFixed(0)}, p99 ${pacing.p99DeltaMs.toFixed(0)}, max ${pacing.maxDeltaMs.toFixed(1)}, >20/33/50 ${pacing.above20Ms}/${pacing.above33Ms}/${pacing.above50Ms}, missed@60 ${pacing.missedVsyncs}`;
