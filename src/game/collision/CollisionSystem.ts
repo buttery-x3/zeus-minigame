@@ -3,22 +3,16 @@ import { PATHFINDING_MAX_ITERATIONS } from "../../config";
 import { distance2D } from "../../lib/math";
 import type { GridWorld } from "../../world/GridWorld";
 import { hasLineOfSight } from "./linecast";
-import { findPath, type PathResult } from "./pathfinding";
+import { PathSearchJob } from "./pathfinding";
+import { PathResolutionJob } from "./PathResolutionJob";
 import { canOccupyWorld, clampWorldToRadius, getCellCenter, isCellBlocked, isCellInBounds } from "./occupancy";
 import type { Profiler } from "../perf/Profiler";
 
-export type ResolvedPath = PathResult & {
-  destination: THREE.Vector3;
-  requestedBlocked: boolean;
-};
-
-const MIN_LINE_FALLBACK_DISTANCE = 0.75;
-const MAX_LINE_FALLBACK_SAMPLES = 72;
+export type { ResolvedPath } from "./PathResolutionJob";
 
 type ResolvePathOptions = {
   canUseDestination?: (destination: THREE.Vector3) => boolean;
   maxCandidatePathAttempts?: number;
-  maxPathfindingMs?: number;
 };
 
 export class CollisionSystem {
@@ -35,95 +29,26 @@ export class CollisionSystem {
     return hasLineOfSight(this.gridWorld, from, to, radius);
   }
 
-  findPath(start: THREE.Vector3, goal: THREE.Vector3, radius: number, maxIterations = PATHFINDING_MAX_ITERATIONS, maxMs?: number) {
-    const clampedGoal = clampWorldToRadius(this.gridWorld, new THREE.Vector3(goal.x, 0, goal.z), radius);
-    const startedAt = performance.now();
-    const result = findPath(this.gridWorld, start, clampedGoal, { radius, maxIterations, maxMs });
-    this.profiler?.recordPathfinding(performance.now() - startedAt, result?.iterations ?? 0, result !== null);
-    return result;
+  recordScheduledPathfinding(ms: number, iterations: number, success: boolean) {
+    this.profiler?.recordPathfinding(ms, iterations, success);
   }
 
-  resolvePathToTarget(
+  createPathSearchJob(start: THREE.Vector3, goal: THREE.Vector3, radius: number, maxIterations = PATHFINDING_MAX_ITERATIONS) {
+    const clampedGoal = clampWorldToRadius(this.gridWorld, new THREE.Vector3(goal.x, 0, goal.z), radius);
+    return new PathSearchJob(this.gridWorld, start, clampedGoal, { radius, maxIterations });
+  }
+
+  createPathResolutionJob(
     start: THREE.Vector3,
     requestedTarget: THREE.Vector3,
     radius: number,
     options: ResolvePathOptions = {},
-  ): ResolvedPath | null {
-    const requested = clampWorldToRadius(this.gridWorld, new THREE.Vector3(requestedTarget.x, 0, requestedTarget.z), radius);
-    const requestedBlocked = !this.canOccupy(requested.x, requested.z, radius);
-    const canUseDestination = options.canUseDestination ?? (() => true);
-    const deadline = options.maxPathfindingMs ? performance.now() + options.maxPathfindingMs : Number.POSITIVE_INFINITY;
-    const remainingPathMs = () =>
-      Number.isFinite(deadline) ? Math.max(0.25, deadline - performance.now()) : undefined;
-    const direct =
-      requestedBlocked || !canUseDestination(requested)
-        ? null
-        : this.findPath(start, requested, radius, PATHFINDING_MAX_ITERATIONS, remainingPathMs());
-
-    if (direct) {
-      return { ...direct, destination: requested, requestedBlocked };
-    }
-
-    let attemptedPaths = 0;
-    const maxCandidatePathAttempts = options.maxCandidatePathAttempts ?? Number.POSITIVE_INFINITY;
-    let stoppedCandidateSearch = false;
-
-    for (const candidates of this.findNearbyOpenCandidateRings(requested, radius)) {
-      let best: ResolvedPath | null = null;
-      const sortedCandidates = candidates
-        .slice()
-        .sort(
-          (a, b) =>
-            distance2D(start.x, start.z, a.x, a.z) +
-            distance2D(requested.x, requested.z, a.x, a.z) -
-            (distance2D(start.x, start.z, b.x, b.z) + distance2D(requested.x, requested.z, b.x, b.z)),
-        );
-
-      for (const candidate of sortedCandidates) {
-        if (attemptedPaths >= maxCandidatePathAttempts || performance.now() >= deadline) {
-          if (best) {
-            return best;
-          }
-          stoppedCandidateSearch = true;
-          break;
-        }
-
-        if (!canUseDestination(candidate)) {
-          continue;
-        }
-
-        attemptedPaths += 1;
-        const path = this.findPath(start, candidate, radius, PATHFINDING_MAX_ITERATIONS, remainingPathMs());
-        if (!path) {
-          continue;
-        }
-
-        if (!best || path.distance < best.distance) {
-          best = { ...path, destination: candidate, requestedBlocked };
-        }
-      }
-
-      if (best) {
-        return best;
-      }
-      if (stoppedCandidateSearch) {
-        break;
-      }
-    }
-
-    const fallback = this.findLineFallbackDestination(start, requested, radius, canUseDestination);
-    if (fallback) {
-      const distance = distance2D(start.x, start.z, fallback.x, fallback.z);
-      return {
-        waypoints: [fallback],
-        distance,
-        iterations: 0,
-        destination: fallback,
-        requestedBlocked,
-      };
-    }
-
-    return null;
+  ) {
+    return new PathResolutionJob(this.gridWorld, start, requestedTarget, radius, {
+      canUseDestination: options.canUseDestination,
+      maxCandidatePathAttempts: options.maxCandidatePathAttempts,
+      maxIterations: PATHFINDING_MAX_ITERATIONS,
+    });
   }
 
   moveWithCollision(position: THREE.Vector3, desiredDelta: THREE.Vector3, radius: number) {
@@ -171,38 +96,6 @@ export class CollisionSystem {
 
   private canMoveBetween(from: THREE.Vector3, to: THREE.Vector3, radius: number) {
     return this.canOccupy(to.x, to.z, radius) && hasLineOfSight(this.gridWorld, from, to, radius);
-  }
-
-  private findLineFallbackDestination(
-    start: THREE.Vector3,
-    requested: THREE.Vector3,
-    radius: number,
-    canUseDestination: (destination: THREE.Vector3) => boolean,
-  ) {
-    const dx = requested.x - start.x;
-    const dz = requested.z - start.z;
-    const distance = Math.hypot(dx, dz);
-    if (distance <= MIN_LINE_FALLBACK_DISTANCE) {
-      return null;
-    }
-
-    const sampleCount = Math.min(MAX_LINE_FALLBACK_SAMPLES, Math.max(4, Math.ceil(distance / (this.gridWorld.tileSize * 0.5))));
-    let best: THREE.Vector3 | null = null;
-
-    for (let index = 1; index <= sampleCount; index += 1) {
-      const amount = index / sampleCount;
-      const point = new THREE.Vector3(start.x + dx * amount, 0, start.z + dz * amount);
-      if (!canUseDestination(point) || !this.canMoveBetween(start, point, radius)) {
-        break;
-      }
-      best = point;
-    }
-
-    if (!best || distance2D(start.x, start.z, best.x, best.z) < MIN_LINE_FALLBACK_DISTANCE) {
-      return null;
-    }
-
-    return best;
   }
 
   private findNearbyOpenCandidateRings(point: THREE.Vector3, radius: number, maxRing = 6) {

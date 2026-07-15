@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PLAYER_COLLISION_RADIUS, PLAYER_MOVE_SPEED, PLAYER_PATHFINDING_BUDGET_MS, PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS } from "../../config";
+import { PLAYER_COLLISION_RADIUS, PLAYER_MOVE_SPEED, PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS, PLAYER_PATH_RETRY_COOLDOWN_SECONDS } from "../../config";
 import { distance2D } from "../../lib/math";
 import type { GameMaterialPalettes } from "../../render/materials";
 import type { GameEffects } from "../../render/GameEffects";
@@ -10,9 +10,18 @@ import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { RenderMode } from "../preferences/GamePreferences";
 import type { GridWorld, HexCoord } from "../../world/GridWorld";
 import { PlayerCharacter } from "./PlayerCharacter";
+import type { NavigationWorkSource } from "../navigation/NavigationScheduler";
+import type { PathResolutionJob } from "../collision/PathResolutionJob";
 
 type MoveTargetOptions = {
   force?: boolean;
+  canUseDestination?: (destination: THREE.Vector3) => boolean;
+};
+
+type MoveRequest = {
+  id: number;
+  target: THREE.Vector3;
+  cellKey: string;
   canUseDestination?: (destination: THREE.Vector3) => boolean;
 };
 
@@ -30,6 +39,20 @@ export class PlayerController {
   private groundCell: HexCoord = { q: 0, r: 0 };
   private groundCellKey = "";
   private readonly character: PlayerCharacter;
+  private pendingRequest: MoveRequest | null = null;
+  private activeRequest: MoveRequest | null = null;
+  private activePathJob: PathResolutionJob | null = null;
+  private requestId = 0;
+  private coalescedRequests = 0;
+  private cancelledRequests = 0;
+  private cooldownSuppressedRequests = 0;
+  private lastFailedCellKey = "";
+  private failedCellRetryAt = 0;
+  private readonly navigationWorkSource: NavigationWorkSource = {
+    id: "player",
+    hasWork: () => this.pendingRequest !== null || this.activePathJob !== null,
+    runSlice: (deadline) => this.runNavigationSlice(deadline),
+  };
 
   constructor(
     private readonly gridWorld: GridWorld,
@@ -146,25 +169,101 @@ export class PlayerController {
     const requestedCell = this.gridWorld.worldToCell(requestedTarget.x, requestedTarget.z);
     const requestedCellKey = this.gridWorld.cellKey(requestedCell.q, requestedCell.r);
 
-    if (!force && requestedCellKey === this.lastRequestedCellKey && this.path.length > 0) {
+    if (
+      !force &&
+      requestedCellKey === this.lastRequestedCellKey &&
+      (this.path.length > 0 || this.pendingRequest !== null || this.activePathJob !== null)
+    ) {
+      return;
+    }
+    if (!force && requestedCellKey === this.lastFailedCellKey && performance.now() < this.failedCellRetryAt) {
+      this.cooldownSuppressedRequests += 1;
       return;
     }
 
-    const resolved = this.collision.resolvePathToTarget(this.object.position, requestedTarget, PLAYER_COLLISION_RADIUS, {
+    if (this.pendingRequest?.cellKey === requestedCellKey) {
+      this.pendingRequest.target.copy(requestedTarget);
+      this.pendingRequest.canUseDestination = options.canUseDestination;
+      this.coalescedRequests += 1;
+      return;
+    }
+    if (!force && this.activeRequest?.cellKey === requestedCellKey) {
+      this.coalescedRequests += 1;
+      return;
+    }
+    if (this.activePathJob) {
+      if (force) {
+        this.activePathJob = null;
+        this.activeRequest = null;
+        this.cancelledRequests += 1;
+      } else if (this.pendingRequest) {
+        this.coalescedRequests += 1;
+      }
+    }
+
+    this.requestId += 1;
+    this.pendingRequest = {
+      id: this.requestId,
+      target: requestedTarget,
+      cellKey: requestedCellKey,
       canUseDestination: options.canUseDestination,
-      maxCandidatePathAttempts: PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS,
-      maxPathfindingMs: PLAYER_PATHFINDING_BUDGET_MS,
-    });
+    };
     this.lastRequestedCellKey = requestedCellKey;
+  }
+
+  getNavigationWorkSource() {
+    return this.navigationWorkSource;
+  }
+
+  private runNavigationSlice(deadline: number) {
+    if (!this.activePathJob && this.pendingRequest) {
+      this.activeRequest = this.pendingRequest;
+      this.pendingRequest = null;
+      this.activePathJob = this.collision.createPathResolutionJob(
+        this.object.position,
+        this.activeRequest.target,
+        PLAYER_COLLISION_RADIUS,
+        {
+          canUseDestination: this.activeRequest.canUseDestination,
+          maxCandidatePathAttempts: PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS,
+        },
+      );
+    }
+    if (!this.activePathJob || !this.activeRequest) {
+      return;
+    }
+
+    this.activePathJob.step(deadline);
+    if (!this.activePathJob.isComplete()) {
+      return;
+    }
+
+    const request = this.activeRequest;
+    const diagnostics = this.activePathJob.diagnostics();
+    const resolved = this.activePathJob.getResult();
+    this.collision.recordScheduledPathfinding(
+      diagnostics.accumulatedMs,
+      diagnostics.activePath?.iterations ?? 0,
+      resolved !== null,
+    );
+    this.activePathJob = null;
+    this.activeRequest = null;
+
+    if (this.pendingRequest && this.pendingRequest.id > request.id) {
+      return;
+    }
 
     if (!resolved) {
-      this.lastRequestedBlocked = !this.collision.canOccupy(requestedTarget.x, requestedTarget.z, PLAYER_COLLISION_RADIUS);
+      this.lastRequestedBlocked = !this.collision.canOccupy(request.target.x, request.target.z, PLAYER_COLLISION_RADIUS);
+      this.lastFailedCellKey = request.cellKey;
+      this.failedCellRetryAt = performance.now() + PLAYER_PATH_RETRY_COOLDOWN_SECONDS * 1000;
       this.path = [];
-      this.effects.createShockwave(requestedTarget, 0x879190, 2.4);
+      this.effects.createShockwave(request.target, 0x879190, 2.4);
       return;
     }
 
     this.lastRequestedBlocked = resolved.requestedBlocked;
+    this.lastFailedCellKey = "";
     this.path = resolved.waypoints;
     this.moveTarget.copy(resolved.destination);
     this.moveMarker.position.set(resolved.destination.x, 0.08, resolved.destination.z);
@@ -186,6 +285,14 @@ export class PlayerController {
     this.moveSpeed = PLAYER_MOVE_SPEED;
     this.lastRequestedCellKey = "";
     this.lastRequestedBlocked = false;
+    this.pendingRequest = null;
+    this.activeRequest = null;
+    this.activePathJob = null;
+    this.lastFailedCellKey = "";
+    this.failedCellRetryAt = 0;
+    this.coalescedRequests = 0;
+    this.cancelledRequests = 0;
+    this.cooldownSuppressedRequests = 0;
     this.character.reset();
     this.setGroundAura(null);
     this.syncGroundCell();
@@ -210,6 +317,11 @@ export class PlayerController {
       groundAuraMode: this.groundAura ?? "normal",
       groundAuraColor: auraMaterial instanceof THREE.MeshBasicMaterial ? `#${auraMaterial.color.getHexString()}` : null,
       moveSpeed: this.moveSpeed,
+      pathJob: this.activePathJob?.diagnostics() ?? null,
+      pendingPath: this.pendingRequest !== null,
+      coalescedRequests: this.coalescedRequests,
+      cancelledRequests: this.cancelledRequests,
+      cooldownSuppressedRequests: this.cooldownSuppressedRequests,
     };
   }
 

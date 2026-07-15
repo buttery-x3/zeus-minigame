@@ -20,6 +20,7 @@ import { EnemyAvoidance } from "./EnemyAvoidance";
 import { EnemyCharacter } from "./EnemyCharacter";
 import { EnemyHealthBars } from "./EnemyHealthBars";
 import { EnemyNavigation } from "./navigation/EnemyNavigation";
+import type { NavigationWorkSource } from "../navigation/NavigationScheduler";
 
 type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
@@ -181,10 +182,19 @@ export class EnemySystem {
 
   reset(state: GameRuntimeState, playerPosition: THREE.Vector3) {
     this.clear();
+    this.navigation.reset(playerPosition);
     state.spawnInterval = INITIAL_SPAWN_INTERVAL;
     state.nextWaveAt = INITIAL_NEXT_WAVE_AT;
     state.spawnTimer = 0;
     this.spawnInitial(state, playerPosition);
+  }
+
+  getNavigationWorkSources(): NavigationWorkSource[] {
+    return this.navigation.getWorkSources();
+  }
+
+  getNavigationDiagnostics() {
+    return this.navigation.getDiagnostics();
   }
 
   damageEnemy(enemy: EnemyState, amount: number, state: GameRuntimeState) {

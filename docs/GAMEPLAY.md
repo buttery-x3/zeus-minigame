@@ -34,6 +34,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Active charged ground accelerates both mana regeneration and spell cooldown recovery by `1.75x`.
 - Movement is click/hold-to-move on the `X/Z` ground plane.
 - Movement commands require known terrain: Zeus can move to previously discovered walkable ground even when it is no longer currently visible.
+- Long movement linecasts and route searches are advanced over multiple frames. Held movement keeps only the newest queued target while Zeus continues along the last completed route.
 - If pathfinding cannot resolve a full route to a movement command, Zeus falls back to moving in a straight visible line toward the command until terrain blocks the path.
 - Vitals, game, status, abilities, and diagnostics are DOM windows. The pause menu's Unlock UI toggle enables their lock controls and movement; it defaults off so transparent HUD panels stay quiet and click-through.
 
@@ -68,7 +69,9 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 ## Enemies
 
 - Melee enemies chase directly when walls do not interrupt line of sight, otherwise they use a shared hex flow field around Zeus.
-- If an enemy cannot sample the flow field, it steers toward the field edge and only requests a budgeted fallback path if it stalls.
+- The weighted flow field is rebuilt incrementally and retains its last complete version during a rebuild, preserving support for future higher-cost terrain such as banks, bridges, or hills.
+- If an enemy cannot sample the flow field, it steers toward the field edge and only requests an incremental fallback path if it stalls.
+- Player paths, flow rebuilds, and enemy fallback routes share a frame-level scheduler so blocker-heavy navigation cannot monopolize one simulation frame.
 - Ranged, retreating, special-goal, and future tactical enemy intents are scaffolded but not active yet.
 - Waves accelerate spawning over time.
 - Enemy health bars default to smart visibility: recently damaged enemies, enemies near the cursor, and wounded enemies close to Zeus are shown. The pause menu and `V` key can switch them to always visible.

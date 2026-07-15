@@ -40,6 +40,10 @@ export class SeedTerrainProvider implements TerrainProvider {
     return cell;
   }
 
+  getGeneratedCell(q: number, r: number) {
+    return this.getCell(q, r);
+  }
+
   getGeneratedCellsInRange(center: { q: number; r: number }, radius: number) {
     const cells: TerrainCell[] = [];
     for (const cell of this.cells.values()) {

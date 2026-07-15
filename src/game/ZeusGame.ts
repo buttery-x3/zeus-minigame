@@ -17,6 +17,7 @@ import { Profiler } from "./perf/Profiler";
 import { PlayerController } from "./player/PlayerController";
 import { GameScene } from "./scene/GameScene";
 import { getBoundedFrameDelta, SimulationStepper } from "./SimulationStepper";
+import { NavigationScheduler } from "./navigation/NavigationScheduler";
 import { SpellSystem } from "./spells/SpellSystem";
 import { TargetingRenderer } from "./spells/TargetingRenderer";
 import { TerrainSystem } from "./terrain/TerrainSystem";
@@ -36,6 +37,7 @@ export class ZeusGame {
   private readonly clock = new THREE.Clock();
   private readonly profiler = new Profiler();
   private readonly simulationStepper = new SimulationStepper();
+  private readonly navigationScheduler = new NavigationScheduler();
   private readonly gridWorld = new GridWorld();
   private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
   private readonly visibility = new VisibilitySystem(this.gridWorld);
@@ -366,6 +368,15 @@ export class ZeusGame {
     const timing = this.simulationStepper.advance(rawDt, this.state.paused, discardForVisibility, (dt) => {
       ground = this.updateSimulation(dt, ground);
     });
+    if (!this.state.paused && !this.state.gameOver) {
+      this.profiler.measure("navigation", () => {
+        const navigation = this.navigationScheduler.run([
+          this.player.getNavigationWorkSource(),
+          ...this.enemies.getNavigationWorkSources(),
+        ]);
+        this.profiler.recordNavigationScheduler(navigation);
+      });
+    }
     this.updatePresentation(frameDt, timing.simulatedDeltaSeconds, ground);
   }
 

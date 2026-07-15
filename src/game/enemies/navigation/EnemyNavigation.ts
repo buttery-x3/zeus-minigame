@@ -9,12 +9,42 @@ import { EnemyFlowField } from "./EnemyFlowField";
 import { getMeleeChaseIntent } from "./EnemyIntent";
 import { EnemyPathQueue } from "./EnemyPathQueue";
 import { directionTo, targetFromDirection } from "./EnemySteering";
+import type { NavigationWorkSource } from "../../navigation/NavigationScheduler";
 
 const STALL_RESET_PROGRESS = 0.02;
 
 export class EnemyNavigation {
   private readonly flowField: EnemyFlowField;
   private readonly pathQueue: EnemyPathQueue;
+  private readonly flowWorkSource: NavigationWorkSource = {
+    id: "flow",
+    hasWork: () => this.flowField.hasWork(),
+    runSlice: (deadline) => {
+      this.flowField.step(deadline);
+      const flow = this.flowField.diagnostics();
+      this.profiler.recordEnemyFlowField({
+        rebuildMs: flow.rebuildMs,
+        visited: flow.visited,
+        radius: flow.radius,
+        sliceMs: flow.sliceMs,
+        building: flow.building,
+        buildVisited: flow.buildVisited,
+        rootLag: flow.rootLag,
+        terrainLimited: flow.terrainLimited,
+        completedBuilds: flow.completedBuilds,
+        coalescedRequests: flow.coalescedRequests,
+        walkableCacheSize: flow.walkableCacheSize,
+      });
+    },
+  };
+  private readonly fallbackWorkSource: NavigationWorkSource = {
+    id: "fallback",
+    hasWork: () => this.pathQueue.hasWork(),
+    runSlice: (deadline) => {
+      this.pathQueue.update(deadline);
+      this.profiler.recordEnemyPathQueue(this.pathQueue.diagnostics());
+    },
+  };
 
   constructor(
     gridWorld: GridWorld,
@@ -26,14 +56,24 @@ export class EnemyNavigation {
   }
 
   beginFrame(playerPosition: THREE.Vector3) {
-    const rebuilt = this.flowField.update(playerPosition);
-    const flow = this.flowField.diagnostics();
-    if (rebuilt) {
-      this.profiler.recordEnemyFlowField(flow.rebuildMs, flow.visited, flow.radius);
-    }
+    this.flowField.request(playerPosition);
+  }
 
-    this.pathQueue.update();
-    this.profiler.recordEnemyPathQueue(this.pathQueue.diagnostics());
+  getWorkSources() {
+    return [this.flowWorkSource, this.fallbackWorkSource];
+  }
+
+  getDiagnostics() {
+    return {
+      flow: this.flowField.diagnostics(),
+      queue: this.pathQueue.diagnostics(),
+    };
+  }
+
+  reset(playerPosition: THREE.Vector3) {
+    this.pathQueue.clear();
+    this.flowField.clear();
+    this.flowField.request(playerPosition);
   }
 
   getTarget(enemy: EnemyState, playerPosition: THREE.Vector3) {

@@ -192,11 +192,6 @@ export class GameInput {
       return;
     }
     this.updatePointerWorld(event);
-
-    if (this.isHoldingMove()) {
-      this.moveRequestPending = true;
-      this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
-    }
   };
 
   private readonly handlePointerUp = (event: PointerEvent) => {

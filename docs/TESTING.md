@@ -1,10 +1,11 @@
 # Testing
 
-The project has three verification layers:
+The project has four verification layers:
 
 ```bash
 npm run build
 npm run test:terrain
+npm run test:game
 npm run verify:render
 ```
 
@@ -57,7 +58,7 @@ npm run verify
 - Checks the pause menu audio controls, enemy health bar visibility options, Quick Cast toggle, Allow Max Range Target Snap toggle, Unlock UI toggle, and confirms the expanded menu fits the supported desktop viewport.
 - Confirms gameplay/UI preferences persist across reloads, including Potato rendering and every HUD panel position, while Terrain Debug remains session-only; partial and malformed stored settings must fall back safely.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
-- Checks that diagnostics exposes enemy hex flow-field metrics and that the smoke path does not create a pathfinding call spike.
+- Checks that diagnostics exposes enemy hex flow-field and frame scheduler metrics, and that the smoke path does not create a pathfinding call or navigation-slice spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
@@ -70,6 +71,10 @@ Mobile layouts and controls are not currently supported or included in render ve
 ## Terrain Function Verification
 
 `npm run test:terrain` runs deterministic TypeScript function tests through Vitest. It validates every authored patch and rotation, confirms topology-group budgets and the absence of generated banks, exercises open-core and homogeneous/mixed enclosed procedural fills, checks deterministic output, and enumerates every center boundary reachable from six mutually compatible authored neighbors. Rotationally equivalent neighborhoods are solved as canonical classes and rotation behavior is verified separately. Feature-graph tests distinguish a three-patch cliff closure from an ordinary extension, detect a loop forced into the next frontier patch, and confirm forced closures remain selectable. Multi-seed rolling stress requires the new gentle-bend vocabulary and short-loop suppression to activate while synthesis failures, emergency substitutions, contradictions, and socket mismatches remain at zero.
+
+## Navigation Function Verification
+
+`npm run test:game` runs deterministic Vitest coverage for resumable linecasts, incremental Theta* and destination resolution, active/staging flow-field swaps, latest-root coalescing, and scheduler source fairness. These tests use fixed operation limits in addition to wall-clock deadlines so correctness does not depend on machine speed.
 
 ## Browser Path
 

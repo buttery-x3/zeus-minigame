@@ -1,3 +1,5 @@
+import type { NavigationSchedulerDiagnostics } from "../navigation/NavigationScheduler";
+
 type Metric = {
   last: number;
   avg: number;
@@ -18,6 +20,7 @@ export type ProfilerSnapshot = {
     maxIterations: number;
   };
   enemyNavigation: EnemyNavigationMetrics;
+  navigationScheduler: NavigationSchedulerDiagnostics;
 };
 
 type PathFrame = ProfilerSnapshot["pathfinding"];
@@ -25,10 +28,20 @@ type EnemyNavigationMetrics = {
   flowRebuildMs: number;
   flowVisited: number;
   flowRadius: number;
+  flowSliceMs: number;
+  flowBuilding: boolean;
+  flowBuildVisited: number;
+  flowRootLag: number;
+  flowTerrainLimited: boolean;
+  flowCompletedBuilds: number;
+  flowCoalescedRequests: number;
+  flowWalkableCacheSize: number;
   queueLength: number;
   queueSolved: number;
   queueBudgetMs: number;
   queueUsedMs: number;
+  queueFailed: number;
+  queueActiveStage: string | null;
   direct: number;
   flow: number;
   acquire: number;
@@ -43,7 +56,20 @@ export class Profiler {
   private fps = 0;
   private pathFrame = createPathFrame();
   private enemyNavigationFrame = createEnemyNavigationFrame();
-  private lastFlow = { flowRebuildMs: 0, flowVisited: 0, flowRadius: 0 };
+  private lastFlow = {
+    flowRebuildMs: 0,
+    flowVisited: 0,
+    flowRadius: 0,
+    flowSliceMs: 0,
+    flowBuilding: false,
+    flowBuildVisited: 0,
+    flowRootLag: 0,
+    flowTerrainLimited: false,
+    flowCompletedBuilds: 0,
+    flowCoalescedRequests: 0,
+    flowWalkableCacheSize: 0,
+  };
+  private navigationSchedulerFrame = createNavigationSchedulerFrame();
 
   beginFrame(now = performance.now()) {
     const frameDelta = Math.max(0.001, now - this.lastFrameTime);
@@ -52,6 +78,7 @@ export class Profiler {
     this.frameStart = now;
     this.pathFrame = createPathFrame();
     this.enemyNavigationFrame = createEnemyNavigationFrame(this.lastFlow);
+    this.navigationSchedulerFrame = createNavigationSchedulerFrame();
   }
 
   measure<T>(name: string, callback: () => T): T {
@@ -81,22 +108,54 @@ export class Profiler {
     this.pathFrame.avgMs = this.pathFrame.calls > 0 ? this.pathFrame.totalMs / this.pathFrame.calls : 0;
   }
 
-  recordEnemyFlowField(ms: number, visited: number, radius: number) {
-    this.lastFlow = { flowRebuildMs: ms, flowVisited: visited, flowRadius: radius };
-    this.enemyNavigationFrame.flowRebuildMs = ms;
-    this.enemyNavigationFrame.flowVisited = visited;
-    this.enemyNavigationFrame.flowRadius = radius;
+  recordEnemyFlowField(params: {
+    rebuildMs: number;
+    visited: number;
+    radius: number;
+    sliceMs: number;
+    building: boolean;
+    buildVisited: number;
+    rootLag: number;
+    terrainLimited: boolean;
+    completedBuilds: number;
+    coalescedRequests: number;
+    walkableCacheSize: number;
+  }) {
+    this.lastFlow = {
+      flowRebuildMs: params.rebuildMs,
+      flowVisited: params.visited,
+      flowRadius: params.radius,
+      flowSliceMs: params.sliceMs,
+      flowBuilding: params.building,
+      flowBuildVisited: params.buildVisited,
+      flowRootLag: params.rootLag,
+      flowTerrainLimited: params.terrainLimited,
+      flowCompletedBuilds: params.completedBuilds,
+      flowCoalescedRequests: params.coalescedRequests,
+      flowWalkableCacheSize: params.walkableCacheSize,
+    };
+    Object.assign(this.enemyNavigationFrame, this.lastFlow);
   }
 
   recordEnemyNavigationMode(mode: "direct" | "flow" | "acquire" | "fallback" | "waiting") {
     this.enemyNavigationFrame[mode] += 1;
   }
 
-  recordEnemyPathQueue(params: { queueLength: number; solved: number; budgetMs: number; usedMs: number }) {
+  recordEnemyPathQueue(params: { queueLength: number; solved: number; failed?: number; budgetMs: number; usedMs: number; activeStage?: string | null }) {
     this.enemyNavigationFrame.queueLength = params.queueLength;
     this.enemyNavigationFrame.queueSolved = params.solved;
     this.enemyNavigationFrame.queueBudgetMs = params.budgetMs;
     this.enemyNavigationFrame.queueUsedMs = params.usedMs;
+    this.enemyNavigationFrame.queueFailed = params.failed ?? 0;
+    this.enemyNavigationFrame.queueActiveStage = params.activeStage ?? null;
+  }
+
+  recordNavigationScheduler(params: NavigationSchedulerDiagnostics) {
+    this.navigationSchedulerFrame = {
+      ...params,
+      slices: { ...params.slices },
+      timeMs: { ...params.timeMs },
+    };
   }
 
   snapshot(): ProfilerSnapshot {
@@ -105,6 +164,11 @@ export class Profiler {
       metrics: Object.fromEntries(this.metrics),
       pathfinding: { ...this.pathFrame },
       enemyNavigation: { ...this.enemyNavigationFrame },
+      navigationScheduler: {
+        ...this.navigationSchedulerFrame,
+        slices: { ...this.navigationSchedulerFrame.slices },
+        timeMs: { ...this.navigationSchedulerFrame.timeMs },
+      },
     };
   }
 
@@ -121,20 +185,53 @@ export class Profiler {
   }
 }
 
-function createEnemyNavigationFrame(lastFlow = { flowRebuildMs: 0, flowVisited: 0, flowRadius: 0 }): EnemyNavigationMetrics {
+function createEnemyNavigationFrame(lastFlow = {
+  flowRebuildMs: 0,
+  flowVisited: 0,
+  flowRadius: 0,
+  flowSliceMs: 0,
+  flowBuilding: false,
+  flowBuildVisited: 0,
+  flowRootLag: 0,
+  flowTerrainLimited: false,
+  flowCompletedBuilds: 0,
+  flowCoalescedRequests: 0,
+  flowWalkableCacheSize: 0,
+}): EnemyNavigationMetrics {
   return {
     flowRebuildMs: lastFlow.flowRebuildMs,
     flowVisited: lastFlow.flowVisited,
     flowRadius: lastFlow.flowRadius,
+    flowSliceMs: lastFlow.flowSliceMs,
+    flowBuilding: lastFlow.flowBuilding,
+    flowBuildVisited: lastFlow.flowBuildVisited,
+    flowRootLag: lastFlow.flowRootLag,
+    flowTerrainLimited: lastFlow.flowTerrainLimited,
+    flowCompletedBuilds: lastFlow.flowCompletedBuilds,
+    flowCoalescedRequests: lastFlow.flowCoalescedRequests,
+    flowWalkableCacheSize: lastFlow.flowWalkableCacheSize,
     queueLength: 0,
     queueSolved: 0,
     queueBudgetMs: 0,
     queueUsedMs: 0,
+    queueFailed: 0,
+    queueActiveStage: null,
     direct: 0,
     flow: 0,
     acquire: 0,
     fallback: 0,
     waiting: 0,
+  };
+}
+
+function createNavigationSchedulerFrame(): NavigationSchedulerDiagnostics {
+  return {
+    budgetMs: 0,
+    usedMs: 0,
+    maxSliceMs: 0,
+    overshootMs: 0,
+    slices: { player: 0, flow: 0, fallback: 0 },
+    timeMs: { player: 0, flow: 0, fallback: 0 },
   };
 }
 

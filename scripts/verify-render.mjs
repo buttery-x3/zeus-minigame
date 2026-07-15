@@ -1742,6 +1742,24 @@ function verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, phase) {
   if (calls > 20) {
     throw new Error(`${viewport.name} pathfinding spike ${phase}: ${calls} calls`);
   }
+
+  const scheduler = diagnostics.profiler.navigationScheduler;
+  if (!scheduler || scheduler.budgetMs <= 0) {
+    throw new Error(`${viewport.name} missing navigation scheduler diagnostics ${phase}`);
+  }
+  for (const key of ["usedMs", "maxSliceMs", "overshootMs"]) {
+    if (!Number.isFinite(scheduler[key]) || scheduler[key] < 0) {
+      throw new Error(`${viewport.name} invalid navigation scheduler ${key} ${phase}: ${scheduler[key]}`);
+    }
+  }
+  if (scheduler.maxSliceMs > 12) {
+    throw new Error(`${viewport.name} navigation slice spike ${phase}: ${scheduler.maxSliceMs.toFixed(2)} ms`);
+  }
+  if (scheduler.usedMs > scheduler.budgetMs + 12) {
+    throw new Error(
+      `${viewport.name} navigation frame spike ${phase}: ${scheduler.usedMs.toFixed(2)}/${scheduler.budgetMs.toFixed(2)} ms`,
+    );
+  }
 }
 
 async function verifyEnemyHealthBarOptions(page) {

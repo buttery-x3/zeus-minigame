@@ -106,6 +106,10 @@ export class WfcTerrainProvider implements TerrainProvider {
     return this.generatedCells.get(key) ?? createTerrainCell(q, r, "open", "grass");
   }
 
+  getGeneratedCell(q: number, r: number) {
+    return this.generatedCells.get(hexCellKey(q, r)) ?? null;
+  }
+
   getGeneratedCellsInRange(center: HexCoord, radius: number) {
     const cells: TerrainCell[] = [];
     for (const cell of this.generatedCells.values()) {
