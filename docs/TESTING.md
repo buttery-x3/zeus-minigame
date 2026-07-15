@@ -74,7 +74,7 @@ Mobile layouts and controls are not currently supported or included in render ve
 
 ## Navigation Function Verification
 
-`npm run test:game` runs deterministic Vitest coverage for resumable linecasts, incremental Theta* and destination resolution, distinct path completion/failure reasons, long routes around extended barriers, active/staging flow-field swaps, latest-root coalescing, scheduler source fairness, obstacle-aware enemy movement choice, and direct-mode stall fallback. These tests use fixed operation limits in addition to wall-clock deadlines so correctness does not depend on machine speed.
+`npm run test:game` runs deterministic Vitest coverage for resumable linecasts, incremental Theta* and destination resolution, distinct path completion/failure reasons, long routes around extended barriers, active/staging flow-field swaps, latest-root coalescing, scheduler source fairness, obstacle-aware enemy movement choice, populated-flow direct-stall suppression, stale-goal cancellation, fallback queue timeout/rejoin, and multi-enemy path ownership. These tests use fixed operation limits in addition to wall-clock deadlines so correctness does not depend on machine speed.
 
 The browser verifier also holds movement while the camera tracks Zeus, checks that the requested reticle updates immediately, requires a route to complete while held requests refresh, and repeats held movement against a blocker to confirm the destination resolves to nearby discovered walkable ground.
 

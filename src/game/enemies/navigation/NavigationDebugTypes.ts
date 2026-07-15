@@ -22,4 +22,17 @@ export type NavigationDebugDiagnostics = {
   renderedSegments: number;
   segmentCapacity: number;
   stalled: StalledEnemyDiagnostics[];
+  fallbacks?: {
+    active: number;
+    queued: number;
+    oldestQueuedSeconds: number;
+    states: Array<{
+      id: number;
+      source: "player" | "acquisition";
+      goalCell: { q: number; r: number };
+      ageSeconds: number;
+      queuedSeconds: number;
+      routeProgressCells: number;
+    }>;
+  };
 };

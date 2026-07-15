@@ -215,7 +215,10 @@ export class EnemySystem {
   }
 
   getNavigationDebugDiagnostics() {
-    return this.navigationDebug.diagnostics();
+    return {
+      ...this.navigationDebug.diagnostics(),
+      fallbacks: this.navigation.getFallbackDiagnostics(),
+    };
   }
 
   spawnInitial(state: GameRuntimeState, playerPosition: THREE.Vector3) {

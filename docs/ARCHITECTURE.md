@@ -84,7 +84,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 - Normal melee enemies should not call Theta* directly during frame update; shared flow fields handle swarm chase and the path queue handles rare fallback paths.
 - Navigation work that can traverse many cells must be resumable. The scheduler owns the frame budget; callers enqueue or coalesce requests instead of running long searches inside input or simulation updates.
 - Completed player routes are rebased against the player's current position before application. A superseded result may establish an initial route, but it does not replace a route that is already usable while the newest held request remains queued.
-- Enemy crowd avoidance is advisory near structural collision: a steered move that makes no target progress is compared with the original navigation move, and sustained lack of progress forces the shared fallback queue even when direct line of sight exists.
+- Enemy crowd avoidance is advisory near structural collision: a steered move that makes no target progress is compared with the original navigation move. Direct line-of-sight crowd stalls remain local and never enter Theta*; only flow/acquisition stalls may enqueue a fallback.
+- Enemy fallbacks are temporary detours rather than destination commitments. Their source goal, age, queue time, and progress are tracked so stale player goals, changed acquisition edges, queue timeouts, restored line of sight, or a usable flow after local progress can cancel them.
 - Flow builds read only already-generated terrain and keep the last complete field active until a replacement is ready. Structural walkability caches are invalidated explicitly if runtime collision ever becomes mutable.
 
 ## Hex World

@@ -145,6 +145,13 @@ export class DiagnosticsPanel {
       .map((enemy) => `#${enemy.id} ${enemy.mode} ${enemy.collision} ${enemy.stationaryMs.toFixed(0)}ms p${enemy.pathLength}${enemy.pathQueued ? "q" : ""}`)
       .join(" · ");
     this.navigationDebugValue.textContent = `Debug ${debug.mode}, shown ${debug.displayedEnemies}/${debug.trackedEnemies}, latched ${debug.latchedEnemies}, lines ${debug.renderedSegments}/${debug.segmentCapacity}${stalled ? ` — ${stalled}` : ""}`;
+    const fallbacks = debug.fallbacks;
+    if (fallbacks) {
+      const fallbackStates = fallbacks.states
+        .map((state) => `#${state.id} ${state.source} g${state.goalCell.q},${state.goalCell.r} ${state.ageSeconds.toFixed(1)}s`)
+        .join(" · ");
+      this.navigationDebugValue.textContent += `, fallback ${fallbacks.active} q${fallbacks.queued} oldest ${fallbacks.oldestQueuedSeconds.toFixed(1)}s${!stalled && fallbackStates ? ` | ${fallbackStates}` : ""}`;
+    }
     this.navigationDebugLegend.hidden = debug.mode === "off";
     this.navigationDebugLegend.textContent = "Vectors cyan target · blue desired · magenta avoidance · green moved · red rejected · orange path";
   }

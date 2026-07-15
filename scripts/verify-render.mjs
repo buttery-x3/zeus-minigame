@@ -1454,6 +1454,14 @@ async function verifyWindowUi(page, viewport) {
   if (!diagnostics.profiler.enemyNavigation || diagnostics.profiler.enemyNavigation.flowRadius <= 0) {
     throw new Error("Diagnostics did not expose enemy flow-field metrics");
   }
+  if (
+    !diagnostics.navigationDebug.fallbacks ||
+    !Number.isFinite(diagnostics.navigationDebug.fallbacks.active) ||
+    !Number.isFinite(diagnostics.navigationDebug.fallbacks.queued) ||
+    !Number.isFinite(diagnostics.navigationDebug.fallbacks.oldestQueuedSeconds)
+  ) {
+    throw new Error(`Diagnostics did not expose fallback lifecycle metrics: ${JSON.stringify(diagnostics.navigationDebug)}`);
+  }
   const pacing = diagnostics.profiler.framePacing;
   const memory = diagnostics.profiler.memory;
   if (

@@ -32,8 +32,10 @@ export class EnemyPathQueue {
   request(enemy: EnemyState, goal: THREE.Vector3) {
     const existing = this.requestsById.get(enemy.id);
     if (existing) {
-      existing.goal.copy(goal);
-      return;
+      if (existing.goal.distanceToSquared(goal) <= 0.0001) {
+        return;
+      }
+      this.clearEnemy(enemy);
     }
 
     const request = { enemy, goal: goal.clone() };
@@ -45,6 +47,10 @@ export class EnemyPathQueue {
 
   hasWork() {
     return this.active !== null || this.requestHead < this.requests.length;
+  }
+
+  isQueued(enemyId: number) {
+    return this.queuedIds.has(enemyId);
   }
 
   update(deadline = performance.now() + this.budgetMs) {
@@ -81,6 +87,7 @@ export class EnemyPathQueue {
 
   clearEnemy(enemy: EnemyState) {
     if (!this.queuedIds.has(enemy.id)) {
+      enemy.pathQueued = false;
       return;
     }
 

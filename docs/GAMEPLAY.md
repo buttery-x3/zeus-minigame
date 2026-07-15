@@ -38,7 +38,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Movement commands require known terrain: Zeus can move to previously discovered walkable ground even when it is no longer currently visible.
 - Long movement linecasts and route searches are advanced over multiple frames with a distance-scaled search allowance. The move reticle appears at the requested point immediately; held movement keeps only the newest queued target, retains a usable completed route while a replacement is pending, and can apply a superseded completion when Zeus otherwise has no route.
 - If pathfinding cannot resolve a full route to a movement command, Zeus falls back to moving in a straight visible line toward the command until terrain blocks the path.
-- Enemy separation steering is checked against terrain collision. If crowd avoidance would push a minion into a blocker without making target progress, it retries the navigation-preferred move; a minion that still stalls in any navigation mode requests a queued fallback route instead of repeatedly driving into the same corner.
+- Enemy separation steering is checked against terrain collision. If crowd avoidance would push a minion into a blocker without making target progress, it retries the navigation-preferred move. Direct line-of-sight crowd stalls never request individual Theta* routes; only stalled flow/acquisition navigation may use the fallback queue.
 - Vitals, game, status, abilities, and diagnostics are DOM windows. The pause menu's Unlock UI toggle enables their lock controls and movement; it defaults off so transparent HUD panels stay quiet and click-through.
 
 ## Spells
@@ -74,6 +74,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Melee enemies chase directly when walls do not interrupt line of sight, otherwise they use a shared hex flow field around Zeus.
 - The weighted flow field is rebuilt incrementally and retains its last complete version during a rebuild, preserving support for future higher-cost terrain such as banks, bridges, or hills.
 - If an enemy cannot sample the flow field, it steers toward the field edge and only requests an incremental fallback path if it stalls.
+- Enemy fallback goals retain their source and age. Queued work times out after two seconds, player-relative goals are discarded after the player moves three hexes, and a route rejoins the shared flow after roughly one hex of useful local detour.
 - Player paths, flow rebuilds, and enemy fallback routes share a frame-level scheduler so blocker-heavy navigation cannot monopolize one simulation frame.
 - Ranged, retreating, special-goal, and future tactical enemy intents are scaffolded but not active yet.
 - Waves accelerate spawning over time.
