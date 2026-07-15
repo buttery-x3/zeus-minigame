@@ -618,6 +618,14 @@ async function verifyTerrainGrammar(page, viewport) {
   if (wfc.emergencyPatchCount > 0 || wfc.contradictionCount > 0) {
     throw new Error(`${viewport.name} rolling patch terrain used emergency patches: ${JSON.stringify(wfc)}`);
   }
+  if (
+    wfc.enclosureViolationSample ||
+    !Number.isFinite(wfc.enclosureCandidatesRejected) ||
+    !Number.isFinite(wfc.proceduralTopologyRejectionCount) ||
+    !Number.isFinite(wfc.proceduralTerminationPatchCount)
+  ) {
+    throw new Error(`${viewport.name} rolling patch terrain violated movement topology: ${JSON.stringify(wfc)}`);
+  }
   if (wfc.synthesisFailureCount > 0 || wfc.authoredPatchCount < 1 || wfc.authoredPatchCount <= wfc.proceduralPatchCount) {
     throw new Error(`${viewport.name} authored-first terrain synthesis was invalid: ${JSON.stringify(wfc)}`);
   }
