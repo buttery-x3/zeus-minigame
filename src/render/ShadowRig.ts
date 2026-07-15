@@ -30,11 +30,19 @@ export class ShadowRig {
   }
 
   update(target: THREE.Vector3) {
+    if (!this.light.visible) {
+      return;
+    }
     this.focus.set(this.snap(target.x), 0, this.snap(target.z));
     this.light.target.position.copy(this.focus);
     this.light.position.copy(this.focus).add(LIGHT_OFFSET);
     this.light.target.updateMatrixWorld();
     this.light.updateMatrixWorld();
+  }
+
+  setEnabled(enabled: boolean) {
+    this.light.visible = enabled;
+    this.light.castShadow = enabled;
   }
 
   diagnostics() {
@@ -44,6 +52,7 @@ export class ShadowRig {
       focus: this.focus.toArray(),
       lightPosition: this.light.position.toArray(),
       targetPosition: this.light.target.position.toArray(),
+      enabled: this.light.visible,
       shadowSize: SHADOW_SIZE,
       texelSize: this.texelSize,
       camera: {

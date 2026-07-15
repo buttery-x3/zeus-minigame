@@ -25,13 +25,14 @@ This runs the production build and a headless browser smoke test for rendering, 
 - Quick Cast is on by default: hold `Q` or `W` to aim, then release to cast.
 - When Quick Cast is off in the pause menu, press `Q` or `W`, then left-click to cast.
 - Allow Max Range Target Snap is on by default: out-of-range spell aims cast at max range.
+- Potato Rendering in the pause menu keeps the normal display cadence while using a half-resolution, shadowless primitive presentation.
 - Press `Esc` or right-click to cancel targeting.
 - Press `R` after defeat to restart.
 
 ## Current Shape
 
 - Orthographic isometric camera following the player in a larger axial hex world.
-- Three.js mesh player, enemies, hex terrain cells, wall blockers, water tiles, and lightning effects.
+- Three.js mesh player, enemies, instanced hex terrain and wall batches, water tiles, and lightning effects.
 - Rolling patch-WFC hex terrain with structural cells (`open`, `wall`, `bank`, `lake`, `river`) and deterministic charged/cursed special-ground surfaces.
 - Simple melee chaser enemies that spawn around the player.
 - HTML/CSS health, mana, cooldowns, wave and kill counters, hex coordinates, and a movable Cursed Energy currency panel.

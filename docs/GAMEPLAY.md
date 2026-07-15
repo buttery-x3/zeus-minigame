@@ -14,6 +14,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Press backtick or `F3` to toggle diagnostics.
 - Press `V` to toggle enemy health bars between smart and always visible.
 - Press `R` after defeat to restart.
+- Use Potato Rendering in the pause menu to reduce GPU load. It persists across reloads and keeps the normal display cadence while using a half-resolution render buffer, no dynamic shadows, unlit terrain materials, and primitive character visuals without changing simulation timing.
 - Press `F4` or use the pause menu to toggle Terrain Debug, which removes fog, zooms the camera out 3x with debug framing, renders a wider window of already-generated terrain, bypasses visibility-gated movement/cast checks, and keeps Zeus at full HP for terrain inspection.
 
 ## Audio
@@ -77,6 +78,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 ## World
 
 - The world is a deterministic axial hex grid over the `X/Z` plane. HUD coordinates are shown as `q,r`.
+- Visible terrain and wall cells are submitted as shared instanced batches in both Normal and Potato rendering modes; terrain generation and gameplay cells remain renderer-independent.
 - The world has no gameplay boundary; rolling patch terrain is generated as needed around Zeus.
 - Terrain cells are supplied by the default WFC terrain provider. It generates rolling patch-by-patch terrain around the player over explicit patch tile variants. A micro hex is a gameplay terrain cell; a patch tile is a non-overlapping radius-2 group of micro hexes selected as one generation unit.
 - Terrain cells have a structural type and a derived surface. Patch generation currently emits `open`, `wall`, `lake`, and `river`; `bank` remains reserved for a future post-generation water-adjacency pass. Surfaces include `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, `charged`, and `cursed`.

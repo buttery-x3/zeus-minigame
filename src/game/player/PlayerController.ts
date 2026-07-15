@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { PLAYER_COLLISION_RADIUS, PLAYER_MOVE_SPEED, PLAYER_PATHFINDING_BUDGET_MS, PLAYER_PATHFINDING_CANDIDATE_ATTEMPTS } from "../../config";
 import { distance2D } from "../../lib/math";
-import type { GameMaterials } from "../../render/materials";
+import type { GameMaterialPalettes } from "../../render/materials";
 import type { GameEffects } from "../../render/GameEffects";
 import { createCrosshair, createRing } from "../../render/primitives";
 import { createPlayerModel, PLAYER_AURA_COLOR, PLAYER_CHARGED_AURA_COLOR } from "../../render/meshes";
 import type { SpellId } from "../../types";
 import type { CollisionSystem } from "../collision/CollisionSystem";
+import type { RenderMode } from "../preferences/GamePreferences";
 import type { GridWorld, HexCoord } from "../../world/GridWorld";
 import { PlayerCharacter } from "./PlayerCharacter";
 
@@ -34,11 +35,13 @@ export class PlayerController {
     private readonly gridWorld: GridWorld,
     private readonly collision: CollisionSystem,
     private readonly effects: GameEffects,
-    private readonly materials: GameMaterials,
+    private readonly materialPalettes: GameMaterialPalettes,
+    private renderMode: RenderMode,
   ) {
-    this.model = createPlayerModel(this.materials.player);
+    const materials = this.materialPalettes[this.renderMode];
+    this.model = createPlayerModel(materials.player);
     this.object = this.model.group;
-    this.character = new PlayerCharacter(this.model, this.materials.player);
+    this.character = new PlayerCharacter(this.model, materials.player, this.renderMode === "potato");
     this.object.position.set(0, 0, 0);
     this.moveTarget.copy(this.object.position);
     this.syncGroundCell();
@@ -104,6 +107,14 @@ export class PlayerController {
 
   setMoveSpeed(moveSpeed: number) {
     this.moveSpeed = moveSpeed;
+  }
+
+  setRenderMode(renderMode: RenderMode) {
+    if (this.renderMode === renderMode) {
+      return;
+    }
+    this.renderMode = renderMode;
+    this.character.setLowDetail(renderMode === "potato", this.materialPalettes[renderMode].player);
   }
 
   playSpellCast(spellId: SpellId, target: THREE.Vector3) {

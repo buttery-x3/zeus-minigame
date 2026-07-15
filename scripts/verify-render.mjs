@@ -57,6 +57,7 @@ async function verifyInBrowser() {
       await waitForPlayerModel(page, viewport);
       await verifyPlayerAnimationLifecycle(page, viewport);
       await verifyEnemyAnimationLifecycle(page, viewport);
+      await verifyPotatoRendering(page, viewport);
       await verifyAudioSystem(page, viewport);
 
       await reloadGame(page);
@@ -338,6 +339,7 @@ async function verifyGamePreferencesPersistence(page, viewport) {
   await page.click("[data-quick-cast-toggle]");
   await page.click("[data-max-range-target-snap-toggle]");
   await page.click("[data-unlock-ui-toggle]");
+  await page.click("[data-potato-mode-toggle]");
   await page.click("[data-terrain-debug-toggle]");
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
@@ -366,6 +368,7 @@ async function verifyGamePreferencesPersistence(page, viewport) {
         settings.quickCastEnabled === false &&
         settings.allowMaxRangeTargetSnap === false &&
         settings.unlockUiEnabled === true &&
+        settings.renderMode === "potato" &&
         panelIds.every((id) => Number.isFinite(settings.hudPanelPositions?.[id]?.x) && Number.isFinite(settings.hudPanelPositions?.[id]?.y))
       );
     },
@@ -379,6 +382,7 @@ async function verifyGamePreferencesPersistence(page, viewport) {
     diagnostics.input.quickCastEnabled ||
     diagnostics.input.allowMaxRangeTargetSnap ||
     !diagnostics.input.unlockUiEnabled ||
+    diagnostics.input.renderMode !== "potato" ||
     diagnostics.input.terrainDebugMode
   ) {
     throw new Error(`${viewport.name} game preferences did not restore correctly: ${JSON.stringify(diagnostics.input)}`);
@@ -401,6 +405,7 @@ async function verifyGamePreferencesPersistence(page, viewport) {
     controls.quickCastEnabled ||
     controls.allowMaxRangeTargetSnap ||
     !controls.unlockUiEnabled ||
+    !controls.potatoMode ||
     controls.terrainDebugMode
   ) {
     throw new Error(`${viewport.name} persisted game preferences did not render in the menu: ${JSON.stringify(controls)}`);
@@ -416,6 +421,7 @@ async function verifyGamePreferencesPersistence(page, viewport) {
           quickCastEnabled: "invalid",
           allowMaxRangeTargetSnap: false,
           unlockUiEnabled: true,
+          renderMode: "invalid",
           terrainDebugMode: true,
           hudPanelPositions: {
             "hud-vitals": { x: 2, y: -1 },
@@ -433,6 +439,7 @@ async function verifyGamePreferencesPersistence(page, viewport) {
     !diagnostics.input.quickCastEnabled ||
     diagnostics.input.allowMaxRangeTargetSnap ||
     !diagnostics.input.unlockUiEnabled ||
+    diagnostics.input.renderMode !== "normal" ||
     diagnostics.input.terrainDebugMode
   ) {
     throw new Error(`${viewport.name} partial game preferences did not fall back field-by-field: ${JSON.stringify(diagnostics.input)}`);
@@ -446,6 +453,7 @@ async function verifyGamePreferencesPersistence(page, viewport) {
     !diagnostics.input.quickCastEnabled ||
     !diagnostics.input.allowMaxRangeTargetSnap ||
     diagnostics.input.unlockUiEnabled ||
+    diagnostics.input.renderMode !== "normal" ||
     diagnostics.input.terrainDebugMode
   ) {
     throw new Error(`${viewport.name} malformed game preferences did not fall back to defaults: ${JSON.stringify(diagnostics.input)}`);
@@ -461,6 +469,7 @@ async function readGamePreferenceControls(page) {
     quickCastEnabled: document.querySelector("[data-quick-cast]")?.checked,
     allowMaxRangeTargetSnap: document.querySelector("[data-max-range-target-snap]")?.checked,
     unlockUiEnabled: document.querySelector("[data-unlock-ui]")?.checked,
+    potatoMode: document.querySelector("[data-potato-mode]")?.checked,
     terrainDebugMode: document.querySelector("[data-terrain-debug]")?.checked,
   }));
 }
@@ -2135,6 +2144,75 @@ async function verifyEnemyAnimationLifecycle(page, viewport) {
   }
 }
 
+async function verifyPotatoRendering(page, viewport) {
+  const normal = await readDiagnostics(page);
+  if (
+    normal.rendering.mode !== "normal" ||
+    !normal.rendering.shadowsEnabled ||
+    normal.terrain.instancing.terrainInstances < 900 ||
+    normal.terrain.instancing.materialMode !== "normal" ||
+    normal.terrain.instancing.batches > 20 ||
+    normal.rendering.calls > 250 ||
+    normal.player.animation.activeVisual !== "animated-model"
+  ) {
+    throw new Error(`${viewport.name} normal rendering baseline was not instanced: ${JSON.stringify({
+      rendering: normal.rendering,
+      terrain: normal.terrain.instancing,
+      player: normal.player.animation,
+    })}`);
+  }
+
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  await page.click("[data-potato-mode-toggle]");
+  await page.waitForFunction(() => {
+    const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+    return (
+      diagnostics?.rendering.mode === "potato" &&
+      diagnostics.rendering.pixelRatio === 0.5 &&
+      !diagnostics.rendering.shadowsEnabled &&
+      diagnostics.player.animation.activeVisual === "primitive" &&
+      diagnostics.enemyAnimations.primitiveVisuals === diagnostics.enemyAnimations.total
+    );
+  });
+  await page.waitForTimeout(240);
+
+  const potato = await readDiagnostics(page);
+  if (
+    potato.rendering.renderedFrames - normal.rendering.renderedFrames < 3 ||
+    potato.terrain.instancing.terrainInstances < 900 ||
+    potato.terrain.instancing.materialMode !== "potato" ||
+    potato.terrain.instancing.batches > 20 ||
+    potato.enemyAnimations.lowDetail !== potato.enemyAnimations.total ||
+    potato.input.renderMode !== "potato"
+  ) {
+    throw new Error(`${viewport.name} potato rendering profile was incomplete: ${JSON.stringify({
+      rendering: potato.rendering,
+      terrain: potato.terrain.instancing,
+      player: potato.player.animation,
+      enemies: potato.enemyAnimations,
+    })}`);
+  }
+
+  const storedMode = await page.evaluate(() => JSON.parse(window.localStorage.getItem("zeus.settings.v1") ?? "{}").renderMode);
+  if (storedMode !== "potato") {
+    throw new Error(`${viewport.name} potato rendering mode was not persisted`);
+  }
+
+  await page.click("[data-potato-mode-toggle]");
+  await page.waitForFunction(() => {
+    const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+    return (
+      diagnostics?.rendering.mode === "normal" &&
+      diagnostics.rendering.shadowsEnabled &&
+      diagnostics.player.animation.activeVisual === "animated-model" &&
+      diagnostics.enemyAnimations.animatedVisuals === diagnostics.enemyAnimations.total
+    );
+  });
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+}
+
 async function verifyAbilityCooldownUi(page, viewport, spellId) {
   await page.waitForFunction((id) => {
     const button = document.querySelector(`[data-ability="${id}"]`);
@@ -2364,10 +2442,14 @@ async function reloadGame(page) {
 
 async function waitForPlayerModel(page, viewport) {
   await page.waitForFunction(() => {
-    const loadState = window.__ZEUS_GAME__?.getDiagnostics().player.animation.loadState;
-    return loadState === "ready" || loadState === "error";
+    const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
+    const loadState = diagnostics?.player.animation.loadState;
+    return diagnostics?.input.renderMode === "potato" || loadState === "ready" || loadState === "error";
   });
   const diagnostics = await readDiagnostics(page);
+  if (diagnostics.input.renderMode === "potato" && diagnostics.player.animation.activeVisual === "primitive") {
+    return;
+  }
   if (diagnostics.player.animation.loadState !== "ready") {
     throw new Error(`${viewport.name} animated Zeus model failed to load: ${JSON.stringify(diagnostics.player.animation)}`);
   }

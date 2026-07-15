@@ -8,12 +8,14 @@ export const HUD_PANEL_IDS = ["hud-vitals", "hud-status", "hud-position", "hud-a
 
 export type HudPanelId = (typeof HUD_PANEL_IDS)[number];
 export type HudPanelPositions = Partial<Record<HudPanelId, NormalizedWindowPosition>>;
+export type RenderMode = "normal" | "potato";
 
 export type GamePreferences = {
   enemyHealthBarMode: EnemyHealthBarVisibilityMode;
   quickCastEnabled: boolean;
   allowMaxRangeTargetSnap: boolean;
   unlockUiEnabled: boolean;
+  renderMode: RenderMode;
   hudPanelPositions: HudPanelPositions;
 };
 
@@ -22,6 +24,7 @@ export const DEFAULT_GAME_PREFERENCES: GamePreferences = {
   quickCastEnabled: true,
   allowMaxRangeTargetSnap: true,
   unlockUiEnabled: false,
+  renderMode: "normal",
   hudPanelPositions: {},
 };
 
@@ -72,6 +75,7 @@ export function loadGamePreferences(): GamePreferences {
         DEFAULT_GAME_PREFERENCES.allowMaxRangeTargetSnap,
       ),
       unlockUiEnabled: normalizeBoolean(parsed.unlockUiEnabled, DEFAULT_GAME_PREFERENCES.unlockUiEnabled),
+      renderMode: normalizeRenderMode(parsed.renderMode),
       hudPanelPositions: normalizeHudPanelPositions(parsed.hudPanelPositions),
     };
   } catch {
@@ -122,6 +126,10 @@ function normalizePosition(position: NormalizedWindowPosition): NormalizedWindow
 
 function normalizeHealthBarMode(value: unknown): EnemyHealthBarVisibilityMode {
   return value === "always" || value === "smart" ? value : DEFAULT_GAME_PREFERENCES.enemyHealthBarMode;
+}
+
+function normalizeRenderMode(value: unknown): RenderMode {
+  return value === "potato" ? "potato" : DEFAULT_GAME_PREFERENCES.renderMode;
 }
 
 function normalizeBoolean(value: unknown, fallback: boolean) {

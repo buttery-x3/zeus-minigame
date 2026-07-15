@@ -31,6 +31,7 @@ npm run verify
 - Holds left-click on known visible terrain and checks that movement retargets as the follow camera moves.
 - Loads the 512px skinned Zeus GLB with forced opaque, depth-writing materials and checks its exact animation inventory, `Idle_8` default, `Run_03` movement, 5x Q/W cast clips facing their resolved targets, pause freeze, `Dead` defeat, and restart back to idle through runtime diagnostics.
 - Loads the shared skinned melee-enemy GLB for every spawned enemy, checks its exact animation inventory, verifies `Walking_Woman` is the default loop, triggers `Stylish_Walk_inplace`, and confirms the enemy returns to walking.
+- Confirms Normal rendering uses instanced terrain batches, then toggles Potato rendering live and checks its half-resolution buffer, continuous presentation cadence, disabled shadows, primitive player/enemy visuals, unlit terrain rebuild, and persisted preference before restoring Normal mode.
 - Preloads the required Web Audio cue catalog from the configured base path, unlocks playback from a user gesture, and checks Chain Lightning, Lightning Bolt, failed-cast, player-hit, minion-death, and new-wave routing through deterministic audio diagnostics rather than speaker output.
 - Checks that failed casts preserve distinct cooldown, out-of-mana, hidden-target, and strict out-of-range reasons while sharing the current failure cue.
 - Checks the tuned per-cue mix levels and confirms cooldown failures play one octave lower with a subtle random detune range.
@@ -54,7 +55,7 @@ npm run verify
 - Clicks a visible wall blocker and checks that navigation resolves to reachable discovered neighboring hex space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
 - Checks the pause menu audio controls, enemy health bar visibility options, Quick Cast toggle, Allow Max Range Target Snap toggle, Unlock UI toggle, and confirms the expanded menu fits the supported desktop viewport.
-- Confirms gameplay/UI preferences persist across reloads, including every HUD panel position, while Terrain Debug remains session-only; partial and malformed stored settings must fall back safely.
+- Confirms gameplay/UI preferences persist across reloads, including Potato rendering and every HUD panel position, while Terrain Debug remains session-only; partial and malformed stored settings must fall back safely.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
 - Checks that diagnostics exposes enemy hex flow-field metrics and that the smoke path does not create a pathfinding call spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
