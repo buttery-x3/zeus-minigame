@@ -58,7 +58,7 @@ npm run verify
 - Checks the pause menu audio controls, enemy health bar visibility options, Quick Cast toggle, Allow Max Range Target Snap toggle, Unlock UI toggle, session-only Navigation Debug options, and confirms the expanded menu fits the supported desktop viewport.
 - Confirms gameplay/UI preferences persist across reloads, including Potato rendering and every HUD panel position, while Terrain Debug remains session-only; partial and malformed stored settings must fall back safely.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
-- Checks that diagnostics exposes enemy hex flow-field, frame scheduler, 600-frame pacing, heap/resource, and pooled navigation-overlay metrics; exercises `F6` through Stalled/All/Off; and confirms Off clears tracked enemies and rendered lines. The smoke path must not create a pathfinding call or navigation-slice spike.
+- Checks that diagnostics exposes enemy hex flow-field, frame scheduler, 600-frame pacing, heap/resource, and pooled navigation-overlay metrics; exercises `F6` through Stalled/All/Off; confirms active navigation debugging makes the player invulnerable and Off removes that protection; and confirms Off clears tracked enemies and rendered lines. The smoke path must not create a pathfinding call or navigation-slice spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.

@@ -241,6 +241,7 @@ export class ZeusGame {
         unlockUiEnabled: this.unlockUiEnabled,
         terrainDebugMode: this.terrainDebugMode,
         navigationDebugMode: this.navigationDebugMode,
+        debugInvulnerable: this.hasDebugInvulnerability(),
         renderMode: this.renderMode,
         pointerWorld: this.input.pointerWorld.toArray(),
       },
@@ -380,7 +381,7 @@ export class ZeusGame {
       this.syncPauseState();
     }
 
-    if (this.terrainDebugMode) {
+    if (this.hasDebugInvulnerability()) {
       this.state.health = runStats.maxHealth;
     }
 
@@ -444,7 +445,7 @@ export class ZeusGame {
     }
 
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
-    if (this.terrainDebugMode) {
+    if (this.hasDebugInvulnerability()) {
       this.state.health = this.upgrades.getStats().maxHealth;
     }
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
@@ -508,7 +509,7 @@ export class ZeusGame {
 
   private damagePlayer(amount: number) {
     const maxHealth = this.upgrades.getStats().maxHealth;
-    if (this.terrainDebugMode) {
+    if (this.hasDebugInvulnerability()) {
       this.state.health = maxHealth;
       return;
     }
@@ -664,8 +665,15 @@ export class ZeusGame {
 
   private setNavigationDebugMode(mode: NavigationDebugMode) {
     this.navigationDebugMode = mode;
+    if (this.hasDebugInvulnerability()) {
+      this.state.health = this.upgrades.getStats().maxHealth;
+    }
     this.enemies.setNavigationDebugMode(mode);
     this.ui.setNavigationDebugMode(mode);
+  }
+
+  private hasDebugInvulnerability() {
+    return this.terrainDebugMode || this.navigationDebugMode !== "off";
   }
 
   private cycleNavigationDebugMode() {

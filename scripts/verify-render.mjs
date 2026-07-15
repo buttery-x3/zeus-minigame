@@ -1835,6 +1835,19 @@ async function verifyNavigationDebugOptions(page) {
     if (selected !== "true") {
       throw new Error(`Navigation Debug button did not select ${mode}`);
     }
+
+    if (mode === "stalled") {
+      await page.evaluate(() => window.__ZEUS_GAME__?.damagePlayerForVerification(7));
+      const diagnostics = await readDiagnostics(page);
+      if (!diagnostics.input.debugInvulnerable || diagnostics.player.health !== diagnostics.upgrades.stats.maxHealth) {
+        throw new Error(`Navigation Debug did not protect the player: ${JSON.stringify(diagnostics.input)}`);
+      }
+    } else if (mode === "off") {
+      const diagnostics = await readDiagnostics(page);
+      if (diagnostics.input.debugInvulnerable) {
+        throw new Error("Navigation Debug invulnerability remained active after selecting Off");
+      }
+    }
   }
 }
 
