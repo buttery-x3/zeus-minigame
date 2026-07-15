@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
+    "test:terrain": "vitest run src/world",
     "preview": "vite preview --host 127.0.0.1",
     "start": "node server/static-server.mjs",
     "pm2:start": "pm2 start ecosystem.config.cjs",
@@ -13,7 +14,7 @@
     "pm2:stop": "pm2 delete zeus-minigame",
     "deploy:production": "bash scripts/deploy-production.sh",
     "verify:render": "node scripts/verify-render.mjs",
-    "verify": "npm run build && npm run verify:render"
+    "verify": "npm run build && npm run test:terrain && npm run verify:render"
   },
   "dependencies": {
     "three": "^0.184.0"
@@ -22,6 +23,7 @@
     "@types/three": "^0.184.1",
     "playwright-core": "^1.60.0",
     "typescript": "^5.9.3",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^4.1.10"
   }
 }

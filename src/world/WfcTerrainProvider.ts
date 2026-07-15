@@ -16,8 +16,13 @@ import {
   patchVariantsCanNeighbor,
   type HexPatchSocketMismatch,
 } from "./HexTerrainRules";
-import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, hexCellKey, hexDistance, type HexCoord } from "./hexCoordinates";
+import { hexCellKey, hexDistance, type HexCoord } from "./hexCoordinates";
 import { createTerrainCell, type TerrainProvider } from "./TerrainProvider";
+import {
+  serializeBoundaryConstraints,
+  synthesizeProceduralPatch,
+} from "./ProceduralTerrainPatch";
+import { collectPatchBoundaryConstraints, selectAuthoredPatchVariant } from "./RollingTerrainPatchSelection";
 
 type CommittedPatch = HexCoord & {
   variant: HexPatchTileVariant;
@@ -36,6 +41,14 @@ type RollingWfcDiagnostics = {
   generatedLastEnsure: number;
   emergencyPatchCount: number;
   contradictionCount: number;
+  authoredPatchCount: number;
+  proceduralPatchCount: number;
+  proceduralPatchCacheSize: number;
+  synthesisAttemptCount: number;
+  synthesisFailureCount: number;
+  synthesisDurationMs: number;
+  proceduralFillModeCounts: Record<string, number>;
+  proceduralBoundarySignatureCounts: Record<string, number>;
   resolvedPatchCount: number;
   resolvedCells: number;
   structureCounts: Record<TerrainStructure, number>;
@@ -45,7 +58,7 @@ type RollingWfcDiagnostics = {
   fellBack: false;
 };
 
-const WFC_TERRAIN_SEED = 20260517;
+export const WFC_TERRAIN_SEED = 20260517;
 const SAFE_START_PATCH_RADIUS = 1;
 
 export class WfcTerrainProvider implements TerrainProvider {
@@ -56,12 +69,20 @@ export class WfcTerrainProvider implements TerrainProvider {
   private readonly structureCounts = createTerrainStructureCounts();
   private readonly surfaceCounts = createTerrainSurfaceCounts();
   private readonly patchVariantCounts: Record<string, number> = {};
+  private readonly proceduralPatchCache = new Map<string, HexPatchTileVariant>();
+  private readonly proceduralFillModeCounts: Record<string, number> = {};
+  private readonly proceduralBoundarySignatureCounts: Record<string, number> = {};
   private generatedPatchCount = 0;
   private generatedLastEnsure = 0;
   private emergencyPatchCount = 0;
   private contradictionCount = 0;
+  private authoredPatchCount = 0;
+  private proceduralPatchCount = 0;
+  private synthesisAttemptCount = 0;
+  private synthesisFailureCount = 0;
+  private synthesisDurationMs = 0;
 
-  constructor() {
+  constructor(private readonly seed = WFC_TERRAIN_SEED) {
     this.ensureGeneratedAround(0, 0);
   }
 
@@ -112,13 +133,21 @@ export class WfcTerrainProvider implements TerrainProvider {
       mode: "rolling-patch",
       patchRadius: HEX_PATCH_RADIUS,
       activePatchRadius: ROLLING_TERRAIN_PATCH_RADIUS,
-      seed: WFC_TERRAIN_SEED,
+      seed: this.seed,
       patchVariantCount: this.variants.length,
       committedPatchCount: this.committedPatches.size,
       generatedPatchCount: this.generatedPatchCount,
       generatedLastEnsure: this.generatedLastEnsure,
       emergencyPatchCount: this.emergencyPatchCount,
       contradictionCount: this.contradictionCount,
+      authoredPatchCount: this.authoredPatchCount,
+      proceduralPatchCount: this.proceduralPatchCount,
+      proceduralPatchCacheSize: this.proceduralPatchCache.size,
+      synthesisAttemptCount: this.synthesisAttemptCount,
+      synthesisFailureCount: this.synthesisFailureCount,
+      synthesisDurationMs: this.synthesisDurationMs,
+      proceduralFillModeCounts: { ...this.proceduralFillModeCounts },
+      proceduralBoundarySignatureCounts: { ...this.proceduralBoundarySignatureCounts },
       resolvedPatchCount: this.committedPatches.size,
       resolvedCells: this.generatedCells.size,
       structureCounts: { ...this.structureCounts },
@@ -141,6 +170,15 @@ export class WfcTerrainProvider implements TerrainProvider {
     const committed = { ...patch, variant, emergency };
     this.committedPatches.set(key, committed);
     this.patchVariantCounts[variant.id] = (this.patchVariantCounts[variant.id] ?? 0) + 1;
+    if (variant.provenance === "procedural") {
+      this.proceduralPatchCount += 1;
+      const fillMode = variant.procedural?.fillMode ?? "unknown";
+      const boundaryKey = variant.procedural?.boundaryKey ?? "unknown";
+      this.proceduralFillModeCounts[fillMode] = (this.proceduralFillModeCounts[fillMode] ?? 0) + 1;
+      this.proceduralBoundarySignatureCounts[boundaryKey] = (this.proceduralBoundarySignatureCounts[boundaryKey] ?? 0) + 1;
+    } else {
+      this.authoredPatchCount += 1;
+    }
     this.generatedPatchCount += 1;
     if (emergency) {
       this.emergencyPatchCount += 1;
@@ -151,90 +189,37 @@ export class WfcTerrainProvider implements TerrainProvider {
   }
 
   private choosePatchVariant(patch: HexCoord) {
-    const compatible = this.variants.filter((variant) => this.matchesCommittedNeighbors(patch, variant));
-    const frontierSafe = compatible.filter((variant) => this.keepsNeighborDomainsOpen(patch, variant));
-    const baseCandidates = frontierSafe.length > 0 ? frontierSafe : compatible;
-    const safeStart = hexDistance(patch, { q: 0, r: 0 }) <= SAFE_START_PATCH_RADIUS;
-    const safeCandidates = safeStart ? baseCandidates.filter((variant) => variant.diagnostics.kind === "open") : [];
-    const riverCandidates =
-      !safeStart && this.structureCounts.river === 0
-        ? baseCandidates.filter((variant) => variant.diagnostics.kind === "river")
-        : [];
-    const candidates = safeCandidates.length > 0 ? safeCandidates : riverCandidates.length > 0 ? riverCandidates : baseCandidates;
+    const authored = selectAuthoredPatchVariant({
+      patch,
+      variants: this.variants,
+      committedPatches: this.committedPatches,
+      seed: this.seed,
+      safeStartRadius: SAFE_START_PATCH_RADIUS,
+      requireFirstRiver: this.structureCounts.river === 0,
+    });
+    if (!authored) {
+      const constraints = collectPatchBoundaryConstraints(patch, this.committedPatches);
+      const boundaryKey = serializeBoundaryConstraints(constraints);
+      const cached = this.proceduralPatchCache.get(boundaryKey);
+      if (cached) {
+        return { variant: cached, emergency: false };
+      }
 
-    if (candidates.length === 0) {
+      this.synthesisAttemptCount += 1;
+      const startedAt = performance.now();
+      const result = synthesizeProceduralPatch(constraints, this.seed);
+      this.synthesisDurationMs += performance.now() - startedAt;
+      if (result.ok) {
+        this.proceduralPatchCache.set(boundaryKey, result.variant);
+        return { variant: result.variant, emergency: false };
+      }
+
+      this.synthesisFailureCount += 1;
       this.contradictionCount += 1;
       return { variant: this.openVariant, emergency: true };
     }
 
-    return { variant: this.chooseWeightedVariant(patch, candidates), emergency: false };
-  }
-
-  private matchesCommittedNeighbors(patch: HexCoord, variant: HexPatchTileVariant) {
-    for (const direction of HEX_DIRECTION_ORDER) {
-      const offset = HEX_DIRECTIONS[direction];
-      const neighbor = this.committedPatches.get(hexCellKey(patch.q + offset.q, patch.r + offset.r));
-      if (neighbor && !patchVariantsCanNeighbor(variant, direction, neighbor.variant)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  private keepsNeighborDomainsOpen(patch: HexCoord, variant: HexPatchTileVariant) {
-    for (const direction of HEX_DIRECTION_ORDER) {
-      const offset = HEX_DIRECTIONS[direction];
-      const neighborPatch = { q: patch.q + offset.q, r: patch.r + offset.r };
-      if (this.committedPatches.has(hexCellKey(neighborPatch.q, neighborPatch.r))) {
-        continue;
-      }
-
-      const neighborHasCandidate = this.variants.some((neighborVariant) =>
-        this.matchesNeighborsWithHypothetical(neighborPatch, neighborVariant, patch, variant),
-      );
-      if (!neighborHasCandidate) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  private matchesNeighborsWithHypothetical(
-    patch: HexCoord,
-    variant: HexPatchTileVariant,
-    hypotheticalPatch: HexCoord,
-    hypotheticalVariant: HexPatchTileVariant,
-  ) {
-    for (const direction of HEX_DIRECTION_ORDER) {
-      const offset = HEX_DIRECTIONS[direction];
-      const neighborCoord = { q: patch.q + offset.q, r: patch.r + offset.r };
-      const neighborVariant =
-        neighborCoord.q === hypotheticalPatch.q && neighborCoord.r === hypotheticalPatch.r
-          ? hypotheticalVariant
-          : this.committedPatches.get(hexCellKey(neighborCoord.q, neighborCoord.r))?.variant;
-
-      if (neighborVariant && !patchVariantsCanNeighbor(variant, direction, neighborVariant)) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  private chooseWeightedVariant(patch: HexCoord, candidates: readonly HexPatchTileVariant[]) {
-    const totalWeight = candidates.reduce((sum, variant) => sum + variant.weight, 0);
-    let roll = seededUnit(WFC_TERRAIN_SEED, patch.q, patch.r) * totalWeight;
-
-    for (const variant of candidates) {
-      roll -= variant.weight;
-      if (roll <= 0) {
-        return variant;
-      }
-    }
-
-    return candidates[candidates.length - 1];
+    return { variant: authored, emergency: false };
   }
 
   private expandPatch(patch: CommittedPatch) {
@@ -250,7 +235,7 @@ export class WfcTerrainProvider implements TerrainProvider {
         localCell.surface,
         world.q,
         world.r,
-        WFC_TERRAIN_SEED,
+        this.seed,
       );
       const cell = createTerrainCell(world.q, world.r, localCell.structure, surface, localCell.edges);
       this.generatedCells.set(key, cell);
@@ -258,16 +243,4 @@ export class WfcTerrainProvider implements TerrainProvider {
       this.surfaceCounts[cell.surface] += 1;
     }
   }
-}
-
-function seededUnit(seed: number, q: number, r: number) {
-  let value = seed >>> 0;
-  value ^= Math.imul(q, 0x9e3779b1);
-  value ^= Math.imul(r, 0x85ebca77);
-  value ^= value >>> 16;
-  value = Math.imul(value, 0x7feb352d);
-  value ^= value >>> 15;
-  value = Math.imul(value, 0x846ca68b);
-  value ^= value >>> 16;
-  return (value >>> 0) / 0x100000000;
 }

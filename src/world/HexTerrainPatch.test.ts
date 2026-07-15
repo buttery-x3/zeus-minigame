@@ -1,0 +1,279 @@
+import { describe, expect, test } from "vitest";
+import type { HexEdgeKind } from "../types";
+import {
+  HEX_PATCH_LOCAL_CELLS,
+  createHexPatchTileCatalog,
+  summarizeAuthoredPatchFamilies,
+  type HexPatchTileVariant,
+} from "./HexTerrainCatalog";
+import { validateHexPatchVariant } from "./HexTerrainPatchValidation";
+import {
+  proceduralBoundaryConstraintsAreConsistent,
+  synthesizeProceduralPatch,
+  type HexPatchBoundaryConstraints,
+} from "./ProceduralTerrainPatch";
+import { patchVariantsCanNeighbor } from "./HexTerrainRules";
+import {
+  HEX_DIRECTIONS,
+  HEX_DIRECTION_ORDER,
+  hexCellKey,
+  type HexCoord,
+  type HexDirection,
+} from "./hexCoordinates";
+import { WfcTerrainProvider } from "./WfcTerrainProvider";
+
+describe("authored terrain patches", () => {
+  const variants = createHexPatchTileCatalog();
+
+  test("define valid, unique, weighted layouts for every terrain family", () => {
+    const ids = new Set<string>();
+    for (const variant of variants) {
+      const validation = validateHexPatchVariant(variant);
+      expect(validation.errors, variant.id).toEqual([]);
+      expect(ids.has(variant.id), variant.id).toBe(false);
+      expect(variant.provenance).toBe("authored");
+      expect(variant.cells.size).toBe(HEX_PATCH_LOCAL_CELLS.length);
+      ids.add(variant.id);
+    }
+
+    const families = summarizeAuthoredPatchFamilies(variants);
+    expect(families.open).toBeGreaterThanOrEqual(3);
+    expect(families.cliff).toBeGreaterThanOrEqual(12);
+    expect(families.river).toBeGreaterThanOrEqual(12);
+    expect(families.lake).toBeGreaterThanOrEqual(6);
+    expect(families.transition).toBeGreaterThanOrEqual(6);
+  });
+});
+
+describe("procedural patch closure", () => {
+  test("keeps an open core when the boundary exposes walkable cells", () => {
+    const result = synthesizeProceduralPatch({ ne: ["open", "river", "open"] }, 17);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.variant.procedural?.fillMode).toBe("open-core");
+    expect(result.variant.cells.get("0,0")?.structure).toBe("open");
+    expect(validateHexPatchVariant(result.variant).valid).toBe(true);
+  });
+
+  test("fills a homogeneous enclosure all the way inward", () => {
+    const constraints = Object.fromEntries(
+      HEX_DIRECTION_ORDER.map((direction) => [direction, ["closed", "closed", "closed"]]),
+    ) as HexPatchBoundaryConstraints;
+    const result = synthesizeProceduralPatch(constraints, 23);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.variant.procedural?.fillMode).toBe("enclosed");
+    expect([...result.variant.cells.values()].every((cell) => cell.structure === "wall")).toBe(true);
+  });
+
+  test("grows compatible mixed enclosures inward without inventing grass", () => {
+    const constraints: HexPatchBoundaryConstraints = {
+      ne: ["closed", "closed", "closed"],
+      e: ["closed", "lake", "lake"],
+      se: ["lake", "lake", "lake"],
+      sw: ["lake", "lake", "lake"],
+      w: ["lake", "closed", "closed"],
+      nw: ["closed", "closed", "closed"],
+    };
+    const result = synthesizeProceduralPatch(constraints, 29);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+    expect(result.variant.procedural?.fillMode).toBe("mixed-enclosure");
+    expect([...result.variant.cells.values()].some((cell) => cell.structure === "open")).toBe(false);
+    expect(new Set([...result.variant.cells.values()].map((cell) => cell.structure))).toEqual(new Set(["wall", "lake"]));
+  });
+
+  test("is deterministic for the same boundary and seed", () => {
+    const constraints: HexPatchBoundaryConstraints = {
+      ne: ["open", "river", "open"],
+      e: ["open", "closed", "open"],
+      sw: ["open", "lake", "open"],
+    };
+    const a = synthesizeProceduralPatch(constraints, 31);
+    const b = synthesizeProceduralPatch(constraints, 31);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) {
+      return;
+    }
+    expect(serializeCells(a.variant)).toBe(serializeCells(b.variant));
+  });
+
+  test("closes every reachable authored-neighbor boundary", { timeout: 60_000 }, () => {
+    const variants = createHexPatchTileCatalog();
+    const neighborhoods = enumerateReachableCenterBoundaries(variants);
+    const rotationClasses = new Map<string, HexPatchBoundaryConstraints>();
+    for (const constraints of neighborhoods.values()) {
+      const canonicalKey = canonicalRotationKey(constraints);
+      if (!rotationClasses.has(canonicalKey)) {
+        rotationClasses.set(canonicalKey, constraints);
+      }
+    }
+    let authoredCoverage = 0;
+    let proceduralCoverage = 0;
+
+    for (const [key, constraints] of rotationClasses) {
+      expect(proceduralBoundaryConstraintsAreConsistent(constraints), key).toBe(true);
+      const authored = variants.some((variant) => matchesConstraints(variant, constraints));
+      if (authored) {
+        authoredCoverage += 1;
+        continue;
+      }
+
+      const result = synthesizeProceduralPatch(constraints, 20260517);
+      expect(result.ok, key).toBe(true);
+      if (!result.ok) {
+        continue;
+      }
+      expect(validateHexPatchVariant(result.variant).errors, key).toEqual([]);
+      expect(matchesConstraints(result.variant, constraints), key).toBe(true);
+      proceduralCoverage += 1;
+    }
+
+    expect(authoredCoverage).toBeGreaterThan(0);
+    expect(proceduralCoverage).toBeGreaterThan(0);
+    expect(authoredCoverage + proceduralCoverage).toBe(rotationClasses.size);
+    console.info(
+      `terrain closure: ${neighborhoods.size} reachable boundaries in ${rotationClasses.size} rotation classes, ` +
+      `${authoredCoverage} authored, ${proceduralCoverage} procedural`,
+    );
+  });
+
+  test("synthesizes every rotation of a mixed boundary", () => {
+    const constraints: HexPatchBoundaryConstraints = {
+      ne: ["open", "river", "open"],
+      e: ["open", "closed", "open"],
+      sw: ["open", "lake", "open"],
+    };
+    for (let step = 0; step < 6; step += 1) {
+      const rotated = rotateConstraints(constraints, step);
+      const result = synthesizeProceduralPatch(rotated, 37);
+      expect(result.ok, serializeConstraints(rotated)).toBe(true);
+      if (result.ok) {
+        expect(matchesConstraints(result.variant, rotated)).toBe(true);
+      }
+    }
+  });
+});
+
+describe("rolling authored-first generation", () => {
+  test("uses procedural patches without socket mismatches or emergency substitution", { timeout: 30_000 }, () => {
+    for (const seed of [20260517, 20260518, 20260519, 20260520]) {
+      const provider = new WfcTerrainProvider(seed);
+      provider.ensureGeneratedAround(0, 0, 5);
+      const diagnostics = provider.getDiagnostics().wfc;
+      expect(diagnostics.emergencyPatchCount, `seed ${seed}`).toBe(0);
+      expect(diagnostics.contradictionCount, `seed ${seed}`).toBe(0);
+      expect(diagnostics.synthesisFailureCount, `seed ${seed}`).toBe(0);
+      expect(diagnostics.patchSocketMismatchSample, `seed ${seed}`).toBeNull();
+      expect(diagnostics.authoredPatchCount, `seed ${seed}`).toBeGreaterThan(diagnostics.proceduralPatchCount);
+    }
+  });
+});
+
+function enumerateReachableCenterBoundaries(variants: readonly HexPatchTileVariant[]) {
+  const ringCoords = HEX_DIRECTION_ORDER.map((direction) => HEX_DIRECTIONS[direction]);
+  const profiles = ringCoords.map((coord, index) => createRingProfiles(
+    variants,
+    coord,
+    ringCoords[(index + ringCoords.length - 1) % ringCoords.length],
+    ringCoords[(index + 1) % ringCoords.length],
+  ));
+  const boundaries = new Map<string, HexPatchBoundaryConstraints>();
+  const chosen: HexPatchTileVariant[] = [];
+
+  const visit = (index: number) => {
+    if (index === profiles.length) {
+      if (!patchVariantsCanNeighbor(chosen[chosen.length - 1], profiles[profiles.length - 1].toNext, chosen[0])) {
+        return;
+      }
+      const constraints: HexPatchBoundaryConstraints = {};
+      for (let ringIndex = 0; ringIndex < profiles.length; ringIndex += 1) {
+        const direction = HEX_DIRECTION_ORDER[ringIndex];
+        constraints[direction] = [...chosen[ringIndex].edges[profiles[ringIndex].inward]].reverse();
+      }
+      boundaries.set(serializeConstraints(constraints), constraints);
+      return;
+    }
+
+    for (const variant of profiles[index].variants) {
+      if (index > 0 && !patchVariantsCanNeighbor(chosen[index - 1], profiles[index - 1].toNext, variant)) {
+        continue;
+      }
+      chosen[index] = variant;
+      visit(index + 1);
+    }
+  };
+
+  visit(0);
+  return boundaries;
+}
+
+function createRingProfiles(
+  variants: readonly HexPatchTileVariant[],
+  coord: HexCoord,
+  previous: HexCoord,
+  next: HexCoord,
+) {
+  const inward = directionBetween(coord, { q: 0, r: 0 });
+  const toPrevious = directionBetween(coord, previous);
+  const toNext = directionBetween(coord, next);
+  const unique = new Map<string, HexPatchTileVariant>();
+  for (const variant of variants) {
+    const key = [inward, toPrevious, toNext].map((direction) => variant.edges[direction].join(",")).join("|");
+    if (!unique.has(key)) {
+      unique.set(key, variant);
+    }
+  }
+  return { inward, toNext, variants: [...unique.values()] };
+}
+
+function directionBetween(from: HexCoord, to: HexCoord): HexDirection {
+  const direction = HEX_DIRECTION_ORDER.find((candidate) => {
+    const offset = HEX_DIRECTIONS[candidate];
+    return from.q + offset.q === to.q && from.r + offset.r === to.r;
+  });
+  if (!direction) {
+    throw new Error(`Coordinates ${hexCellKey(from.q, from.r)} and ${hexCellKey(to.q, to.r)} are not neighbors`);
+  }
+  return direction;
+}
+
+function matchesConstraints(variant: HexPatchTileVariant, constraints: HexPatchBoundaryConstraints) {
+  return HEX_DIRECTION_ORDER.every((direction) => {
+    const expected = constraints[direction];
+    return !expected || expected.every((kind, index) => variant.edges[direction][index] === kind);
+  });
+}
+
+function serializeConstraints(constraints: HexPatchBoundaryConstraints) {
+  return HEX_DIRECTION_ORDER.map((direction) => `${direction}:${constraints[direction]?.join(",") ?? "*"}`).join("|");
+}
+
+function canonicalRotationKey(constraints: HexPatchBoundaryConstraints) {
+  return Array.from({ length: 6 }, (_, step) => serializeConstraints(rotateConstraints(constraints, step))).sort()[0];
+}
+
+function rotateConstraints(constraints: HexPatchBoundaryConstraints, step: number): HexPatchBoundaryConstraints {
+  const rotated: HexPatchBoundaryConstraints = {};
+  for (let index = 0; index < HEX_DIRECTION_ORDER.length; index += 1) {
+    const source = HEX_DIRECTION_ORDER[index];
+    const target = HEX_DIRECTION_ORDER[(index + step) % HEX_DIRECTION_ORDER.length];
+    if (constraints[source]) {
+      rotated[target] = [...constraints[source]];
+    }
+  }
+  return rotated;
+}
+
+function serializeCells(variant: HexPatchTileVariant) {
+  return HEX_PATCH_LOCAL_CELLS.map((coord) => {
+    const cell = variant.cells.get(hexCellKey(coord.q, coord.r));
+    return `${cell?.structure}/${cell?.surface}`;
+  }).join("|");
+}

@@ -1,9 +1,10 @@
 # Testing
 
-The project has two verification layers:
+The project has three verification layers:
 
 ```bash
 npm run build
+npm run test:terrain
 npm run verify:render
 ```
 
@@ -36,7 +37,7 @@ npm run verify
 - Streams and loops the arena BGM after the first user gesture, confirms it continues through pause and game restart, and checks that its playback position advances without joining the decoded SFX buffer catalog.
 - Checks the pause-menu SFX/BGM sliders, live percentage outputs, pause-time SFX suppression, default-off spell-failure toggle, enabled cooldown pitch behavior, and local preference persistence across reload.
 - Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
-- Checks rolling patch terrain diagnostics, including active patch-radius generation, at least one river micro hex, no emergency patches, and ordered patch edge socket agreement.
+- Checks rolling patch terrain diagnostics, including authored-first selection, active patch-radius generation, river/lake/bank output, zero synthesis failures or emergency patches, and ordered patch edge socket agreement.
 - Checks deterministic special-ground generation, including reachable charged and cursed cells and the requirement that cursed ground remains rarer.
 - Exercises charged ground to confirm both cooldown and Power recovery run at `1.75x`, leaving preserves consumed capacity, returning resumes consumption, and the tile depletes after about three cumulative seconds.
 - Exercises cursed ground to confirm pause freezes cleansing, leaving resets progress, completion grants exactly one Cursed Energy, and the tile becomes cleansed.
@@ -64,6 +65,10 @@ npm run verify
 Do not add or run screenshot-based canvas verification, pixel sampling, luminance thresholds, color-bucket heuristics, or similar visual image checks. They are intentionally excluded because they are flaky and expensive. Verify render behavior through deterministic runtime diagnostics and DOM state instead.
 
 Mobile layouts and controls are not currently supported or included in render verification. Desktop is the only target until the control scheme is deliberately expanded for mobile play.
+
+## Terrain Function Verification
+
+`npm run test:terrain` runs deterministic TypeScript function tests through Vitest. It validates every authored patch and rotation, exercises open-core and homogeneous/mixed enclosed procedural fills, checks deterministic output, and enumerates every center boundary reachable from six mutually compatible authored neighbors. Rotationally equivalent neighborhoods are solved as canonical classes and rotation behavior is verified separately. Multi-seed rolling stress checks require zero synthesis failures, emergency substitutions, contradictions, or socket mismatches while authored patches remain the majority.
 
 ## Browser Path
 

@@ -608,8 +608,17 @@ async function verifyTerrainGrammar(page, viewport) {
   if (wfc.emergencyPatchCount > 0 || wfc.contradictionCount > 0) {
     throw new Error(`${viewport.name} rolling patch terrain used emergency patches: ${JSON.stringify(wfc)}`);
   }
-  if (!wfc.structureCounts || wfc.structureCounts.open < 1 || wfc.structureCounts.river < 1) {
-    throw new Error(`${viewport.name} rolling patch terrain did not produce open terrain and at least one river micro hex: ${JSON.stringify(wfc)}`);
+  if (wfc.synthesisFailureCount > 0 || wfc.authoredPatchCount < 1 || wfc.authoredPatchCount <= wfc.proceduralPatchCount) {
+    throw new Error(`${viewport.name} authored-first terrain synthesis was invalid: ${JSON.stringify(wfc)}`);
+  }
+  if (
+    !wfc.structureCounts ||
+    wfc.structureCounts.open < 1 ||
+    wfc.structureCounts.river < 1 ||
+    wfc.structureCounts.lake < 1 ||
+    wfc.structureCounts.bank < 1
+  ) {
+    throw new Error(`${viewport.name} rolling patch terrain did not produce the authored terrain vocabulary: ${JSON.stringify(wfc)}`);
   }
   if (!wfc.surfaceCounts || wfc.surfaceCounts.charged < 1 || wfc.surfaceCounts.cursed < 1) {
     throw new Error(`${viewport.name} rolling terrain did not produce charged and cursed ground: ${JSON.stringify(wfc.surfaceCounts)}`);
@@ -1101,7 +1110,11 @@ async function verifyTerrainDebugMode(page, viewport) {
   if ((after.terrain?.blockers?.total ?? 0) <= beforeBlockers) {
     throw new Error(`${viewport.name} terrain debug mode did not expand rendered terrain window: before=${beforeBlockers}, after=${after.terrain?.blockers?.total}`);
   }
-  if (after.terrainGrammar?.wfc?.emergencyPatchCount > 0 || after.terrainGrammar?.wfc?.patchSocketMismatchSample) {
+  if (
+    after.terrainGrammar?.wfc?.emergencyPatchCount > 0 ||
+    after.terrainGrammar?.wfc?.synthesisFailureCount > 0 ||
+    after.terrainGrammar?.wfc?.patchSocketMismatchSample
+  ) {
     throw new Error(`${viewport.name} terrain debug mode terrain diagnostics invalid: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
   }
 
