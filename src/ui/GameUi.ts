@@ -8,7 +8,7 @@ import { UiToolbar } from "./UiToolbar";
 import { UpgradeChoiceMenu } from "./UpgradeChoiceMenu";
 import { WindowManager } from "./window/WindowManager";
 import type { UpgradeId, UpgradeOfferSnapshot, UpgradeStacks } from "../game/upgrades/upgradeTypes";
-import type { HudPanelId, HudPanelPositions } from "../game/preferences/GamePreferences";
+import type { HudPanelId, HudPanelPositions, RenderMode } from "../game/preferences/GamePreferences";
 import type { NormalizedWindowPosition } from "./window/types";
 
 type GameUiCallbacks = {
@@ -22,6 +22,8 @@ type GameUiCallbacks = {
   setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
   unlockUiEnabled: boolean;
   setUnlockUiEnabled: (enabled: boolean) => void;
+  renderMode: RenderMode;
+  setRenderMode: (mode: RenderMode) => void;
   hudPanelPositions: HudPanelPositions;
   setHudPanelPosition: (id: HudPanelId, position: NormalizedWindowPosition) => void;
   terrainDebugMode: boolean;
@@ -66,6 +68,7 @@ export class GameUi {
         setQuickCastEnabled: callbacks.setQuickCastEnabled,
         setAllowMaxRangeTargetSnap: callbacks.setAllowMaxRangeTargetSnap,
         setUnlockUiEnabled: callbacks.setUnlockUiEnabled,
+        setRenderMode: callbacks.setRenderMode,
         setTerrainDebugMode: callbacks.setTerrainDebugMode,
         setSfxVolume: callbacks.setSfxVolume,
         setBgmVolume: callbacks.setBgmVolume,
@@ -75,6 +78,7 @@ export class GameUi {
       callbacks.quickCastEnabled,
       callbacks.allowMaxRangeTargetSnap,
       callbacks.unlockUiEnabled,
+      callbacks.renderMode,
       callbacks.terrainDebugMode,
       callbacks.audioPreferences,
     );
@@ -109,6 +113,10 @@ export class GameUi {
   setUnlockUiEnabled(enabled: boolean) {
     this.hud.setUnlockUiEnabled(enabled);
     this.pauseMenu.setUnlockUiEnabled(enabled);
+  }
+
+  setRenderMode(mode: RenderMode) {
+    this.pauseMenu.setRenderMode(mode);
   }
 
   setTerrainDebugMode(enabled: boolean) {

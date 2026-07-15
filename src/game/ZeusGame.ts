@@ -25,12 +25,12 @@ import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from 
 import { VisibilitySystem } from "./visibility/VisibilitySystem";
 import { GameEffects } from "../render/GameEffects";
 import { VisibilityOverlay } from "../render/VisibilityOverlay";
-import { createGameMaterials } from "../render/materials";
+import { createGameMaterialPalettes } from "../render/materials";
 import { GameUi } from "../ui/GameUi";
 import { GridWorld } from "../world/GridWorld";
 import { UpgradeSystem } from "./upgrades/UpgradeSystem";
 import type { UpgradeId } from "./upgrades/upgradeTypes";
-import { GamePreferencesStore } from "./preferences/GamePreferences";
+import { GamePreferencesStore, type RenderMode } from "./preferences/GamePreferences";
 
 export class ZeusGame {
   private readonly clock = new THREE.Clock();
@@ -39,7 +39,6 @@ export class ZeusGame {
   private readonly gridWorld = new GridWorld();
   private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
   private readonly visibility = new VisibilitySystem(this.gridWorld);
-  private readonly materials = createGameMaterials();
   private readonly groups = {
     terrain: new THREE.Group(),
     blockers: new THREE.Group(),
@@ -50,11 +49,20 @@ export class ZeusGame {
   };
   private readonly preferences = new GamePreferencesStore();
   private readonly savedPreferences = this.preferences.getSnapshot();
+  private renderMode: RenderMode = this.savedPreferences.renderMode;
+  private readonly materialPalettes = createGameMaterialPalettes();
 
-  private readonly scene = new GameScene();
+  private readonly scene = new GameScene(this.renderMode);
   private readonly visibilityOverlay = new VisibilityOverlay(this.gridWorld);
   private readonly effects = new GameEffects(this.groups.effects);
-  private readonly player = new PlayerController(this.gridWorld, this.collision, this.effects, this.materials);
+  private readonly player = new PlayerController(
+    this.gridWorld,
+    this.collision,
+    this.effects,
+    this.materialPalettes,
+    this.renderMode,
+  );
+  private readonly stormLight = new THREE.PointLight(0x61cfff, 16, 22);
   private readonly audio = new AudioSystem();
   private readonly upgrades = new UpgradeSystem();
   private readonly groundEffects = new GroundEffectSystem(this.gridWorld, {
@@ -96,6 +104,8 @@ export class ZeusGame {
     setAllowMaxRangeTargetSnap: (enabled) => this.setAllowMaxRangeTargetSnap(enabled),
     unlockUiEnabled: this.unlockUiEnabled,
     setUnlockUiEnabled: (enabled) => this.setUnlockUiEnabled(enabled),
+    renderMode: this.renderMode,
+    setRenderMode: (mode) => this.setRenderMode(mode),
     hudPanelPositions: this.savedPreferences.hudPanelPositions,
     setHudPanelPosition: (id, position) => this.preferences.setHudPanelPosition(id, position),
     terrainDebugMode: this.terrainDebugMode,
@@ -114,7 +124,7 @@ export class ZeusGame {
     this.collision,
     this.gridWorld,
     this.profiler,
-    this.materials,
+    this.materialPalettes,
     this.effects,
     {
       damagePlayer: (amount) => this.damagePlayer(amount),
@@ -122,6 +132,7 @@ export class ZeusGame {
       waveStarted: () => this.audio.play("new-wave-announce"),
       restoreMana: (amount) => this.restoreMana(amount),
     },
+    this.renderMode,
   );
   private readonly spells = new SpellSystem(this.effects, this.enemies, {
     castFailed: (reason) => {
@@ -141,8 +152,9 @@ export class ZeusGame {
     this.gridWorld,
     this.groups.terrain,
     this.groups.blockers,
-    this.materials,
+    this.materialPalettes,
     this.groundEffects,
+    this.renderMode,
   );
   private readonly input = new GameInput(this.scene.camera, this.scene.renderer, this.gridWorld, {
     isGameOver: () => this.state.gameOver,
@@ -167,6 +179,7 @@ export class ZeusGame {
   private lastTime = 0;
   private animationId = 0;
   private discardNextFrameDelta = false;
+  private renderedFrameCount = 0;
 
   constructor() {
     this.scene.mount({
@@ -181,9 +194,9 @@ export class ZeusGame {
       moveMarker: this.player.moveMarker,
     });
 
-    const stormLight = new THREE.PointLight(0x61cfff, 16, 22);
-    stormLight.position.set(0, 9, 0);
-    this.player.object.add(stormLight);
+    this.stormLight.position.set(0, 9, 0);
+    this.stormLight.visible = this.renderMode === "normal";
+    this.player.object.add(this.stormLight);
     this.visibility.update(this.player.object.position, 0);
 
     window.addEventListener("resize", this.cameraRig.resize);
@@ -216,6 +229,7 @@ export class ZeusGame {
         allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
         unlockUiEnabled: this.unlockUiEnabled,
         terrainDebugMode: this.terrainDebugMode,
+        renderMode: this.renderMode,
         pointerWorld: this.input.pointerWorld.toArray(),
       },
       spells: {
@@ -240,6 +254,10 @@ export class ZeusGame {
       audio: this.audio.getDiagnostics(),
       terrain: this.terrain.getDiagnostics(),
       visibilityOverlay: this.visibilityOverlay.getDiagnostics(),
+      rendering: {
+        ...this.scene.getRenderDiagnostics(),
+        renderedFrames: this.renderedFrameCount,
+      },
       timing: this.simulationStepper.diagnostics(),
     };
   }
@@ -320,6 +338,7 @@ export class ZeusGame {
     this.profiler.beginFrame(time);
     this.profiler.measure("gameLogic", () => this.update(rawDt, discardForVisibility));
     this.profiler.measure("render", () => this.scene.render());
+    this.renderedFrameCount += 1;
     this.profiler.endFrame();
     this.ui.updateDiagnostics(this.profiler.snapshot());
     this.animationId = window.requestAnimationFrame(this.tick);
@@ -577,6 +596,20 @@ export class ZeusGame {
     this.unlockUiEnabled = enabled;
     this.ui.setUnlockUiEnabled(enabled);
     this.preferences.update({ unlockUiEnabled: enabled });
+  }
+
+  private setRenderMode(renderMode: RenderMode) {
+    if (this.renderMode === renderMode) {
+      return;
+    }
+    this.renderMode = renderMode;
+    this.scene.setRenderMode(renderMode);
+    this.terrain.setRenderMode(renderMode);
+    this.player.setRenderMode(renderMode);
+    this.enemies.setRenderMode(renderMode);
+    this.stormLight.visible = renderMode === "normal";
+    this.ui.setRenderMode(renderMode);
+    this.preferences.update({ renderMode });
   }
 
   private setTerrainDebugMode(enabled: boolean) {

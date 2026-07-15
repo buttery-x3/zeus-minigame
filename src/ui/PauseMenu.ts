@@ -1,6 +1,7 @@
 import type { EnemyHealthBarVisibilityMode } from "../types";
 import { mustQuery } from "../lib/dom";
 import type { AudioPreferences } from "../game/audio/AudioPreferences";
+import type { RenderMode } from "../game/preferences/GamePreferences";
 import type { GameWindow } from "./window/GameWindow";
 import type { WindowManager } from "./window/WindowManager";
 
@@ -11,6 +12,7 @@ type PauseMenuCallbacks = {
   setQuickCastEnabled: (enabled: boolean) => void;
   setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
   setUnlockUiEnabled: (enabled: boolean) => void;
+  setRenderMode: (mode: RenderMode) => void;
   setTerrainDebugMode: (enabled: boolean) => void;
   setSfxVolume: (volume: number) => void;
   setBgmVolume: (volume: number) => void;
@@ -23,6 +25,7 @@ export class PauseMenu {
   private readonly quickCastToggle: HTMLInputElement;
   private readonly maxRangeTargetSnapToggle: HTMLInputElement;
   private readonly unlockUiToggle: HTMLInputElement;
+  private readonly potatoModeToggle: HTMLInputElement;
   private readonly terrainDebugToggle: HTMLInputElement;
   private readonly sfxVolumeSlider: HTMLInputElement;
   private readonly sfxVolumeOutput: HTMLOutputElement;
@@ -37,6 +40,7 @@ export class PauseMenu {
     quickCastEnabled: boolean,
     allowMaxRangeTargetSnap: boolean,
     unlockUiEnabled: boolean,
+    renderMode: RenderMode,
     terrainDebugMode: boolean,
     audioPreferences: AudioPreferences,
   ) {
@@ -80,6 +84,11 @@ export class PauseMenu {
       <label class="pause-menu__setting pause-menu__switch" data-unlock-ui-toggle>
         <span>Unlock UI</span>
         <input type="checkbox" data-unlock-ui aria-label="Unlock UI" />
+        <i aria-hidden="true"></i>
+      </label>
+      <label class="pause-menu__setting pause-menu__switch" data-potato-mode-toggle>
+        <span>Potato Rendering</span>
+        <input type="checkbox" data-potato-mode aria-label="Potato rendering" />
         <i aria-hidden="true"></i>
       </label>
       <label class="pause-menu__setting pause-menu__switch" data-terrain-debug-toggle>
@@ -151,6 +160,14 @@ export class PauseMenu {
     });
     this.setUnlockUiEnabled(unlockUiEnabled);
 
+    this.potatoModeToggle = mustQuery<HTMLInputElement>(content, "[data-potato-mode]");
+    this.potatoModeToggle.addEventListener("change", () => {
+      const mode = this.potatoModeToggle.checked ? "potato" : "normal";
+      this.setRenderMode(mode);
+      callbacks.setRenderMode(mode);
+    });
+    this.setRenderMode(renderMode);
+
     this.terrainDebugToggle = mustQuery<HTMLInputElement>(content, "[data-terrain-debug]");
     this.terrainDebugToggle.addEventListener("change", () => {
       this.setTerrainDebugMode(this.terrainDebugToggle.checked);
@@ -197,6 +214,12 @@ export class PauseMenu {
   setUnlockUiEnabled(enabled: boolean) {
     this.unlockUiToggle.checked = enabled;
     this.unlockUiToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
+  }
+
+  setRenderMode(mode: RenderMode) {
+    const enabled = mode === "potato";
+    this.potatoModeToggle.checked = enabled;
+    this.potatoModeToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
   }
 
   setTerrainDebugMode(enabled: boolean) {

@@ -14,21 +14,31 @@ type MaterialColorState = {
 export class PlayerCharacter {
   private readonly animator = new PlayerAnimator();
   private materialStates: MaterialColorState[] = [];
+  private loadedMaterials: THREE.Material[] = [];
+  private loadedObject: THREE.Group | null = null;
+  private loadPromise: Promise<void> | null = null;
   private modelSource = "procedural-fallback";
   private modelScale: number | null = null;
+  private lowDetail: boolean;
   private defeated = false;
   private disposed = false;
 
   constructor(
     private readonly model: PlayerModel,
     private readonly fallbackMaterial: THREE.Material,
+    lowDetail = false,
   ) {
+    this.lowDetail = lowDetail;
     this.setMaterialStates([fallbackMaterial]);
-    void this.load();
+    if (!lowDetail) {
+      this.ensureLoaded();
+    }
   }
 
   update(dt: number) {
-    this.animator.update(dt);
+    if (!this.lowDetail) {
+      this.animator.update(dt);
+    }
   }
 
   setMoving(moving: boolean) {
@@ -36,11 +46,22 @@ export class PlayerCharacter {
   }
 
   playSpell(spellId: SpellId) {
-    this.animator.playSpell(spellId);
+    if (!this.lowDetail) {
+      this.animator.playSpell(spellId);
+    }
   }
 
   isCasting() {
-    return this.animator.isCasting();
+    return !this.lowDetail && this.animator.isCasting();
+  }
+
+  setLowDetail(lowDetail: boolean, fallbackMaterial: THREE.Material) {
+    this.lowDetail = lowDetail;
+    this.model.body.material = fallbackMaterial;
+    if (!lowDetail) {
+      this.ensureLoaded();
+    }
+    this.syncVisual();
   }
 
   flash(color: THREE.ColorRepresentation, shouldReset: () => boolean) {
@@ -69,6 +90,8 @@ export class PlayerCharacter {
     return {
       modelSource: this.modelSource,
       modelScale: this.modelScale,
+      lowDetail: this.lowDetail,
+      activeVisual: this.lowDetail || !this.loadedObject ? "primitive" : "animated-model",
       materials: {
         count: materials.length,
         transparentCount: materials.filter((material) => material.transparent).length,
@@ -93,17 +116,35 @@ export class PlayerCharacter {
       }
 
       this.animator.attach(character.object, character.animations);
-      this.model.visualRoot.remove(this.model.fallback);
-      disposeObject3D(this.model.fallback, { preserveMaterials: [this.fallbackMaterial] });
       this.model.visualRoot.add(character.object);
-      this.setMaterialStates(character.materials);
+      this.loadedObject = character.object;
+      this.loadedMaterials = character.materials;
       this.modelSource = character.sourceUrl;
       this.modelScale = character.scale;
-      this.restoreAppearance();
+      this.syncVisual();
     } catch (error) {
       this.animator.markLoadFailed(error);
       console.warn("Unable to load animated Zeus model; using procedural fallback.", error);
     }
+  }
+
+  private ensureLoaded() {
+    if (this.loadedObject || this.loadPromise) {
+      return;
+    }
+    this.loadPromise = this.load().finally(() => {
+      this.loadPromise = null;
+    });
+  }
+
+  private syncVisual() {
+    const useFallback = this.lowDetail || !this.loadedObject;
+    this.model.fallback.visible = useFallback;
+    if (this.loadedObject) {
+      this.loadedObject.visible = !this.lowDetail;
+    }
+    this.setMaterialStates(useFallback ? [this.model.body.material as THREE.Material] : this.loadedMaterials);
+    this.restoreAppearance();
   }
 
   private setMaterialStates(materials: THREE.Material[]) {

@@ -7,7 +7,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 1. `src/main.ts` imports CSS and boots `ZeusGame`.
 2. `ZeusGame` owns the Three.js scene, camera, input loop, high-level gameplay state, and system update order.
 3. The game loop records performance timings while updating camera, rolling terrain generation, player movement, ground interactions, spell recovery, terrain visuals, targeting, HUD, enemies, spawning, and effects.
-4. Three.js renders the scene; HUD, pause, and diagnostics are regular DOM windows over the canvas.
+4. Normal and Potato modes both present every animation frame. Potato keeps the same simulation and presentation cadence while using a half-resolution shadowless Three.js profile.
+5. Three.js renders the scene; HUD, pause, and diagnostics are regular DOM windows over the canvas.
 
 ## Module Map
 
@@ -28,7 +29,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, shadow rig, and ground setup.
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
-- `src/game/terrain/TerrainSystem.ts`: visible hex terrain window rendering.
+- `src/game/terrain/TerrainSystem.ts`: visible hex terrain window rendering through shared material/geometry instance batches.
 - `src/game/terrain/GroundEffectSystem.ts`: per-run charged capacity, cursed cleansing, recovery modifiers, and runtime terrain-state overrides.
 - `src/game/upgrades/UpgradeSystem.ts`: run-local upgrade stacks, randomized offers, derived stats, offer deadlines, and shield lifecycle.
 - `src/game/upgrades/upgradeCatalog.ts`: upgrade presentation metadata and repeatability rules; card price is deliberately not stored in the catalog.
@@ -70,6 +71,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `Hud` should not mutate gameplay state; it only renders state passed into `update`.
 - UI windows should consume their own pointer events so game movement clicks do not leak through, except locked transparent HUD panels while Unlock UI is off; those are intentionally click-through.
 - Rendering helpers should create reusable `THREE.Object3D` instances and avoid owning gameplay state.
+- Repeated terrain and blocker geometry should remain instanced in every render mode. Quality profiles may change materials and cadence without changing generated cells, collision, visibility, or simulation state.
 - `ZeusGame` can coordinate systems, but new large systems should become their own modules.
 - Navigation and future vision checks should share the hex linecast helper so blocker semantics stay consistent.
 - Normal melee enemies should not call Theta* directly during frame update; shared flow fields handle swarm chase and the path queue handles rare fallback paths.

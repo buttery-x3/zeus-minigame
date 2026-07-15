@@ -9,12 +9,13 @@ import {
 } from "../../config";
 import { distance2D, randomBetween } from "../../lib/math";
 import type { GameEffects } from "../../render/GameEffects";
-import type { GameMaterials } from "../../render/materials";
+import type { GameMaterialPalettes } from "../../render/materials";
 import { createEnemyModel } from "../../render/meshes";
 import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from "../../types";
 import type { GridWorld } from "../../world/GridWorld";
 import type { CollisionSystem } from "../collision/CollisionSystem";
 import type { Profiler } from "../perf/Profiler";
+import type { RenderMode } from "../preferences/GamePreferences";
 import { EnemyAvoidance } from "./EnemyAvoidance";
 import { EnemyCharacter } from "./EnemyCharacter";
 import { EnemyHealthBars } from "./EnemyHealthBars";
@@ -47,9 +48,10 @@ export class EnemySystem {
     private readonly collision: CollisionSystem,
     gridWorld: GridWorld,
     profiler: Profiler,
-    private readonly materials: GameMaterials,
+    private readonly materialPalettes: GameMaterialPalettes,
     private readonly effects: GameEffects,
     private readonly callbacks: EnemySystemCallbacks,
+    private renderMode: RenderMode,
   ) {
     this.navigation = new EnemyNavigation(gridWorld, collision, profiler);
     this.healthBars = new EnemyHealthBars(healthBarGroup);
@@ -142,6 +144,17 @@ export class EnemySystem {
     if (state.spawnTimer <= 0) {
       state.spawnTimer += state.spawnInterval;
       this.spawn(state, playerPosition);
+    }
+  }
+
+  setRenderMode(renderMode: RenderMode) {
+    if (this.renderMode === renderMode) {
+      return;
+    }
+    this.renderMode = renderMode;
+    const materials = this.materialPalettes[renderMode];
+    for (const enemy of this.enemies) {
+      enemy.character.setLowDetail(renderMode === "potato", materials.enemy, materials.enemyHit);
     }
   }
 
@@ -275,6 +288,9 @@ export class EnemySystem {
       modelScale: representative?.modelScale ?? null,
       availableClips: representative?.availableClips ?? [],
       activeClips: [...new Set(animations.flatMap((animation) => (animation.activeClip ? [animation.activeClip] : [])))],
+      lowDetail: animations.filter((animation) => animation.lowDetail).length,
+      primitiveVisuals: animations.filter((animation) => animation.activeVisual === "primitive").length,
+      animatedVisuals: animations.filter((animation) => animation.activeVisual === "animated-model").length,
       walking: animations.filter((animation) => animation.activeState === "walk").length,
       attacking: animations.filter((animation) => animation.activeState === "attack").length,
       attackCount: animations.reduce((total, animation) => total + animation.attackCount, 0),
@@ -306,9 +322,10 @@ export class EnemySystem {
       return false;
     }
 
-    const model = createEnemyModel(this.materials.enemy);
+    const materials = this.materialPalettes[this.renderMode];
+    const model = createEnemyModel(materials.enemy);
     const { group } = model;
-    const character = new EnemyCharacter(model, this.materials.enemy, this.materials.enemyHit);
+    const character = new EnemyCharacter(model, materials.enemy, materials.enemyHit, this.renderMode === "potato");
     group.position.copy(spawnPoint);
     this.group.add(group);
 

@@ -1,17 +1,25 @@
 import * as THREE from "three";
 import { VISIBILITY_LIGHT_EPSILON } from "../../config";
 import { disposeObject3D } from "../../render/dispose";
-import type { GameMaterials } from "../../render/materials";
+import type { GameMaterialPalettes, GameMaterials } from "../../render/materials";
 import { SpecialGroundEffects } from "../../render/SpecialGroundEffects";
 import type { GridWorld } from "../../world/GridWorld";
 import type { TerrainCell, TerrainSurface } from "../../types";
+import type { RenderMode } from "../preferences/GamePreferences";
 import type { VisibilitySystem } from "../visibility/VisibilitySystem";
 import type { GroundEffectSnapshot, GroundEffectSystem } from "./GroundEffectSystem";
 
 type BlockerRecord = {
   q: number;
   r: number;
-  mesh: THREE.Mesh;
+  index: number;
+  matrix: THREE.Matrix4;
+};
+
+type InstanceBatch = {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+  matrices: THREE.Matrix4[];
 };
 
 const NORMAL_RENDER_RADIUS = 18;
@@ -22,6 +30,10 @@ export class TerrainSystem {
   private preparedTerrainWindowKey = "";
   private readonly blockers: BlockerRecord[] = [];
   private readonly specialEffects: SpecialGroundEffects;
+  private blockerMesh: THREE.InstancedMesh | null = null;
+  private renderMode: RenderMode;
+  private instanceBatchCount = 0;
+  private terrainInstanceCount = 0;
   private visibilityVersion = -1;
   private blockerVisibility = {
     total: 0,
@@ -33,10 +45,20 @@ export class TerrainSystem {
     private readonly gridWorld: GridWorld,
     private readonly terrainGroup: THREE.Group,
     private readonly blockerGroup: THREE.Group,
-    private readonly materials: GameMaterials,
+    private readonly materialPalettes: GameMaterialPalettes,
     private readonly groundEffects: GroundEffectSystem,
+    renderMode: RenderMode,
   ) {
+    this.renderMode = renderMode;
     this.specialEffects = new SpecialGroundEffects(gridWorld, terrainGroup);
+  }
+
+  setRenderMode(renderMode: RenderMode) {
+    if (this.renderMode === renderMode) {
+      return;
+    }
+    this.renderMode = renderMode;
+    this.terrainWindowKey = "";
   }
 
   prepare(playerPosition: THREE.Vector3, revealAll = false) {
@@ -83,6 +105,12 @@ export class TerrainSystem {
   getDiagnostics() {
     return {
       blockers: { ...this.blockerVisibility },
+      instancing: {
+        materialMode: this.renderMode,
+        batches: this.instanceBatchCount,
+        terrainInstances: this.terrainInstanceCount,
+        blockerInstances: this.blockers.length,
+      },
       specialGround: this.specialEffects.getDiagnostics(),
     };
   }
@@ -91,9 +119,16 @@ export class TerrainSystem {
     this.terrainWindowKey = key;
     this.visibilityVersion = -1;
     this.blockers.length = 0;
+    this.blockerMesh = null;
+    this.instanceBatchCount = 0;
+    this.terrainInstanceCount = 0;
     this.specialEffects.resetForRebuild();
-    disposeObject3D(this.terrainGroup, { preserveMaterials: Object.values(this.materials) });
-    disposeObject3D(this.blockerGroup, { preserveMaterials: Object.values(this.materials) });
+    const preservedMaterials = [
+      ...Object.values(this.materialPalettes.normal),
+      ...Object.values(this.materialPalettes.potato),
+    ];
+    disposeObject3D(this.terrainGroup, { preserveMaterials: preservedMaterials });
+    disposeObject3D(this.blockerGroup, { preserveMaterials: preservedMaterials });
     this.terrainGroup.clear();
     this.blockerGroup.clear();
 
@@ -101,29 +136,41 @@ export class TerrainSystem {
     const waterGeometry = createHexCylinderGeometry(this.gridWorld.hexSize * 0.94, 0.08);
     const wallGeometry = createHexCylinderGeometry(this.gridWorld.hexSize * 0.82, 2.65);
     const bankGeometry = createHexCylinderGeometry(this.gridWorld.hexSize * 0.96, 0.12);
+    const batches = new Map<string, InstanceBatch>();
+    const blockerRecords: Array<Omit<BlockerRecord, "index">> = [];
+
+    const addInstance = (key: string, geometry: THREE.BufferGeometry, material: THREE.Material, matrix: THREE.Matrix4) => {
+      let batch = batches.get(key);
+      if (!batch) {
+        batch = { geometry, material, matrices: [] };
+        batches.set(key, batch);
+      }
+      batch.matrices.push(matrix);
+    };
 
     const renderCell = (cell: TerrainCell) => {
       const world = this.gridWorld.cellToWorld(cell.q, cell.r);
       const visual = this.groundEffects.getCellVisualState(cell);
       const isWater = cell.structure === "lake" || cell.structure === "river";
       const isBank = cell.structure === "bank";
-      const tile = new THREE.Mesh(
-        isWater ? waterGeometry : isBank ? bankGeometry : tileGeometry,
-        this.materialForCell(cell, visual.displaySurface),
+      const geometry = isWater ? waterGeometry : isBank ? bankGeometry : tileGeometry;
+      const material = this.materialForCell(cell, visual.displaySurface);
+      const batchKey = `${isWater ? "water" : isBank ? "bank" : "tile"}:${isWater ? cell.structure : visual.displaySurface}`;
+      addInstance(
+        batchKey,
+        geometry,
+        material,
+        new THREE.Matrix4().makeTranslation(world.x, isWater ? -0.06 : -0.04, world.z),
       );
-      tile.position.set(world.x, isWater ? -0.06 : -0.04, world.z);
-      tile.receiveShadow = true;
-      this.terrainGroup.add(tile);
 
       this.specialEffects.addCell(cell, world, visual);
 
       if (cell.structure === "wall") {
-        const blocker = new THREE.Mesh(wallGeometry, this.materials.blocker);
-        blocker.position.set(world.x, 1.26, world.z);
-        blocker.castShadow = true;
-        blocker.receiveShadow = true;
-        this.blockers.push({ q: cell.q, r: cell.r, mesh: blocker });
-        this.blockerGroup.add(blocker);
+        blockerRecords.push({
+          q: cell.q,
+          r: cell.r,
+          matrix: new THREE.Matrix4().makeTranslation(world.x, 1.26, world.z),
+        });
       }
     };
 
@@ -131,12 +178,40 @@ export class TerrainSystem {
       for (const cell of this.gridWorld.getGeneratedCellsInRange(center, radius)) {
         renderCell(cell);
       }
-      return;
+    } else {
+      this.gridWorld.forEachCellInRange(center, radius, (q, r) => {
+        renderCell(this.gridWorld.getCell(q, r));
+      });
     }
 
-    this.gridWorld.forEachCellInRange(center, radius, (q, r) => {
-      renderCell(this.gridWorld.getCell(q, r));
-    });
+    const useShadows = this.renderMode === "normal";
+    for (const batch of batches.values()) {
+      const mesh = new THREE.InstancedMesh(batch.geometry, batch.material, batch.matrices.length);
+      batch.matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
+      mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+      mesh.receiveShadow = useShadows;
+      mesh.computeBoundingSphere();
+      this.terrainGroup.add(mesh);
+      this.terrainInstanceCount += batch.matrices.length;
+    }
+    this.instanceBatchCount = batches.size;
+
+    if (blockerRecords.length > 0) {
+      this.blockerMesh = new THREE.InstancedMesh(wallGeometry, this.materials.blocker, blockerRecords.length);
+      this.blockerMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.blockerMesh.castShadow = useShadows;
+      this.blockerMesh.receiveShadow = useShadows;
+      blockerRecords.forEach((record, index) => {
+        this.blockerMesh?.setMatrixAt(index, record.matrix);
+        this.blockers.push({ ...record, index });
+      });
+      this.blockerMesh.computeBoundingSphere();
+      this.blockerGroup.add(this.blockerMesh);
+    }
+  }
+
+  private get materials(): GameMaterials {
+    return this.materialPalettes[this.renderMode];
   }
 
   private materialForCell(cell: TerrainCell, surface: TerrainSurface): THREE.Material {
@@ -181,13 +256,16 @@ export class TerrainSystem {
         revealAll ||
         (visibility.isDiscoveredCell(blocker.q, blocker.r) &&
           visibility.getLightReachCell(blocker.q, blocker.r) > VISIBILITY_LIGHT_EPSILON);
-      blocker.mesh.visible = shouldShow;
+      this.blockerMesh?.setMatrixAt(blocker.index, shouldShow ? blocker.matrix : HIDDEN_INSTANCE_MATRIX);
 
       if (shouldShow) {
         visible += 1;
       } else {
         hidden += 1;
       }
+    }
+    if (this.blockerMesh) {
+      this.blockerMesh.instanceMatrix.needsUpdate = true;
     }
 
     this.visibilityVersion = visibility.getVersion();
@@ -200,6 +278,8 @@ export class TerrainSystem {
     this.specialEffects.applyVisibility(visibility, revealAll);
   }
 }
+
+const HIDDEN_INSTANCE_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 
 function createHexCylinderGeometry(radius: number, height: number) {
   const geometry = new THREE.CylinderGeometry(radius, radius, height, 6, 1, false);

@@ -15,25 +15,46 @@ export class EnemyCharacter {
   private readonly animator = new EnemyAnimator();
   private loadedCharacter: LoadedEnemyCharacter | null = null;
   private materialStates: MaterialColorState[] = [];
+  private loadPromise: Promise<void> | null = null;
   private modelSource = "procedural-fallback";
   private modelScale: number | null = null;
+  private lowDetail: boolean;
   private hitFlashing = false;
   private disposed = false;
 
   constructor(
     private readonly model: EnemyModel,
-    private readonly fallbackMaterial: THREE.Material,
-    private readonly fallbackHitMaterial: THREE.Material,
+    private fallbackMaterial: THREE.Material,
+    private fallbackHitMaterial: THREE.Material,
+    lowDetail = false,
   ) {
-    void this.load();
+    this.lowDetail = lowDetail;
+    if (!lowDetail) {
+      this.ensureLoaded();
+    }
   }
 
   update(dt: number) {
-    this.animator.update(dt);
+    if (!this.lowDetail) {
+      this.animator.update(dt);
+    }
   }
 
   playAttack() {
-    this.animator.playAttack();
+    if (!this.lowDetail) {
+      this.animator.playAttack();
+    }
+  }
+
+  setLowDetail(lowDetail: boolean, fallbackMaterial: THREE.Material, fallbackHitMaterial: THREE.Material) {
+    this.lowDetail = lowDetail;
+    this.fallbackMaterial = fallbackMaterial;
+    this.fallbackHitMaterial = fallbackHitMaterial;
+    this.model.body.material = this.hitFlashing ? fallbackHitMaterial : fallbackMaterial;
+    if (!lowDetail) {
+      this.ensureLoaded();
+    }
+    this.syncVisual();
   }
 
   setHitFlashing(flashing: boolean) {
@@ -54,6 +75,8 @@ export class EnemyCharacter {
     return {
       modelSource: this.modelSource,
       modelScale: this.modelScale,
+      lowDetail: this.lowDetail,
+      activeVisual: this.lowDetail || !this.loadedCharacter ? "primitive" : "animated-model",
       ...this.animator.getDiagnostics(),
     };
   }
@@ -64,11 +87,10 @@ export class EnemyCharacter {
     if (this.loadedCharacter) {
       this.disposeLoadedCharacter(this.loadedCharacter);
       this.loadedCharacter = null;
-    } else {
-      disposeObject3D(this.model.fallback, {
-        preserveMaterials: [this.fallbackMaterial, this.fallbackHitMaterial],
-      });
     }
+    disposeObject3D(this.model.fallback, {
+      preserveMaterials: [this.fallbackMaterial, this.fallbackHitMaterial],
+    });
   }
 
   private async load() {
@@ -81,10 +103,6 @@ export class EnemyCharacter {
       }
 
       this.animator.attach(character.object, character.animations);
-      this.model.visualRoot.remove(this.model.fallback);
-      disposeObject3D(this.model.fallback, {
-        preserveMaterials: [this.fallbackMaterial, this.fallbackHitMaterial],
-      });
       this.model.visualRoot.add(character.object);
       this.loadedCharacter = character;
       this.setMaterialStates(character.materials);
@@ -93,12 +111,29 @@ export class EnemyCharacter {
       if (this.hitFlashing) {
         this.applyHitAppearance();
       }
+      this.syncVisual();
     } catch (error) {
       if (character) {
         this.disposeLoadedCharacter(character);
       }
       this.animator.markLoadFailed(error);
       console.warn("Unable to load animated melee enemy model; using procedural fallback.", error);
+    }
+  }
+
+  private ensureLoaded() {
+    if (this.loadedCharacter || this.loadPromise) {
+      return;
+    }
+    this.loadPromise = this.load().finally(() => {
+      this.loadPromise = null;
+    });
+  }
+
+  private syncVisual() {
+    this.model.fallback.visible = this.lowDetail || !this.loadedCharacter;
+    if (this.loadedCharacter) {
+      this.loadedCharacter.object.visible = !this.lowDetail;
     }
   }
 
