@@ -76,6 +76,12 @@ function cloneMaterial(material: THREE.Material, clones: Map<THREE.Material, THR
   }
 
   const clone = material.clone();
+  clone.transparent = false;
+  clone.opacity = 1;
+  clone.depthWrite = true;
+  clone.depthTest = true;
+  clone.alphaTest = 0;
+  clone.needsUpdate = true;
   clones.set(material, clone);
   return clone;
 }

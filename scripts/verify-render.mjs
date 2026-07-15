@@ -1798,6 +1798,10 @@ async function verifyPlayerAnimationLifecycle(page, viewport) {
     animation.activeClip !== "Idle_8" ||
     !animation.modelSource.endsWith("/assets/models/characters/zeus/zeus.glb") ||
     !(animation.modelScale > 0) ||
+    animation.materials.count < 1 ||
+    animation.materials.transparentCount !== 0 ||
+    animation.materials.depthWriteCount !== animation.materials.count ||
+    animation.materials.fullyOpaqueCount !== animation.materials.count ||
     JSON.stringify(available) !== JSON.stringify([...expectedClips].sort())
   ) {
     throw new Error(`${viewport.name} animated Zeus model did not initialize correctly: ${JSON.stringify(animation)}`);

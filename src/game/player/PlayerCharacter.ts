@@ -65,9 +65,16 @@ export class PlayerCharacter {
   }
 
   getDiagnostics() {
+    const materials = this.materialStates.map((state) => state.material);
     return {
       modelSource: this.modelSource,
       modelScale: this.modelScale,
+      materials: {
+        count: materials.length,
+        transparentCount: materials.filter((material) => material.transparent).length,
+        depthWriteCount: materials.filter((material) => material.depthWrite).length,
+        fullyOpaqueCount: materials.filter((material) => material.opacity === 1).length,
+      },
       ...this.animator.getDiagnostics(),
     };
   }
