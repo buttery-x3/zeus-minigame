@@ -8,6 +8,8 @@ import { UiToolbar } from "./UiToolbar";
 import { UpgradeChoiceMenu } from "./UpgradeChoiceMenu";
 import { WindowManager } from "./window/WindowManager";
 import type { UpgradeId, UpgradeOfferSnapshot, UpgradeStacks } from "../game/upgrades/upgradeTypes";
+import type { HudPanelId, HudPanelPositions } from "../game/preferences/GamePreferences";
+import type { NormalizedWindowPosition } from "./window/types";
 
 type GameUiCallbacks = {
   resume: () => void;
@@ -20,6 +22,8 @@ type GameUiCallbacks = {
   setAllowMaxRangeTargetSnap: (enabled: boolean) => void;
   unlockUiEnabled: boolean;
   setUnlockUiEnabled: (enabled: boolean) => void;
+  hudPanelPositions: HudPanelPositions;
+  setHudPanelPosition: (id: HudPanelId, position: NormalizedWindowPosition) => void;
   terrainDebugMode: boolean;
   setTerrainDebugMode: (enabled: boolean) => void;
   audioPreferences: AudioPreferences;
@@ -31,8 +35,8 @@ type GameUiCallbacks = {
 };
 
 export class GameUi {
-  readonly manager = new WindowManager();
-  readonly hud = new Hud(this.manager);
+  readonly manager: WindowManager;
+  readonly hud: Hud;
 
   private readonly toolbar: UiToolbar;
   private readonly pauseMenu: PauseMenu;
@@ -40,6 +44,8 @@ export class GameUi {
   private readonly upgradeChoice: UpgradeChoiceMenu;
 
   constructor(callbacks: GameUiCallbacks) {
+    this.manager = new WindowManager(callbacks.unlockUiEnabled);
+    this.hud = new Hud(this.manager, callbacks.hudPanelPositions, callbacks.setHudPanelPosition);
     this.toolbar = new UiToolbar({
       togglePause: callbacks.togglePause,
       toggleDiagnostics: () => this.toggleDiagnostics(),

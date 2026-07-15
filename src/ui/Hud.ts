@@ -6,6 +6,8 @@ import type { GameWindow } from "./window/GameWindow";
 import type { WindowManager } from "./window/WindowManager";
 import { UPGRADE_CATALOG } from "../game/upgrades/upgradeCatalog";
 import type { ShieldSnapshot, UpgradeStacks } from "../game/upgrades/upgradeTypes";
+import type { HudPanelId, HudPanelPositions } from "../game/preferences/GamePreferences";
+import type { NormalizedWindowPosition } from "./window/types";
 
 type HudState = {
   health: number;
@@ -48,7 +50,11 @@ export class Hud {
   private chainButton: HTMLElement;
   private boltButton: HTMLElement;
 
-  constructor(private readonly windowManager: WindowManager) {
+  constructor(
+    private readonly windowManager: WindowManager,
+    positions: HudPanelPositions,
+    onPositionChanged: (id: HudPanelId, position: NormalizedWindowPosition) => void,
+  ) {
     const stats = this.createContent(`
       <div class="hud__stats">
         <div class="hud__meter">
@@ -114,6 +120,8 @@ export class Hud {
       className: "hud-window hud-window--vitals hud-window--minimal",
       lockable: true,
       locked: true,
+      position: positions["hud-vitals"],
+      onPositionChanged: (position) => onPositionChanged("hud-vitals", position),
     });
     const statusWindow = windowManager.createWindow({
       id: "hud-status",
@@ -123,6 +131,8 @@ export class Hud {
       className: "hud-window hud-window--status hud-window--minimal",
       lockable: true,
       locked: true,
+      position: positions["hud-status"],
+      onPositionChanged: (position) => onPositionChanged("hud-status", position),
     });
     const gameWindow = windowManager.createWindow({
       id: "hud-position",
@@ -132,6 +142,8 @@ export class Hud {
       className: "hud-window hud-window--game hud-window--minimal",
       lockable: true,
       locked: true,
+      position: positions["hud-position"],
+      onPositionChanged: (position) => onPositionChanged("hud-position", position),
     });
     const abilitiesWindow = windowManager.createWindow({
       id: "hud-abilities",
@@ -147,6 +159,8 @@ export class Hud {
       className: "hud-window hud-window--abilities hud-window--minimal",
       lockable: true,
       locked: true,
+      position: positions["hud-abilities"],
+      onPositionChanged: (position) => onPositionChanged("hud-abilities", position),
     });
     const currenciesWindow = windowManager.createWindow({
       id: "hud-currencies",
@@ -163,6 +177,8 @@ export class Hud {
       lockable: true,
       locked: true,
       resizeAnchor: "bottom",
+      position: positions["hud-currencies"],
+      onPositionChanged: (position) => onPositionChanged("hud-currencies", position),
     });
 
     this.windows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow, currenciesWindow);

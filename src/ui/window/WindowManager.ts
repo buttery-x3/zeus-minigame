@@ -6,12 +6,14 @@ export class WindowManager {
 
   private readonly modalBackdrop: HTMLElement;
   private readonly windows = new Map<string, GameWindow>();
-  private unlockUiEnabled = false;
+  private unlockUiEnabled: boolean;
   private zIndex = 30;
 
-  constructor() {
+  constructor(unlockUiEnabled = false) {
+    this.unlockUiEnabled = unlockUiEnabled;
     this.root = document.createElement("div");
     this.root.className = "ui-layer";
+    this.root.classList.toggle("ui-layer--unlock-ui-enabled", unlockUiEnabled);
 
     this.modalBackdrop = document.createElement("div");
     this.modalBackdrop.className = "ui-modal-backdrop";

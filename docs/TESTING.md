@@ -52,7 +52,8 @@ npm run verify
 - Checks that click and held movement commands reject undiscovered terrain.
 - Clicks a visible wall blocker and checks that navigation resolves to reachable discovered neighboring hex space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
-- Checks the pause menu audio controls, enemy health bar visibility options, Quick Cast toggle, and Allow Max Range Target Snap toggle, and confirms the expanded menu fits the supported desktop viewport.
+- Checks the pause menu audio controls, enemy health bar visibility options, Quick Cast toggle, Allow Max Range Target Snap toggle, Unlock UI toggle, and confirms the expanded menu fits the supported desktop viewport.
+- Confirms gameplay/UI preferences persist across reloads, including every HUD panel position, while Terrain Debug remains session-only; partial and malformed stored settings must fall back safely.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
 - Checks that diagnostics exposes enemy hex flow-field metrics and that the smoke path does not create a pathfinding call spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.

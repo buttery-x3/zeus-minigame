@@ -11,6 +11,11 @@ export type WindowPlacement = {
   mobile?: Omit<WindowPlacement, "mobile">;
 };
 
+export type NormalizedWindowPosition = {
+  x: number;
+  y: number;
+};
+
 export type GameWindowOptions = {
   id: string;
   title: string;
@@ -22,6 +27,8 @@ export type GameWindowOptions = {
   lockable?: boolean;
   locked?: boolean;
   resizeAnchor?: "top" | "bottom";
+  position?: NormalizedWindowPosition;
+  onPositionChanged?: (position: NormalizedWindowPosition) => void;
   modal?: boolean;
   hidden?: boolean;
   onClose?: () => void;

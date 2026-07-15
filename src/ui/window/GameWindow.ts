@@ -1,4 +1,4 @@
-import type { GameWindowOptions } from "./types";
+import type { GameWindowOptions, NormalizedWindowPosition } from "./types";
 import type { WindowManager } from "./WindowManager";
 
 const WINDOW_MARGIN = 10;
@@ -14,6 +14,7 @@ export class GameWindow {
   private y = 0;
   private width = 0;
   private height = 0;
+  private customPosition: NormalizedWindowPosition | null;
   private locked: boolean;
   private unlockUiEnabled = true;
   private visible: boolean;
@@ -25,6 +26,7 @@ export class GameWindow {
   ) {
     this.locked = options.locked ?? false;
     this.visible = !(options.hidden ?? false);
+    this.customPosition = options.position ? { ...options.position } : null;
     this.element = document.createElement("section");
     this.element.className = `game-window ${options.className ?? ""}`;
     this.element.dataset.windowId = options.id;
@@ -78,6 +80,16 @@ export class GameWindow {
 
     this.width = width;
     this.element.style.width = `${width}px`;
+
+    if (this.customPosition) {
+      this.x = this.customPosition.x * window.innerWidth;
+      this.y =
+        this.customPosition.y * window.innerHeight -
+        (this.options.resizeAnchor === "bottom" ? this.element.offsetHeight : 0);
+      this.clampToViewport();
+      this.height = this.element.offsetHeight;
+      return;
+    }
 
     if (placement.anchor === "top-left") {
       this.x = offsetX;
@@ -206,17 +218,23 @@ export class GameWindow {
     const startY = event.clientY;
     const originX = this.x;
     const originY = this.y;
+    let moved = false;
     this.titlebar.setPointerCapture(event.pointerId);
 
     const handleMove = (moveEvent: PointerEvent) => {
       this.x = originX + moveEvent.clientX - startX;
       this.y = originY + moveEvent.clientY - startY;
+      moved ||= Math.hypot(this.x - originX, this.y - originY) >= 1;
       this.clampToViewport();
     };
     const handleUp = () => {
       this.titlebar.removeEventListener("pointermove", handleMove);
       this.titlebar.removeEventListener("pointerup", handleUp);
       this.titlebar.removeEventListener("pointercancel", handleUp);
+      if (moved) {
+        this.customPosition = this.readNormalizedPosition();
+        this.options.onPositionChanged?.({ ...this.customPosition });
+      }
     };
 
     this.titlebar.addEventListener("pointermove", handleMove);
@@ -237,9 +255,21 @@ export class GameWindow {
     this.height = nextHeight;
   }
 
+  private readNormalizedPosition(): NormalizedWindowPosition {
+    const anchorY = this.options.resizeAnchor === "bottom" ? this.y + this.element.offsetHeight : this.y;
+    return {
+      x: clamp01(this.x / Math.max(1, window.innerWidth)),
+      y: clamp01(anchorY / Math.max(1, window.innerHeight)),
+    };
+  }
+
   private resolvePlacement() {
     return window.innerWidth <= 680 && this.options.placement.mobile
       ? { ...this.options.placement, ...this.options.placement.mobile }
       : this.options.placement;
   }
+}
+
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value));
 }

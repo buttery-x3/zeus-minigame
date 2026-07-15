@@ -60,6 +60,7 @@ async function verifyInBrowser() {
       await verifyAudioSystem(page, viewport);
 
       await reloadGame(page);
+      await verifyGamePreferencesPersistence(page, viewport);
       await verifyHudTransparency(page, viewport);
       await reloadGame(page);
       await verifyFrameTiming(page, viewport);
@@ -324,6 +325,169 @@ async function readAudioControls(page) {
     bgmOutput: document.querySelector("[data-bgm-volume-output]")?.value,
     spellFailureEnabled: document.querySelector("[data-spell-failure-sfx]")?.checked,
   }));
+}
+
+async function verifyGamePreferencesPersistence(page, viewport) {
+  const storageKey = "zeus.settings.v1";
+  await page.evaluate((key) => window.localStorage.removeItem(key), storageKey);
+  await reloadGame(page);
+
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  await page.click('[data-health-mode="always"]');
+  await page.click("[data-quick-cast-toggle]");
+  await page.click("[data-max-range-target-snap-toggle]");
+  await page.click("[data-unlock-ui-toggle]");
+  await page.click("[data-terrain-debug-toggle]");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().paused === false);
+
+  const moves = [
+    { id: "hud-vitals", dx: 52, dy: -34 },
+    { id: "hud-status", dx: -48, dy: 42 },
+    { id: "hud-position", dx: -58, dy: 34 },
+    { id: "hud-abilities", dx: -44, dy: -38 },
+    { id: "hud-currencies", dx: 68, dy: -48 },
+  ];
+  for (const move of moves) {
+    await dragHudPanel(page, viewport, move.id, move.dx, move.dy);
+  }
+  const movedBounds = await readPanelBounds(page, moves.map(({ id }) => id));
+
+  await page.waitForFunction(
+    ({ key, panelIds }) => {
+      const stored = window.localStorage.getItem(key);
+      if (!stored) {
+        return false;
+      }
+      const settings = JSON.parse(stored);
+      return (
+        settings.enemyHealthBarMode === "always" &&
+        settings.quickCastEnabled === false &&
+        settings.allowMaxRangeTargetSnap === false &&
+        settings.unlockUiEnabled === true &&
+        panelIds.every((id) => Number.isFinite(settings.hudPanelPositions?.[id]?.x) && Number.isFinite(settings.hudPanelPositions?.[id]?.y))
+      );
+    },
+    { key: storageKey, panelIds: moves.map(({ id }) => id) },
+  );
+
+  await reloadGame(page);
+  let diagnostics = await readDiagnostics(page);
+  if (
+    diagnostics.enemyHealthBars.mode !== "always" ||
+    diagnostics.input.quickCastEnabled ||
+    diagnostics.input.allowMaxRangeTargetSnap ||
+    !diagnostics.input.unlockUiEnabled ||
+    diagnostics.input.terrainDebugMode
+  ) {
+    throw new Error(`${viewport.name} game preferences did not restore correctly: ${JSON.stringify(diagnostics.input)}`);
+  }
+
+  const restoredBounds = await readPanelBounds(page, moves.map(({ id }) => id));
+  for (const { id } of moves) {
+    const before = movedBounds[id];
+    const after = restoredBounds[id];
+    if (!before || !after || Math.hypot(after.left - before.left, after.top - before.top) > 2) {
+      throw new Error(`${viewport.name} ${id} position did not persist: before=${JSON.stringify(before)}, after=${JSON.stringify(after)}`);
+    }
+  }
+
+  await page.click('[data-ui-action="pause"]');
+  await page.waitForSelector('[data-window-id="pause-menu"]:not([hidden])');
+  const controls = await readGamePreferenceControls(page);
+  if (
+    controls.enemyHealthBarMode !== "always" ||
+    controls.quickCastEnabled ||
+    controls.allowMaxRangeTargetSnap ||
+    !controls.unlockUiEnabled ||
+    controls.terrainDebugMode
+  ) {
+    throw new Error(`${viewport.name} persisted game preferences did not render in the menu: ${JSON.stringify(controls)}`);
+  }
+  await page.keyboard.press("Escape");
+
+  await page.evaluate(
+    ({ key }) => {
+      window.localStorage.setItem(
+        key,
+        JSON.stringify({
+          enemyHealthBarMode: "invalid",
+          quickCastEnabled: "invalid",
+          allowMaxRangeTargetSnap: false,
+          unlockUiEnabled: true,
+          terrainDebugMode: true,
+          hudPanelPositions: {
+            "hud-vitals": { x: 2, y: -1 },
+            "hud-status": { x: "invalid", y: 0.25 },
+          },
+        }),
+      );
+    },
+    { key: storageKey },
+  );
+  await reloadGame(page);
+  diagnostics = await readDiagnostics(page);
+  if (
+    diagnostics.enemyHealthBars.mode !== "smart" ||
+    !diagnostics.input.quickCastEnabled ||
+    diagnostics.input.allowMaxRangeTargetSnap ||
+    !diagnostics.input.unlockUiEnabled ||
+    diagnostics.input.terrainDebugMode
+  ) {
+    throw new Error(`${viewport.name} partial game preferences did not fall back field-by-field: ${JSON.stringify(diagnostics.input)}`);
+  }
+
+  await page.evaluate(({ key }) => window.localStorage.setItem(key, "{"), { key: storageKey });
+  await reloadGame(page);
+  diagnostics = await readDiagnostics(page);
+  if (
+    diagnostics.enemyHealthBars.mode !== "smart" ||
+    !diagnostics.input.quickCastEnabled ||
+    !diagnostics.input.allowMaxRangeTargetSnap ||
+    diagnostics.input.unlockUiEnabled ||
+    diagnostics.input.terrainDebugMode
+  ) {
+    throw new Error(`${viewport.name} malformed game preferences did not fall back to defaults: ${JSON.stringify(diagnostics.input)}`);
+  }
+
+  await page.evaluate((key) => window.localStorage.removeItem(key), storageKey);
+  await reloadGame(page);
+}
+
+async function readGamePreferenceControls(page) {
+  return page.evaluate(() => ({
+    enemyHealthBarMode: document.querySelector('[data-health-mode][aria-checked="true"]')?.getAttribute("data-health-mode"),
+    quickCastEnabled: document.querySelector("[data-quick-cast]")?.checked,
+    allowMaxRangeTargetSnap: document.querySelector("[data-max-range-target-snap]")?.checked,
+    unlockUiEnabled: document.querySelector("[data-unlock-ui]")?.checked,
+    terrainDebugMode: document.querySelector("[data-terrain-debug]")?.checked,
+  }));
+}
+
+async function dragHudPanel(page, viewport, id, dx, dy) {
+  const titlebar = page.locator(`[data-window-id="${id}"] .game-window__titlebar`);
+  const box = await titlebar.boundingBox();
+  if (!box) {
+    throw new Error(`${viewport.name} could not drag missing ${id} titlebar`);
+  }
+
+  const start = { x: box.x + Math.min(12, box.width / 2), y: box.y + box.height / 2 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + dx, start.y + dy, { steps: 4 });
+  await page.mouse.up();
+}
+
+async function readPanelBounds(page, ids) {
+  return page.evaluate((panelIds) => {
+    return Object.fromEntries(
+      panelIds.map((id) => {
+        const rect = document.querySelector(`[data-window-id="${id}"]`)?.getBoundingClientRect();
+        return [id, rect ? { left: rect.left, top: rect.top, bottom: rect.bottom } : null];
+      }),
+    );
+  }, ids);
 }
 
 async function verifyFrameTiming(page, viewport) {

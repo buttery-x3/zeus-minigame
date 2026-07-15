@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import {
-  DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE,
   INITIAL_NEXT_WAVE_AT,
   INITIAL_SPAWN_INTERVAL,
   PLAYER_MAX_HEALTH,
@@ -31,6 +30,7 @@ import { GameUi } from "../ui/GameUi";
 import { GridWorld } from "../world/GridWorld";
 import { UpgradeSystem } from "./upgrades/UpgradeSystem";
 import type { UpgradeId } from "./upgrades/upgradeTypes";
+import { GamePreferencesStore } from "./preferences/GamePreferences";
 
 export class ZeusGame {
   private readonly clock = new THREE.Clock();
@@ -48,6 +48,8 @@ export class ZeusGame {
     effects: new THREE.Group(),
     targeting: new THREE.Group(),
   };
+  private readonly preferences = new GamePreferencesStore();
+  private readonly savedPreferences = this.preferences.getSnapshot();
 
   private readonly scene = new GameScene();
   private readonly visibilityOverlay = new VisibilityOverlay(this.gridWorld);
@@ -77,10 +79,10 @@ export class ZeusGame {
     this.profiler,
   );
   private readonly cameraRig = new CameraRig(this.scene.camera, this.scene.renderer);
-  private enemyHealthBarMode: EnemyHealthBarVisibilityMode = DEFAULT_ENEMY_HEALTH_BAR_VISIBILITY_MODE;
-  private quickCastEnabled = true;
-  private allowMaxRangeTargetSnap = true;
-  private unlockUiEnabled = false;
+  private enemyHealthBarMode: EnemyHealthBarVisibilityMode = this.savedPreferences.enemyHealthBarMode;
+  private quickCastEnabled = this.savedPreferences.quickCastEnabled;
+  private allowMaxRangeTargetSnap = this.savedPreferences.allowMaxRangeTargetSnap;
+  private unlockUiEnabled = this.savedPreferences.unlockUiEnabled;
   private terrainDebugMode = false;
   private manualPaused = false;
   private readonly ui = new GameUi({
@@ -94,6 +96,8 @@ export class ZeusGame {
     setAllowMaxRangeTargetSnap: (enabled) => this.setAllowMaxRangeTargetSnap(enabled),
     unlockUiEnabled: this.unlockUiEnabled,
     setUnlockUiEnabled: (enabled) => this.setUnlockUiEnabled(enabled),
+    hudPanelPositions: this.savedPreferences.hudPanelPositions,
+    setHudPanelPosition: (id, position) => this.preferences.setHudPanelPosition(id, position),
     terrainDebugMode: this.terrainDebugMode,
     setTerrainDebugMode: (enabled) => this.setTerrainDebugMode(enabled),
     audioPreferences: this.audio.getPreferences(),
@@ -554,21 +558,25 @@ export class ZeusGame {
   private setEnemyHealthBarMode(mode: EnemyHealthBarVisibilityMode) {
     this.enemyHealthBarMode = mode;
     this.ui.setEnemyHealthBarMode(mode);
+    this.preferences.update({ enemyHealthBarMode: mode });
   }
 
   private setQuickCastEnabled(enabled: boolean) {
     this.quickCastEnabled = enabled;
     this.ui.setQuickCastEnabled(enabled);
+    this.preferences.update({ quickCastEnabled: enabled });
   }
 
   private setAllowMaxRangeTargetSnap(enabled: boolean) {
     this.allowMaxRangeTargetSnap = enabled;
     this.ui.setAllowMaxRangeTargetSnap(enabled);
+    this.preferences.update({ allowMaxRangeTargetSnap: enabled });
   }
 
   private setUnlockUiEnabled(enabled: boolean) {
     this.unlockUiEnabled = enabled;
     this.ui.setUnlockUiEnabled(enabled);
+    this.preferences.update({ unlockUiEnabled: enabled });
   }
 
   private setTerrainDebugMode(enabled: boolean) {
