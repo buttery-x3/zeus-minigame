@@ -1227,20 +1227,20 @@ async function verifyWindowUi(page, viewport) {
 
   await setUnlockUi(page, true);
   let locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
-  if (!locked) {
-    throw new Error("Diagnostics window should stay locked until Unlock UI controls are used");
-  }
-
-  await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
-  locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
   if (locked) {
-    throw new Error("Diagnostics lock button did not unlock the window when Unlock UI was on");
+    throw new Error("Diagnostics window should unlock when Unlock UI is enabled");
   }
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
   locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
   if (!locked) {
     throw new Error("Diagnostics lock button did not lock the window");
+  }
+
+  await page.click('[data-window-id="diagnostics"] .game-window__action--lock');
+  locked = await page.$eval('[data-window-id="diagnostics"]', (element) => element.classList.contains("game-window--locked"));
+  if (locked) {
+    throw new Error("Diagnostics lock button did not unlock the window");
   }
 
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
@@ -1295,8 +1295,14 @@ async function verifyHudTransparency(page, viewport) {
   if (Math.abs(initial.vitals.centerXRatio - 0.5) > 0.08 || Math.abs(initial.abilities.centerXRatio - 0.5) > 0.08) {
     throw new Error(`${viewport.name} central HUD panels were not horizontally centered: ${JSON.stringify(initial)}`);
   }
-  if (initial.vitals.centerYRatio < 0.56 || initial.vitals.centerYRatio > 0.7 || initial.abilities.centerYRatio < 0.66 || initial.abilities.centerYRatio > 0.8) {
-    throw new Error(`${viewport.name} central HUD panels were not placed around the lower middle of the viewport: ${JSON.stringify(initial)}`);
+  if (
+    initial.abilities.centerYRatio < 0.66 ||
+    initial.abilities.centerYRatio > 0.8 ||
+    initial.vitals.centerYRatio < 0.78 ||
+    initial.vitals.centerYRatio > 0.9 ||
+    initial.vitals.centerYRatio <= initial.abilities.centerYRatio
+  ) {
+    throw new Error(`${viewport.name} vitals panel was not placed below the ability panel: ${JSON.stringify(initial)}`);
   }
 
   for (const panel of panels) {
@@ -1310,20 +1316,24 @@ async function verifyHudTransparency(page, viewport) {
     await verifyHudPanelClickThrough(page, viewport, id);
   }
 
+  await verifyCurrencyPanelBottomGrowth(page, viewport);
+
   await setUnlockUi(page, true);
-  for (const id of minimalPanelIds) {
-    await verifyHudPanelHoverReveal(page, viewport, id);
+  const unlockEnabled = await readHudPanelMetrics(page);
+  if (
+    minimalPanelIds.some((id) => {
+      const panel = getHudPanelMetric(unlockEnabled, id);
+      return panel.locked || panel.lockControlHidden || panel.titleOpacity < 0.5 || panel.backgroundImage === "none";
+    })
+  ) {
+    throw new Error(`${viewport.name} Unlock UI did not expose unlocked HUD panels: ${JSON.stringify(unlockEnabled)}`);
   }
   await verifyCurrencyPanelMovement(page, viewport);
 
-  const unlockEnabled = await readHudPanelMetrics(page);
-  if (minimalPanelIds.some((id) => getHudPanelMetric(unlockEnabled, id).lockControlHidden)) {
-    throw new Error(`${viewport.name} Unlock UI did not expose HUD lock controls: ${JSON.stringify(unlockEnabled)}`);
-  }
-
-  await revealHudPanel(page, viewport, "hud-vitals");
   await page.click('[data-window-id="hud-vitals"] .game-window__action--lock');
-  await page.waitForFunction(() => !document.querySelector('[data-window-id="hud-vitals"]')?.classList.contains("game-window--locked"));
+  await page.waitForFunction(() => document.querySelector('[data-window-id="hud-vitals"]')?.classList.contains("game-window--locked"));
+  await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined));
+  await verifyHudPanelHoverReveal(page, viewport, "hud-vitals");
 
   await setUnlockUi(page, false);
   const disabledAgain = await readHudPanelMetrics(page);
@@ -1337,10 +1347,6 @@ async function verifyHudTransparency(page, viewport) {
 }
 
 async function verifyCurrencyPanelMovement(page, viewport) {
-  await revealHudPanel(page, viewport, "hud-currencies");
-  await page.click('[data-window-id="hud-currencies"] .game-window__action--lock');
-  await page.waitForFunction(() => !document.querySelector('[data-window-id="hud-currencies"]')?.classList.contains("game-window--locked"));
-
   const before = await page.$eval('[data-window-id="hud-currencies"]', (element) => {
     const rect = element.getBoundingClientRect();
     return { x: rect.x, y: rect.y };
@@ -1365,6 +1371,70 @@ async function verifyCurrencyPanelMovement(page, viewport) {
 
   await page.click('[data-window-id="hud-currencies"] .game-window__action--lock');
   await page.waitForFunction(() => document.querySelector('[data-window-id="hud-currencies"]')?.classList.contains("game-window--locked"));
+  await revealHudPanel(page, viewport, "hud-currencies");
+  await page.click('[data-window-id="hud-currencies"] .game-window__action--lock');
+  await page.waitForFunction(() => !document.querySelector('[data-window-id="hud-currencies"]')?.classList.contains("game-window--locked"));
+}
+
+async function verifyCurrencyPanelBottomGrowth(page, viewport) {
+  const before = await page.$eval('[data-window-id="hud-currencies"]', (element) => {
+    const panelRect = element.getBoundingClientRect();
+    const currencyRect = element.querySelector('[data-currency="cursed"]')?.getBoundingClientRect();
+    return {
+      top: panelRect.top,
+      bottom: panelRect.bottom,
+      height: panelRect.height,
+      currencyBottom: currencyRect?.bottom ?? 0,
+    };
+  });
+  const upgradeIds = [
+    "maxVitals",
+    "healthRegen",
+    "manaRegen",
+    "moveSpeed",
+    "spellCooldown",
+    "spellCost",
+    "chainBounce",
+    "spellDamage",
+    "boltDamage",
+    "shield",
+  ];
+  const applied = await page.evaluate((ids) => ids.map((id) => window.__ZEUS_GAME__?.applyUpgradeForVerification(id)), upgradeIds);
+  if (applied.some((result) => result !== true)) {
+    throw new Error(`${viewport.name} could not expand the currency panel for bottom-alignment verification: ${JSON.stringify(applied)}`);
+  }
+
+  await page.waitForFunction(
+    ({ previousHeight, expectedBottom }) => {
+      const element = document.querySelector('[data-window-id="hud-currencies"]');
+      if (!(element instanceof HTMLElement)) {
+        return false;
+      }
+      const rect = element.getBoundingClientRect();
+      return rect.height > previousHeight + 10 && Math.abs(rect.bottom - expectedBottom) <= 2;
+    },
+    { previousHeight: before.height, expectedBottom: before.bottom },
+  );
+
+  const after = await page.$eval('[data-window-id="hud-currencies"]', (element) => {
+    const panelRect = element.getBoundingClientRect();
+    const currencyRect = element.querySelector('[data-currency="cursed"]')?.getBoundingClientRect();
+    return {
+      top: panelRect.top,
+      bottom: panelRect.bottom,
+      height: panelRect.height,
+      currencyBottom: currencyRect?.bottom ?? 0,
+    };
+  });
+  if (
+    after.top >= before.top - 10 ||
+    Math.abs(after.bottom - before.bottom) > 2 ||
+    Math.abs(after.currencyBottom - before.currencyBottom) > 2 ||
+    after.top < 0 ||
+    after.bottom > viewport.height
+  ) {
+    throw new Error(`${viewport.name} currency panel did not expand upward from its bottom edge: before=${JSON.stringify(before)}, after=${JSON.stringify(after)}`);
+  }
 }
 
 async function verifyHudPanelHoverReveal(page, viewport, id) {

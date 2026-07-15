@@ -21,6 +21,7 @@ export type GameWindowOptions = {
   closable?: boolean;
   lockable?: boolean;
   locked?: boolean;
+  resizeAnchor?: "top" | "bottom";
   modal?: boolean;
   hidden?: boolean;
   onClose?: () => void;

@@ -91,12 +91,12 @@ export class Hud {
     `);
     const currencies = this.createContent(`
       <div class="hud__currencies">
+        <div class="hud__upgrade-summary" data-upgrade-summary hidden></div>
         <div class="hud__currency hud__currency--cursed" data-currency="cursed" aria-label="Cursed Energy">
           <i class="hud__currency-icon" aria-hidden="true"></i>
           <span>Cursed Energy</span>
           <strong data-cursed-energy>0</strong>
         </div>
-        <div class="hud__upgrade-summary" data-upgrade-summary hidden></div>
       </div>
     `);
 
@@ -108,8 +108,8 @@ export class Hud {
         anchor: "viewport",
         width: 240,
         viewportX: 0.5,
-        viewportY: 0.64,
-        mobile: { anchor: "viewport", width: 230, viewportX: 0.5, viewportY: 0.64 },
+        viewportY: 0.84,
+        mobile: { anchor: "viewport", width: 230, viewportX: 0.5, viewportY: 0.84 },
       },
       className: "hud-window hud-window--vitals hud-window--minimal",
       lockable: true,
@@ -162,6 +162,7 @@ export class Hud {
       className: "hud-window hud-window--currencies hud-window--minimal",
       lockable: true,
       locked: true,
+      resizeAnchor: "bottom",
     });
 
     this.windows.push(vitalsWindow, statusWindow, gameWindow, abilitiesWindow, currenciesWindow);

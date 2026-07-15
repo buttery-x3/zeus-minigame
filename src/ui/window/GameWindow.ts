@@ -13,9 +13,11 @@ export class GameWindow {
   private x = 0;
   private y = 0;
   private width = 0;
+  private height = 0;
   private locked: boolean;
   private unlockUiEnabled = true;
   private visible: boolean;
+  private readonly resizeObserver: ResizeObserver | null;
 
   constructor(
     private readonly manager: WindowManager,
@@ -60,6 +62,11 @@ export class GameWindow {
     this.setLocked(this.locked);
     this.setVisible(this.visible);
     this.place();
+    this.resizeObserver =
+      options.resizeAnchor === "bottom"
+        ? new ResizeObserver(() => this.handleResize())
+        : null;
+    this.resizeObserver?.observe(this.element);
   }
 
   place() {
@@ -96,6 +103,7 @@ export class GameWindow {
     }
 
     this.applyPosition();
+    this.height = this.element.offsetHeight;
   }
 
   reflow() {
@@ -124,8 +132,8 @@ export class GameWindow {
     this.unlockUiEnabled = enabled;
     this.element.classList.toggle("game-window--unlock-ui-disabled", !enabled && this.isLockable());
 
-    if (!enabled && this.isLockable()) {
-      this.setLocked(true);
+    if (this.isLockable()) {
+      this.setLocked(!enabled);
     }
 
     if (this.lockButton) {
@@ -153,6 +161,7 @@ export class GameWindow {
   };
 
   dispose() {
+    this.resizeObserver?.disconnect();
     this.element.remove();
   }
 
@@ -217,6 +226,15 @@ export class GameWindow {
 
   private applyPosition() {
     this.element.style.transform = `translate(${Math.round(this.x)}px, ${Math.round(this.y)}px)`;
+  }
+
+  private handleResize() {
+    const nextHeight = this.element.offsetHeight;
+    if (this.height > 0 && nextHeight !== this.height) {
+      this.y -= nextHeight - this.height;
+      this.clampToViewport();
+    }
+    this.height = nextHeight;
   }
 
   private resolvePlacement() {

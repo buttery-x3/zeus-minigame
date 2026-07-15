@@ -58,8 +58,8 @@ npm run verify
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
-- Checks that core HUD text and ability buttons exist, including the Unlock UI toggle, locked transparent HUD panels, click-through behavior, gated hover reveal, and radial spell cooldown button state.
-- Checks that the Currencies panel starts at the bottom-left, displays Cursed Energy, and supports the same unlock, drag, relock, transparency, and click-through behavior as the other HUD panels.
+- Checks that core HUD text and ability buttons exist, including the vitals panel below the ability panel, the Unlock UI toggle, default-unlocked edit mode, locked transparent HUD panels, click-through behavior, gated hover reveal, and radial spell cooldown button state.
+- Checks that the Currencies panel starts at the bottom-left, displays Cursed Energy, expands upward while keeping its currency row bottom-aligned, and supports the same unlock, drag, relock, transparency, and click-through behavior as the other HUD panels.
 Do not add or run screenshot-based canvas verification, pixel sampling, luminance thresholds, color-bucket heuristics, or similar visual image checks. They are intentionally excluded because they are flaky and expensive. Verify render behavior through deterministic runtime diagnostics and DOM state instead.
 
 Mobile layouts and controls are not currently supported or included in render verification. Desktop is the only target until the control scheme is deliberately expanded for mobile play.
