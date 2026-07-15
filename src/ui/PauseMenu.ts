@@ -2,6 +2,7 @@ import type { EnemyHealthBarVisibilityMode } from "../types";
 import { mustQuery } from "../lib/dom";
 import type { AudioPreferences } from "../game/audio/AudioPreferences";
 import type { RenderMode } from "../game/preferences/GamePreferences";
+import type { NavigationDebugMode } from "../game/enemies/navigation/NavigationDebugTypes";
 import type { GameWindow } from "./window/GameWindow";
 import type { WindowManager } from "./window/WindowManager";
 
@@ -14,6 +15,7 @@ type PauseMenuCallbacks = {
   setUnlockUiEnabled: (enabled: boolean) => void;
   setRenderMode: (mode: RenderMode) => void;
   setTerrainDebugMode: (enabled: boolean) => void;
+  setNavigationDebugMode: (mode: NavigationDebugMode) => void;
   setSfxVolume: (volume: number) => void;
   setBgmVolume: (volume: number) => void;
   setSpellFailureEnabled: (enabled: boolean) => void;
@@ -27,6 +29,7 @@ export class PauseMenu {
   private readonly unlockUiToggle: HTMLInputElement;
   private readonly potatoModeToggle: HTMLInputElement;
   private readonly terrainDebugToggle: HTMLInputElement;
+  private readonly navigationDebugButtons: HTMLButtonElement[];
   private readonly sfxVolumeSlider: HTMLInputElement;
   private readonly sfxVolumeOutput: HTMLOutputElement;
   private readonly bgmVolumeSlider: HTMLInputElement;
@@ -42,6 +45,7 @@ export class PauseMenu {
     unlockUiEnabled: boolean,
     renderMode: RenderMode,
     terrainDebugMode: boolean,
+    navigationDebugMode: NavigationDebugMode,
     audioPreferences: AudioPreferences,
   ) {
     const content = document.createElement("div");
@@ -96,6 +100,14 @@ export class PauseMenu {
         <input type="checkbox" data-terrain-debug aria-label="Terrain debug" />
         <i aria-hidden="true"></i>
       </label>
+      <div class="pause-menu__setting">
+        <span>Navigation Debug</span>
+        <div class="pause-menu__segmented pause-menu__segmented--three" role="radiogroup" aria-label="Navigation debug mode">
+          <button type="button" data-navigation-debug-mode="off" role="radio">Off</button>
+          <button type="button" data-navigation-debug-mode="stalled" role="radio">Stalled</button>
+          <button type="button" data-navigation-debug-mode="all" role="radio">All</button>
+        </div>
+      </div>
       <div class="pause-menu__actions">
         <button type="button" data-action="resume">Resume</button>
         <button type="button" data-action="diagnostics">Diagnostics</button>
@@ -175,6 +187,16 @@ export class PauseMenu {
     });
     this.setTerrainDebugMode(terrainDebugMode);
 
+    this.navigationDebugButtons = [...content.querySelectorAll<HTMLButtonElement>("[data-navigation-debug-mode]")];
+    this.navigationDebugButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.navigationDebugMode as NavigationDebugMode;
+        this.setNavigationDebugMode(mode);
+        callbacks.setNavigationDebugMode(mode);
+      });
+    });
+    this.setNavigationDebugMode(navigationDebugMode);
+
     this.window = windowManager.createWindow({
       id: "pause-menu",
       title: "Pause",
@@ -225,6 +247,14 @@ export class PauseMenu {
   setTerrainDebugMode(enabled: boolean) {
     this.terrainDebugToggle.checked = enabled;
     this.terrainDebugToggle.closest(".pause-menu__switch")?.classList.toggle("pause-menu__switch--active", enabled);
+  }
+
+  setNavigationDebugMode(mode: NavigationDebugMode) {
+    for (const button of this.navigationDebugButtons) {
+      const active = button.dataset.navigationDebugMode === mode;
+      button.classList.toggle("pause-menu__segmented-button--active", active);
+      button.setAttribute("aria-checked", String(active));
+    }
   }
 
   setSfxVolume(volume: number) {

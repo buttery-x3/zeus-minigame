@@ -13,14 +13,18 @@ import type { GameMaterialPalettes } from "../../render/materials";
 import { createEnemyModel } from "../../render/meshes";
 import type { EnemyHealthBarVisibilityMode, EnemyState, GameRuntimeState } from "../../types";
 import type { GridWorld } from "../../world/GridWorld";
-import type { CollisionSystem } from "../collision/CollisionSystem";
+import type { CollisionMoveTrace, CollisionSystem } from "../collision/CollisionSystem";
 import type { Profiler } from "../perf/Profiler";
 import type { RenderMode } from "../preferences/GamePreferences";
+import { NavigationDebugRenderer } from "../../render/NavigationDebugRenderer";
 import { EnemyAvoidance } from "./EnemyAvoidance";
 import { EnemyCharacter } from "./EnemyCharacter";
 import { EnemyHealthBars } from "./EnemyHealthBars";
 import { EnemyNavigation } from "./navigation/EnemyNavigation";
+import type { NavigationDebugMode } from "./navigation/NavigationDebugTypes";
 import type { NavigationWorkSource } from "../navigation/NavigationScheduler";
+
+const ZERO_DELTA = new THREE.Vector3();
 
 type EnemySystemCallbacks = {
   damagePlayer: (amount: number) => void;
@@ -32,7 +36,12 @@ type EnemySystemCallbacks = {
 type EnemyMovePlan = {
   enemy: EnemyState;
   navigationTarget: THREE.Vector3;
-  velocity: THREE.Vector3;
+  desiredVelocity: THREE.Vector3;
+  steeredVelocity: THREE.Vector3;
+};
+
+type EnemyCollisionTrace = CollisionMoveTrace & {
+  actualDelta: THREE.Vector3;
 };
 
 export class EnemySystem {
@@ -42,10 +51,13 @@ export class EnemySystem {
   private readonly navigation: EnemyNavigation;
   private readonly avoidance = new EnemyAvoidance();
   private readonly healthBars: EnemyHealthBars;
+  private readonly navigationDebug: NavigationDebugRenderer;
+  private readonly collisionTraces = new Map<number, EnemyCollisionTrace>();
 
   constructor(
     private readonly group: THREE.Group,
     healthBarGroup: THREE.Group,
+    navigationDebugGroup: THREE.Group,
     private readonly collision: CollisionSystem,
     gridWorld: GridWorld,
     profiler: Profiler,
@@ -56,11 +68,14 @@ export class EnemySystem {
   ) {
     this.navigation = new EnemyNavigation(gridWorld, collision, profiler);
     this.healthBars = new EnemyHealthBars(healthBarGroup);
+    this.navigationDebug = new NavigationDebugRenderer(gridWorld);
+    navigationDebugGroup.add(this.navigationDebug.object);
   }
 
   update(dt: number, state: GameRuntimeState, playerPosition: THREE.Vector3) {
     this.navigation.beginFrame(playerPosition);
     this.avoidance.beginFrame(this.enemies);
+    this.navigationDebug.beginSimulationStep();
 
     const movePlans: EnemyMovePlan[] = [];
     for (const enemy of this.enemies) {
@@ -78,29 +93,43 @@ export class EnemySystem {
         desiredVelocity.set(toTarget.x * enemy.speed, 0, toTarget.z * enemy.speed);
       }
 
+      const steeredVelocity = this.avoidance.steer(enemy, desiredVelocity, navigationTarget);
       movePlans.push({
         enemy,
         navigationTarget,
-        velocity: this.avoidance.steer(enemy, desiredVelocity, navigationTarget),
+        desiredVelocity,
+        steeredVelocity,
       });
     }
 
-    for (const { enemy, navigationTarget, velocity } of movePlans) {
+    for (const { enemy, navigationTarget, desiredVelocity, steeredVelocity } of movePlans) {
       enemy.character.update(dt);
       let movedDistance = 0;
       let targetProgress = 0;
+      const hasMovement = steeredVelocity.lengthSq() > 0.000001;
+      const attemptedDelta = hasMovement
+        ? new THREE.Vector3(steeredVelocity.x * dt, 0, steeredVelocity.z * dt)
+        : ZERO_DELTA;
+      const trace = this.navigationDebug.isEnabled() ? this.getCollisionTrace(enemy.id) : undefined;
+      const actualDelta = trace?.actualDelta ?? null;
+      if (trace) {
+        trace.resolution = "rejected";
+        trace.actualDelta.set(0, 0, 0);
+      }
 
-      if (velocity.lengthSq() > 0.000001) {
+      if (hasMovement) {
         const startX = enemy.group.position.x;
         const startZ = enemy.group.position.z;
         const startDistanceToTarget = distance2D(startX, startZ, navigationTarget.x, navigationTarget.z);
         const nextPosition = this.collision.moveWithCollision(
           enemy.group.position,
-          new THREE.Vector3(velocity.x * dt, 0, velocity.z * dt),
+          attemptedDelta,
           ENEMY_COLLISION_RADIUS,
+          trace,
         );
         const actualX = nextPosition.x - enemy.group.position.x;
         const actualZ = nextPosition.z - enemy.group.position.z;
+        actualDelta?.set(actualX, 0, actualZ);
 
         movedDistance = distance2D(startX, startZ, nextPosition.x, nextPosition.z);
         targetProgress = startDistanceToTarget - distance2D(nextPosition.x, nextPosition.z, navigationTarget.x, navigationTarget.z);
@@ -113,6 +142,19 @@ export class EnemySystem {
 
       this.avoidance.recordSpeedRatio(movedDistance / Math.max(enemy.speed * dt, 0.0001));
       this.navigation.recordMovement(enemy, targetProgress, dt, playerPosition);
+      if (trace && actualDelta) {
+        this.navigationDebug.record(
+          enemy,
+          navigationTarget,
+          desiredVelocity,
+          steeredVelocity,
+          attemptedDelta,
+          actualDelta,
+          trace.resolution,
+          targetProgress,
+          dt,
+        );
+      }
 
       enemy.group.position.y = Math.sin(performance.now() * 0.006 + enemy.id) * 0.06;
       enemy.touchCooldown -= dt;
@@ -159,6 +201,21 @@ export class EnemySystem {
     }
   }
 
+  setNavigationDebugMode(mode: NavigationDebugMode) {
+    this.navigationDebug.setMode(mode);
+    if (mode === "off") {
+      this.collisionTraces.clear();
+    }
+  }
+
+  updateNavigationDebug() {
+    this.navigationDebug.update();
+  }
+
+  getNavigationDebugDiagnostics() {
+    return this.navigationDebug.diagnostics();
+  }
+
   spawnInitial(state: GameRuntimeState, playerPosition: THREE.Vector3) {
     let spawned = 0;
     let attempts = 0;
@@ -178,6 +235,12 @@ export class EnemySystem {
     }
     this.enemies = [];
     this.healthBars.clear();
+    this.collisionTraces.clear();
+  }
+
+  dispose() {
+    this.clear();
+    this.navigationDebug.dispose();
   }
 
   reset(state: GameRuntimeState, playerPosition: THREE.Vector3) {
@@ -401,5 +464,15 @@ export class EnemySystem {
     this.navigation.clearEnemy(enemy);
     this.healthBars.remove(enemy);
     enemy.character.dispose();
+    this.collisionTraces.delete(enemy.id);
+  }
+
+  private getCollisionTrace(enemyId: number) {
+    let trace = this.collisionTraces.get(enemyId);
+    if (!trace) {
+      trace = { resolution: "rejected", actualDelta: new THREE.Vector3() };
+      this.collisionTraces.set(enemyId, trace);
+    }
+    return trace;
   }
 }

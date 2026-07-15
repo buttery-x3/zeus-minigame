@@ -7,12 +7,17 @@ import { PathSearchJob } from "./pathfinding";
 import { PathResolutionJob } from "./PathResolutionJob";
 import { canOccupyWorld, clampWorldToRadius, getCellCenter, isCellBlocked, isCellInBounds } from "./occupancy";
 import type { Profiler } from "../perf/Profiler";
+import type { CollisionMoveResolution } from "../enemies/navigation/NavigationDebugTypes";
 
 export type { ResolvedPath } from "./PathResolutionJob";
 
 type ResolvePathOptions = {
   canUseDestination?: (destination: THREE.Vector3) => boolean;
   maxCandidatePathAttempts?: number;
+};
+
+export type CollisionMoveTrace = {
+  resolution: CollisionMoveResolution;
 };
 
 export class CollisionSystem {
@@ -51,22 +56,26 @@ export class CollisionSystem {
     });
   }
 
-  moveWithCollision(position: THREE.Vector3, desiredDelta: THREE.Vector3, radius: number) {
+  moveWithCollision(position: THREE.Vector3, desiredDelta: THREE.Vector3, radius: number, trace?: CollisionMoveTrace) {
     const fullMove = new THREE.Vector3(position.x + desiredDelta.x, 0, position.z + desiredDelta.z);
     if (this.canMoveBetween(position, fullMove, radius)) {
+      if (trace) trace.resolution = "full";
       return fullMove;
     }
 
     const xMove = new THREE.Vector3(position.x + desiredDelta.x, 0, position.z);
     if (this.canMoveBetween(position, xMove, radius)) {
+      if (trace) trace.resolution = "x";
       return xMove;
     }
 
     const zMove = new THREE.Vector3(position.x, 0, position.z + desiredDelta.z);
     if (this.canMoveBetween(position, zMove, radius)) {
+      if (trace) trace.resolution = "z";
       return zMove;
     }
 
+    if (trace) trace.resolution = "rejected";
     return new THREE.Vector3(position.x, 0, position.z);
   }
 

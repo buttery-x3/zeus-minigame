@@ -81,6 +81,10 @@ export class GridWorld {
     return this.terrainProvider.getGenerationVersion?.() ?? this.cells.size;
   }
 
+  getCachedCellCount() {
+    return this.cells.size;
+  }
+
   ensureTerrainGeneratedAroundCell(q: number, r: number) {
     this.terrainProvider.ensureGeneratedAround?.(q, r);
   }

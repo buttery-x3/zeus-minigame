@@ -16,6 +16,7 @@ type InputCallbacks = {
   toggleDiagnostics: () => void;
   toggleEnemyHealthBarMode: () => void;
   toggleTerrainDebugMode: () => void;
+  cycleNavigationDebugMode: () => void;
 };
 
 const HELD_MOVE_REFIRE_SECONDS = 0.1;
@@ -114,6 +115,11 @@ export class GameInput {
 
     if (event.key === "F4") {
       this.callbacks.toggleTerrainDebugMode();
+      return;
+    }
+
+    if (event.key === "F6") {
+      this.callbacks.cycleNavigationDebugMode();
       return;
     }
 

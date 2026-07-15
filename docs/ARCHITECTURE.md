@@ -27,6 +27,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/hud/HudPresenter.ts`: maps gameplay state into the DOM HUD.
 - `src/game/input/GameInput.ts`: pointer/keyboard input and ground-plane raycasting.
 - `src/game/perf/Profiler.ts`: rolling frame, subsystem, render, pathfinding, flow-build, and navigation-scheduler timing metrics.
+- `src/game/perf/RuntimePerformanceMonitor.ts`: fixed-capacity animation-frame pacing history, feature-detected approximate JS heap sampling, GC-correlated hitch counts, and renderer/world resource counters.
 - `src/game/player/PlayerController.ts`: player mesh, movement target, move marker, and player visual state.
 - `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, shadow rig, and ground setup.
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
@@ -54,6 +55,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/world/SeedTerrainProvider.ts`: cheap deterministic hash terrain provider for fallback/debug use.
 - `src/world/hexCoordinates.ts`: shared axial hex coordinate types, directions, keys, and distance helpers.
 - `src/render/GameEffects.ts`: short-lived lightning and shockwave effects.
+- `src/render/NavigationDebugRenderer.ts`: session-only per-enemy navigation capture, lack-of-progress detection, and five-second stalled-state latching.
+- `src/render/NavigationDebugPainter.ts`: one pooled dynamic line buffer used for all navigation debug vectors and geometry.
 - `src/render/SpecialGroundEffects.ts`: low-cost charged/cursed glyph animation and the single occupied-tile particle system.
 - `src/render/materials.ts`: shared Three.js material creation.
 - `src/render/meshes.ts`: player, enemy, and terrain glyph mesh factories.
@@ -73,6 +76,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `Hud` should not mutate gameplay state; it only renders state passed into `update`.
 - UI windows should consume their own pointer events so game movement clicks do not leak through, except locked transparent HUD panels while Unlock UI is off; those are intentionally click-through.
 - Rendering helpers should create reusable `THREE.Object3D` instances and avoid owning gameplay state.
+- Navigation debugging uses fixed-capacity typed-array geometry while enabled and clears its per-enemy state when disabled; it is diagnostic state and must not affect movement decisions or persisted preferences.
 - Repeated terrain and blocker geometry should remain instanced in every render mode. Quality profiles may change materials and cadence without changing generated cells, collision, visibility, or simulation state.
 - `ZeusGame` can coordinate systems, but new large systems should become their own modules.
 - Navigation and future vision checks should share the hex linecast helper so blocker semantics stay consistent.

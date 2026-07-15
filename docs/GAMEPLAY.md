@@ -12,10 +12,12 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Allow Max Range Target Snap is on by default: out-of-range spell aims cast at the spell's max range.
 - Press `Esc` or right-click to cancel targeting. `Esc` also pauses or resumes depending on the current state.
 - Press backtick or `F3` to toggle diagnostics.
+- Press `F6` to cycle enemy navigation debugging through Off, Stalled, and All. The pause menu provides the same session-only control.
 - Press `V` to toggle enemy health bars between smart and always visible.
 - Press `R` after defeat to restart.
 - Use Potato Rendering in the pause menu to reduce GPU load. It persists across reloads and keeps the normal display cadence while using a half-resolution render buffer, no dynamic shadows, unlit terrain materials, and primitive character visuals without changing simulation timing.
 - Press `F4` or use the pause menu to toggle Terrain Debug, which removes fog, zooms the camera out 3x with debug framing, renders a wider window of already-generated terrain, bypasses visibility-gated movement/cast checks, and keeps Zeus at full HP for terrain inspection.
+- Navigation Debug overlays the enemy's current hex and collision radius plus its target direction (cyan), requested movement (blue), avoidance-steered movement (magenta), accepted movement (green), rejected movement (red), and current path (orange). Collision candidates are magnified so very small per-frame moves remain visible. Stalled mode freezes the first failure state after `0.4` seconds without progress and keeps it visible for five seconds after recovery; All mode follows every enemy live.
 
 ## Audio
 
@@ -75,6 +77,7 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Ranged, retreating, special-goal, and future tactical enemy intents are scaffolded but not active yet.
 - Waves accelerate spawning over time.
 - Enemy health bars default to smart visibility: recently damaged enemies, enemies near the cursor, and wounded enemies close to Zeus are shown. The pause menu and `V` key can switch them to always visible.
+- The diagnostics window includes raw animation-frame pacing over its latest 600 frames (last delta, CPU time, p95/p99/max, `>20`/`>33`/`>50` ms counts, and estimated missed refreshes), approximate Chromium JS heap readings when available, probable GC-correlated hitches, and live Three.js/world resource counts. Heap values are approximate browser telemetry rather than a complete process-memory measurement.
 - Enemy meshes respect world visibility. Hidden enemies continue simulating, while recently damaged hidden enemies can leave a short health-bar hint.
 - Enemy-enemy collision is intentionally out of scope for the current prototype.
 

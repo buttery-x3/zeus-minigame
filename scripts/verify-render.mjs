@@ -383,7 +383,8 @@ async function verifyGamePreferencesPersistence(page, viewport) {
     diagnostics.input.allowMaxRangeTargetSnap ||
     !diagnostics.input.unlockUiEnabled ||
     diagnostics.input.renderMode !== "potato" ||
-    diagnostics.input.terrainDebugMode
+    diagnostics.input.terrainDebugMode ||
+    diagnostics.input.navigationDebugMode !== "off"
   ) {
     throw new Error(`${viewport.name} game preferences did not restore correctly: ${JSON.stringify(diagnostics.input)}`);
   }
@@ -1407,6 +1408,7 @@ async function verifyWindowUi(page, viewport) {
   await verifyEnemyHealthBarOptions(page);
   await verifyQuickCastOption(page);
   await verifyMaxRangeTargetSnapOption(page);
+  await verifyNavigationDebugOptions(page);
 
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
@@ -1415,13 +1417,45 @@ async function verifyWindowUi(page, viewport) {
     throw new Error("Escape did not resume from pause menu");
   }
 
+  await page.keyboard.press("F6");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().navigationDebug?.mode === "stalled");
+  await page.keyboard.press("F6");
+  await page.waitForFunction(() => {
+    const debug = window.__ZEUS_GAME__?.getDiagnostics().navigationDebug;
+    return debug?.mode === "all" && debug.trackedEnemies > 0 && debug.displayedEnemies > 0 && debug.renderedSegments > 0;
+  });
+
   await page.keyboard.press("Backquote");
   await page.waitForSelector('[data-window-id="diagnostics"]:not([hidden])');
-  await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.textContent?.includes("Flow"));
+  await page.waitForFunction(() => {
+    const text = document.querySelector('[data-window-id="diagnostics"]')?.textContent ?? "";
+    return text.includes("Flow") && text.includes("Frame") && text.includes("Resources") && text.includes("Vectors cyan target");
+  });
+  const diagnosticsBounds = await page.$eval('[data-window-id="diagnostics"]', (element) => {
+    const rect = element.getBoundingClientRect();
+    const content = element.querySelector(".game-window__content");
+    return { top: rect.top, bottom: rect.bottom, contentScrollable: content.scrollHeight > content.clientHeight };
+  });
+  if (diagnosticsBounds.top < 0 || diagnosticsBounds.bottom > viewport.height || !diagnosticsBounds.contentScrollable) {
+    throw new Error(`${viewport.name} diagnostics window was not contained and scrollable: ${JSON.stringify(diagnosticsBounds)}`);
+  }
 
   diagnostics = await readDiagnostics(page);
   if (!diagnostics.profiler.enemyNavigation || diagnostics.profiler.enemyNavigation.flowRadius <= 0) {
     throw new Error("Diagnostics did not expose enemy flow-field metrics");
+  }
+  const pacing = diagnostics.profiler.framePacing;
+  const memory = diagnostics.profiler.memory;
+  if (
+    !pacing ||
+    pacing.samples <= 0 ||
+    !Number.isFinite(pacing.p95DeltaMs) ||
+    !Number.isFinite(pacing.above20Ms) ||
+    !memory ||
+    !Number.isFinite(memory.resources.geometries) ||
+    !Number.isFinite(memory.resources.terrainCells)
+  ) {
+    throw new Error(`Diagnostics did not expose frame pacing and memory/resource metrics: ${JSON.stringify(diagnostics.profiler)}`);
   }
   verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, "diagnostics window");
 
@@ -1446,6 +1480,11 @@ async function verifyWindowUi(page, viewport) {
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
   await setUnlockUi(page, false);
+  await page.keyboard.press("F6");
+  await page.waitForFunction(() => {
+    const debug = window.__ZEUS_GAME__?.getDiagnostics().navigationDebug;
+    return debug?.mode === "off" && debug.trackedEnemies === 0 && debug.displayedEnemies === 0 && debug.renderedSegments === 0;
+  });
 }
 
 async function verifyPauseMenuCentered(page, viewport) {
@@ -1768,6 +1807,23 @@ async function verifyEnemyHealthBarOptions(page) {
     const diagnostics = await readDiagnostics(page);
     if (diagnostics.enemyHealthBars.mode !== mode) {
       throw new Error(`Enemy health bar mode button did not select ${mode}`);
+    }
+  }
+}
+
+async function verifyNavigationDebugOptions(page) {
+  for (const mode of ["stalled", "all", "off"]) {
+    await page.click(`[data-navigation-debug-mode="${mode}"]`);
+    await page.waitForFunction(
+      (expected) => window.__ZEUS_GAME__?.getDiagnostics().input.navigationDebugMode === expected,
+      mode,
+    );
+    const selected = await page.$eval(
+      `[data-navigation-debug-mode="${mode}"]`,
+      (button) => button.getAttribute("aria-checked"),
+    );
+    if (selected !== "true") {
+      throw new Error(`Navigation Debug button did not select ${mode}`);
     }
   }
 }

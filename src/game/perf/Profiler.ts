@@ -1,4 +1,8 @@
 import type { NavigationSchedulerDiagnostics } from "../navigation/NavigationScheduler";
+import {
+  RuntimePerformanceMonitor,
+  type RuntimeResourceCounters,
+} from "./RuntimePerformanceMonitor";
 
 type Metric = {
   last: number;
@@ -21,6 +25,8 @@ export type ProfilerSnapshot = {
   };
   enemyNavigation: EnemyNavigationMetrics;
   navigationScheduler: NavigationSchedulerDiagnostics;
+  framePacing: ReturnType<RuntimePerformanceMonitor["framePacingDiagnostics"]>;
+  memory: ReturnType<RuntimePerformanceMonitor["memoryDiagnostics"]>;
 };
 
 type PathFrame = ProfilerSnapshot["pathfinding"];
@@ -50,6 +56,7 @@ type EnemyNavigationMetrics = {
 };
 
 export class Profiler {
+  private readonly runtimePerformance = new RuntimePerformanceMonitor();
   private readonly metrics = new Map<string, Metric>();
   private frameStart = performance.now();
   private lastFrameTime = performance.now();
@@ -73,6 +80,7 @@ export class Profiler {
 
   beginFrame(now = performance.now()) {
     const frameDelta = Math.max(0.001, now - this.lastFrameTime);
+    this.runtimePerformance.recordFrameStart(frameDelta, now);
     this.fps = 1000 / frameDelta;
     this.lastFrameTime = now;
     this.frameStart = now;
@@ -91,7 +99,13 @@ export class Profiler {
   }
 
   endFrame(now = performance.now()) {
-    this.record("frameTotal", now - this.frameStart);
+    const frameTotal = now - this.frameStart;
+    this.record("frameTotal", frameTotal);
+    this.runtimePerformance.recordFrameEnd(frameTotal);
+  }
+
+  recordRuntimeResources(resources: RuntimeResourceCounters) {
+    this.runtimePerformance.recordResources(resources);
   }
 
   recordPathfinding(ms: number, iterations: number, success: boolean) {
@@ -169,6 +183,8 @@ export class Profiler {
         slices: { ...this.navigationSchedulerFrame.slices },
         timeMs: { ...this.navigationSchedulerFrame.timeMs },
       },
+      framePacing: this.runtimePerformance.framePacingDiagnostics(),
+      memory: this.runtimePerformance.memoryDiagnostics(),
     };
   }
 
