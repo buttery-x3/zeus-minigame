@@ -20,6 +20,7 @@ import {
   proceduralBoundaryConstraintsAreConsistent,
   type HexPatchBoundaryConstraints,
 } from "./ProceduralTerrainPatch";
+import { candidatePreservesMovementTopology } from "./TerrainEnclosurePolicy";
 
 export type SelectedPatchNeighbor = HexCoord & { variant: HexPatchTileVariant };
 
@@ -30,6 +31,11 @@ export type AuthoredPatchSelection = {
     forced: boolean;
     selectedLoops: ShortFeatureLoop[];
   };
+};
+
+export type AuthoredPatchSelectionResult = {
+  selection: AuthoredPatchSelection | null;
+  enclosureCandidatesRejected: number;
 };
 
 type AuthoredSelectionOptions = {
@@ -49,9 +55,13 @@ export function selectAuthoredPatchVariant(options: AuthoredSelectionOptions) {
   const riverCandidates = !safeStart && options.requireFirstRiver
     ? frontierSafe.filter((variant) => variant.family === "river")
     : [];
-  const candidates = safeCandidates.length > 0 ? safeCandidates : riverCandidates.length > 0 ? riverCandidates : frontierSafe;
+  const preferred = safeCandidates.length > 0 ? safeCandidates : riverCandidates.length > 0 ? riverCandidates : frontierSafe;
+  const candidates = preferred.filter((variant) =>
+    candidatePreservesMovementTopology(options.committedPatches.values(), options.patch, variant).safe,
+  );
+  const enclosureCandidatesRejected = preferred.length - candidates.length;
   if (candidates.length === 0) {
-    return null;
+    return { selection: null, enclosureCandidatesRejected } satisfies AuthoredPatchSelectionResult;
   }
 
   const loopContext = createFeatureLoopContext(options.committedPatches.values());
@@ -78,13 +88,16 @@ export function selectAuthoredPatchVariant(options: AuthoredSelectionOptions) {
     }
   }
   return {
-    variant: selected,
-    loopPolicy: {
-      suppressedCandidates,
-      forced: loopFree.length === 0 && evaluated.some((entry) => entry.loops.length > 0),
-      selectedLoops: selectedEvaluation.loops,
+    selection: {
+      variant: selected,
+      loopPolicy: {
+        suppressedCandidates,
+        forced: loopFree.length === 0 && evaluated.some((entry) => entry.loops.length > 0),
+        selectedLoops: selectedEvaluation.loops,
+      },
     },
-  } satisfies AuthoredPatchSelection;
+    enclosureCandidatesRejected,
+  } satisfies AuthoredPatchSelectionResult;
 }
 
 function loopRiskScore(loops: readonly ShortFeatureLoop[]) {

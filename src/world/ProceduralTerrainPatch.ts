@@ -27,13 +27,18 @@ export type ProceduralPatchResult =
   | { ok: true; variant: HexPatchTileVariant; attemptedAssignments: number }
   | { ok: false; boundaryKey: string; reason: string; attemptedAssignments: number };
 
+export type ProceduralPatchOptions = {
+  idPrefix?: string;
+  acceptsCells?: (cells: ReadonlyMap<string, HexPatchCell>) => boolean;
+};
+
 const INTERIOR_CELLS = HEX_PATCH_LOCAL_CELLS.filter((cell) => hexDistance(cell, { q: 0, r: 0 }) < 2);
 const CENTER_KEY = hexCellKey(0, 0);
 
 export function synthesizeProceduralPatch(
   constraints: HexPatchBoundaryConstraints,
   seed: number,
-  idPrefix = "patch.procedural",
+  options: ProceduralPatchOptions = {},
 ): ProceduralPatchResult {
   const resolution = resolveBoundaryEdges(constraints);
   if (!resolution.ok) {
@@ -108,6 +113,9 @@ export function synthesizeProceduralPatch(
     if (!satisfiesProceduralConnectivity(cells, boundary, hasOpenBoundary)) {
       return;
     }
+    if (options.acceptsCells && !options.acceptsCells(cells)) {
+      return;
+    }
     const score = scoreProceduralCells(cells, boundary, hasOpenBoundary);
     const tie = seededTie(seed, boundaryKey, assignment);
     if (score < bestScore || (score === bestScore && tie < bestTie)) {
@@ -128,8 +136,14 @@ export function synthesizeProceduralPatch(
       ? "enclosed"
       : "mixed-enclosure";
   const family = familyForStructures(boundaryStructures);
-  const id = `${idPrefix}.${hashString(boundaryKey).toString(16).padStart(8, "0")}`;
-  const variant = createPatchVariant(id, family, "procedural", 0, bestCells, { boundaryKey, fillMode });
+  const selectedCells = bestCells as Map<string, HexPatchCell>;
+  const layoutKey = [...selectedCells.values()]
+    .sort((a, b) => a.q - b.q || a.r - b.r)
+    .map((cell) => `${cell.q},${cell.r}:${cell.structure}`)
+    .join("|");
+  const idPrefix = options.idPrefix ?? "patch.procedural";
+  const id = `${idPrefix}.${hashString(`${boundaryKey}|${layoutKey}`).toString(16).padStart(8, "0")}`;
+  const variant = createPatchVariant(id, family, "procedural", 0, selectedCells, { boundaryKey, fillMode });
   const validation = validateHexPatchVariant(variant);
   if (!validation.valid) {
     return { ok: false, boundaryKey, reason: validation.errors.join("; "), attemptedAssignments };

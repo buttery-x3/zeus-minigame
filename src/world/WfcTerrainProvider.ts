@@ -23,6 +23,11 @@ import {
   synthesizeProceduralPatch,
 } from "./ProceduralTerrainPatch";
 import { collectPatchBoundaryConstraints, selectAuthoredPatchVariant } from "./RollingTerrainPatchSelection";
+import {
+  candidateCellsPreserveMovementTopology,
+  candidatePreservesMovementTopology,
+  evaluateMovementEnclosures,
+} from "./TerrainEnclosurePolicy";
 
 type CommittedPatch = HexCoord & {
   variant: HexPatchTileVariant;
@@ -53,6 +58,10 @@ type RollingWfcDiagnostics = {
   shortLoopCandidatesSuppressed: Record<"wall" | "river", number>;
   forcedShortLoopSelectionCount: number;
   selectedShortLoopLengthCounts: Record<string, number>;
+  enclosureCandidatesRejected: number;
+  proceduralTopologyRejectionCount: number;
+  proceduralTerminationPatchCount: number;
+  enclosureViolationSample: { q: number; r: number; cellCount: number } | null;
   resolvedPatchCount: number;
   resolvedCells: number;
   structureCounts: Record<TerrainStructure, number>;
@@ -73,7 +82,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   private readonly structureCounts = createTerrainStructureCounts();
   private readonly surfaceCounts = createTerrainSurfaceCounts();
   private readonly patchVariantCounts: Record<string, number> = {};
-  private readonly proceduralPatchCache = new Map<string, HexPatchTileVariant>();
+  private readonly proceduralPatchCache = new Map<string, HexPatchTileVariant[]>();
   private readonly proceduralFillModeCounts: Record<string, number> = {};
   private readonly proceduralBoundarySignatureCounts: Record<string, number> = {};
   private readonly topologySelectionCounts: Record<string, number> = {};
@@ -89,6 +98,9 @@ export class WfcTerrainProvider implements TerrainProvider {
   private synthesisFailureCount = 0;
   private synthesisDurationMs = 0;
   private forcedShortLoopSelectionCount = 0;
+  private enclosureCandidatesRejected = 0;
+  private proceduralTopologyRejectionCount = 0;
+  private proceduralTerminationPatchCount = 0;
 
   constructor(private readonly seed = WFC_TERRAIN_SEED) {
     this.ensureGeneratedAround(0, 0);
@@ -140,6 +152,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   }
 
   getDiagnostics() {
+    const enclosureAudit = evaluateMovementEnclosures(this.committedPatches.values());
     const wfc: RollingWfcDiagnostics = {
       enabled: true,
       mode: "rolling-patch",
@@ -154,7 +167,7 @@ export class WfcTerrainProvider implements TerrainProvider {
       contradictionCount: this.contradictionCount,
       authoredPatchCount: this.authoredPatchCount,
       proceduralPatchCount: this.proceduralPatchCount,
-      proceduralPatchCacheSize: this.proceduralPatchCache.size,
+      proceduralPatchCacheSize: [...this.proceduralPatchCache.values()].reduce((sum, variants) => sum + variants.length, 0),
       synthesisAttemptCount: this.synthesisAttemptCount,
       synthesisFailureCount: this.synthesisFailureCount,
       synthesisDurationMs: this.synthesisDurationMs,
@@ -164,6 +177,12 @@ export class WfcTerrainProvider implements TerrainProvider {
       shortLoopCandidatesSuppressed: { ...this.shortLoopCandidatesSuppressed },
       forcedShortLoopSelectionCount: this.forcedShortLoopSelectionCount,
       selectedShortLoopLengthCounts: { ...this.selectedShortLoopLengthCounts },
+      enclosureCandidatesRejected: this.enclosureCandidatesRejected,
+      proceduralTopologyRejectionCount: this.proceduralTopologyRejectionCount,
+      proceduralTerminationPatchCount: this.proceduralTerminationPatchCount,
+      enclosureViolationSample: enclosureAudit.safe
+        ? null
+        : { ...enclosureAudit.enclosure.sample, cellCount: enclosureAudit.enclosure.cellCount },
       resolvedPatchCount: this.committedPatches.size,
       resolvedCells: this.generatedCells.size,
       structureCounts: { ...this.structureCounts },
@@ -206,7 +225,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   }
 
   private choosePatchVariant(patch: HexCoord) {
-    const authoredSelection = selectAuthoredPatchVariant({
+    const authoredResult = selectAuthoredPatchVariant({
       patch,
       variants: this.variants,
       committedPatches: this.committedPatches,
@@ -214,20 +233,44 @@ export class WfcTerrainProvider implements TerrainProvider {
       safeStartRadius: SAFE_START_PATCH_RADIUS,
       requireFirstRiver: this.structureCounts.river === 0,
     });
+    this.enclosureCandidatesRejected += authoredResult.enclosureCandidatesRejected;
+    const authoredSelection = authoredResult.selection;
     if (!authoredSelection) {
       const constraints = collectPatchBoundaryConstraints(patch, this.committedPatches);
       const boundaryKey = serializeBoundaryConstraints(constraints);
-      const cached = this.proceduralPatchCache.get(boundaryKey);
+      const cached = this.proceduralPatchCache.get(boundaryKey)?.find((variant) =>
+        candidatePreservesMovementTopology(this.committedPatches.values(), patch, variant).safe,
+      );
       if (cached) {
+        if (authoredResult.enclosureCandidatesRejected > 0) {
+          this.proceduralTerminationPatchCount += 1;
+        }
         return { variant: cached, emergency: false };
       }
 
       this.synthesisAttemptCount += 1;
       const startedAt = performance.now();
-      const result = synthesizeProceduralPatch(constraints, this.seed);
+      let topologyRejections = 0;
+      const result = synthesizeProceduralPatch(constraints, this.seed, {
+        acceptsCells: (cells) => {
+          const safe = candidateCellsPreserveMovementTopology(this.committedPatches.values(), patch, cells).safe;
+          if (!safe) {
+            topologyRejections += 1;
+          }
+          return safe;
+        },
+      });
+      this.proceduralTopologyRejectionCount += topologyRejections;
       this.synthesisDurationMs += performance.now() - startedAt;
       if (result.ok) {
-        this.proceduralPatchCache.set(boundaryKey, result.variant);
+        const cachedVariants = this.proceduralPatchCache.get(boundaryKey) ?? [];
+        if (!cachedVariants.some((variant) => variant.id === result.variant.id)) {
+          cachedVariants.push(result.variant);
+          this.proceduralPatchCache.set(boundaryKey, cachedVariants);
+        }
+        if (authoredResult.enclosureCandidatesRejected > 0) {
+          this.proceduralTerminationPatchCount += 1;
+        }
         return { variant: result.variant, emergency: false };
       }
 

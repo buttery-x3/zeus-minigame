@@ -101,7 +101,7 @@ describe("terrain feature loop policy", () => {
     )).toContainEqual({ feature: "wall", length: 3, kind: "frontier" });
   });
 
-  test("retains a forced short-loop candidate instead of creating a contradiction", () => {
+  test("rejects a forced short-loop candidate when it encloses movement", () => {
     const east = findTwoExitVariant(variants, "closed", ["sw", "w"]);
     const southeast = findTwoExitVariant(variants, "closed", ["ne", "nw"]);
     const candidate = findTwoExitVariant(variants, "closed", ["e", "se"]);
@@ -118,8 +118,8 @@ describe("terrain feature loop policy", () => {
       requireFirstRiver: false,
     });
 
-    expect(selection?.variant).toBe(candidate);
-    expect(selection?.loopPolicy.forced).toBe(true);
+    expect(selection.selection).toBeNull();
+    expect(selection.enclosureCandidatesRejected).toBe(1);
   });
 });
 
@@ -180,6 +180,28 @@ describe("procedural patch closure", () => {
       return;
     }
     expect(serializeCells(a.variant)).toBe(serializeCells(b.variant));
+  });
+
+  test("searches for an alternate terminating interior when topology rejects the preferred layout", () => {
+    const constraints: HexPatchBoundaryConstraints = {
+      ne: ["open", "river", "open"],
+      sw: ["open", "river", "open"],
+    };
+    const preferred = synthesizeProceduralPatch(constraints, 43);
+    expect(preferred.ok).toBe(true);
+    if (!preferred.ok) {
+      return;
+    }
+    const preferredLayout = serializeCells(preferred.variant);
+    const alternate = synthesizeProceduralPatch(constraints, 43, {
+      acceptsCells: (cells) => serializeCellMap(cells) !== preferredLayout,
+    });
+
+    expect(alternate.ok).toBe(true);
+    if (alternate.ok) {
+      expect(serializeCells(alternate.variant)).not.toBe(preferredLayout);
+      expect(alternate.variant.cells.get("0,0")?.structure).toBe("open");
+    }
   });
 
   test("closes every reachable authored-neighbor boundary", { timeout: 60_000 }, () => {
@@ -243,6 +265,7 @@ describe("rolling authored-first generation", () => {
   test("uses procedural patches without socket mismatches or emergency substitution", { timeout: 30_000 }, () => {
     let suppressedShortLoops = 0;
     let gentleBends = 0;
+    let enclosureCandidatesRejected = 0;
     for (const seed of [20260517, 20260518, 20260519, 20260520]) {
       const provider = new WfcTerrainProvider(seed);
       provider.ensureGeneratedAround(0, 0, 5);
@@ -253,11 +276,14 @@ describe("rolling authored-first generation", () => {
       expect(diagnostics.patchSocketMismatchSample, `seed ${seed}`).toBeNull();
       expect(diagnostics.authoredPatchCount, `seed ${seed}`).toBeGreaterThan(diagnostics.proceduralPatchCount);
       expect(diagnostics.structureCounts.bank, `seed ${seed}`).toBe(0);
+      expect(diagnostics.enclosureViolationSample, `seed ${seed}`).toBeNull();
       suppressedShortLoops += diagnostics.shortLoopCandidatesSuppressed.wall + diagnostics.shortLoopCandidatesSuppressed.river;
       gentleBends += diagnostics.topologySelectionCounts["gentle-bend"] ?? 0;
+      enclosureCandidatesRejected += diagnostics.enclosureCandidatesRejected;
     }
     expect(suppressedShortLoops).toBeGreaterThan(0);
     expect(gentleBends).toBeGreaterThan(0);
+    expect(enclosureCandidatesRejected).toBeGreaterThan(0);
   });
 });
 
@@ -373,8 +399,12 @@ function rotateConstraints(constraints: HexPatchBoundaryConstraints, step: numbe
 }
 
 function serializeCells(variant: HexPatchTileVariant) {
+  return serializeCellMap(variant.cells);
+}
+
+function serializeCellMap(cells: ReadonlyMap<string, { structure: string; surface: string }>) {
   return HEX_PATCH_LOCAL_CELLS.map((coord) => {
-    const cell = variant.cells.get(hexCellKey(coord.q, coord.r));
+    const cell = cells.get(hexCellKey(coord.q, coord.r));
     return `${cell?.structure}/${cell?.surface}`;
   }).join("|");
 }
