@@ -12,10 +12,12 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Allow Max Range Target Snap is on by default: out-of-range spell aims cast at the spell's max range.
 - Press `Esc` or right-click to cancel targeting. `Esc` also pauses or resumes depending on the current state.
 - Press backtick or `F3` to toggle diagnostics.
+- Press `F6` to cycle enemy navigation debugging through Off, Stalled, and All. The pause menu provides the same session-only control.
 - Press `V` to toggle enemy health bars between smart and always visible.
 - Press `R` after defeat to restart.
 - Use Potato Rendering in the pause menu to reduce GPU load. It persists across reloads and keeps the normal display cadence while using a half-resolution render buffer, no dynamic shadows, unlit terrain materials, and primitive character visuals without changing simulation timing.
 - Press `F4` or use the pause menu to toggle Terrain Debug, which removes fog, zooms the camera out 3x with debug framing, renders a wider window of already-generated terrain, bypasses visibility-gated movement/cast checks, and keeps Zeus at full HP for terrain inspection.
+- Navigation Debug overlays the enemy's current hex and collision radius plus its target direction (cyan), requested movement (blue), avoidance-steered movement (magenta), accepted movement (green), rejected movement (red), and current path (orange). Collision candidates are magnified so very small per-frame moves remain visible. Stalled mode freezes the first failure state after `0.4` seconds without progress and keeps it visible for five seconds after recovery; All mode follows every enemy live. Either active mode keeps Zeus at full HP and ignores incoming damage so a navigation incident can be inspected safely; selecting Off restores normal damage immediately.
 
 ## Audio
 
@@ -34,7 +36,9 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 - Active charged ground accelerates both mana regeneration and spell cooldown recovery by `1.75x`.
 - Movement is click/hold-to-move on the `X/Z` ground plane.
 - Movement commands require known terrain: Zeus can move to previously discovered walkable ground even when it is no longer currently visible.
+- Long movement linecasts and route searches are advanced over multiple frames with a distance-scaled search allowance. The move reticle appears at the requested point immediately; held movement keeps only the newest queued target, retains a usable completed route while a replacement is pending, and can apply a superseded completion when Zeus otherwise has no route.
 - If pathfinding cannot resolve a full route to a movement command, Zeus falls back to moving in a straight visible line toward the command until terrain blocks the path.
+- Enemy separation steering is checked against terrain collision. If crowd avoidance would push a minion into a blocker without making target progress, it retries the navigation-preferred move. Direct line-of-sight crowd stalls never request individual Theta* routes; only stalled flow/acquisition navigation may use the fallback queue.
 - Vitals, game, status, abilities, and diagnostics are DOM windows. The pause menu's Unlock UI toggle enables their lock controls and movement; it defaults off so transparent HUD panels stay quiet and click-through.
 
 ## Spells
@@ -68,10 +72,14 @@ The player controls a Zeus-inspired storm caster in an isometric 3D arena. Melee
 ## Enemies
 
 - Melee enemies chase directly when walls do not interrupt line of sight, otherwise they use a shared hex flow field around Zeus.
-- If an enemy cannot sample the flow field, it steers toward the field edge and only requests a budgeted fallback path if it stalls.
+- The weighted flow field is rebuilt incrementally and retains its last complete version during a rebuild, preserving support for future higher-cost terrain such as banks, bridges, or hills.
+- If an enemy cannot sample the flow field, it steers toward the field edge and only requests an incremental fallback path if it stalls.
+- Enemy fallback goals retain their source and age. Queued work times out after two seconds, player-relative goals are discarded after the player moves three hexes, and a route rejoins the shared flow after roughly one hex of useful local detour.
+- Player paths, flow rebuilds, and enemy fallback routes share a frame-level scheduler so blocker-heavy navigation cannot monopolize one simulation frame.
 - Ranged, retreating, special-goal, and future tactical enemy intents are scaffolded but not active yet.
 - Waves accelerate spawning over time.
 - Enemy health bars default to smart visibility: recently damaged enemies, enemies near the cursor, and wounded enemies close to Zeus are shown. The pause menu and `V` key can switch them to always visible.
+- The diagnostics window includes raw animation-frame pacing over its latest 600 frames (last delta, CPU time, p95/p99/max, `>20`/`>33`/`>50` ms counts, and estimated missed refreshes), approximate Chromium JS heap readings when available, probable GC-correlated hitches, and live Three.js/world resource counts. Heap values are approximate browser telemetry rather than a complete process-memory measurement.
 - Enemy meshes respect world visibility. Hidden enemies continue simulating, while recently damaged hidden enemies can leave a short health-bar hint.
 - Enemy-enemy collision is intentionally out of scope for the current prototype.
 

@@ -49,6 +49,20 @@ export class GridWorld {
     return cell;
   }
 
+  getGeneratedCell(q: number, r: number) {
+    const key = this.cellKey(q, r);
+    const existing = this.cells.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const generated = this.terrainProvider.getGeneratedCell?.(q, r) ?? null;
+    if (generated) {
+      this.cells.set(key, generated);
+    }
+    return generated;
+  }
+
   getGeneratedCellsInRange(center: HexCoord, radius: number) {
     if (this.terrainProvider.getGeneratedCellsInRange) {
       return this.terrainProvider.getGeneratedCellsInRange(center, radius);
@@ -65,6 +79,10 @@ export class GridWorld {
 
   getTerrainGenerationVersion() {
     return this.terrainProvider.getGenerationVersion?.() ?? this.cells.size;
+  }
+
+  getCachedCellCount() {
+    return this.cells.size;
   }
 
   ensureTerrainGeneratedAroundCell(q: number, r: number) {

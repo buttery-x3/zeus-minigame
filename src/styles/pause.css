@@ -58,6 +58,11 @@
   background: rgb(8 15 16 / 70%);
 }
 
+.pause-menu__segmented--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 260px);
+}
+
 .pause-menu button {
   min-width: 118px;
   height: 38px;

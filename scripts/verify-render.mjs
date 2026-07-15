@@ -383,7 +383,8 @@ async function verifyGamePreferencesPersistence(page, viewport) {
     diagnostics.input.allowMaxRangeTargetSnap ||
     !diagnostics.input.unlockUiEnabled ||
     diagnostics.input.renderMode !== "potato" ||
-    diagnostics.input.terrainDebugMode
+    diagnostics.input.terrainDebugMode ||
+    diagnostics.input.navigationDebugMode !== "off"
   ) {
     throw new Error(`${viewport.name} game preferences did not restore correctly: ${JSON.stringify(diagnostics.input)}`);
   }
@@ -1370,6 +1371,13 @@ async function verifyHeldClickTracksCamera(page, viewport) {
 
   await page.mouse.down();
   try {
+    await page.waitForTimeout(25);
+    const submitted = await readDiagnostics(page);
+    const reticleError = groundDistance(submitted.player.navigation.requestedTarget, submitted.input.pointerWorld);
+    if (reticleError > 0.5) {
+      throw new Error(`${viewport.name} held-click reticle did not immediately track the submitted target: ${reticleError}`);
+    }
+
     await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().player.animation.activeClip === "Run_03");
     await page.waitForTimeout(120);
     const initialHold = await readDiagnostics(page);
@@ -1385,6 +1393,9 @@ async function verifyHeldClickTracksCamera(page, viewport) {
     }
     if (targetShift < 2) {
       throw new Error(`${viewport.name} held-click target did not refresh as the camera moved: ${targetShift}`);
+    }
+    if (afterHold.player.navigation.appliedRoutes <= before.player.navigation.appliedRoutes) {
+      throw new Error(`${viewport.name} held-click route never completed while requests were being refreshed`);
     }
     if (initialHold.player.animation.activeState !== "run" || initialHold.player.animation.activeClip !== "Run_03") {
       throw new Error(`${viewport.name} movement did not use Run_03: ${JSON.stringify(initialHold.player.animation)}`);
@@ -1407,6 +1418,7 @@ async function verifyWindowUi(page, viewport) {
   await verifyEnemyHealthBarOptions(page);
   await verifyQuickCastOption(page);
   await verifyMaxRangeTargetSnapOption(page);
+  await verifyNavigationDebugOptions(page);
 
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector('[data-window-id="pause-menu"]')?.hasAttribute("hidden"));
@@ -1415,13 +1427,53 @@ async function verifyWindowUi(page, viewport) {
     throw new Error("Escape did not resume from pause menu");
   }
 
+  await page.keyboard.press("F6");
+  await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().navigationDebug?.mode === "stalled");
+  await page.keyboard.press("F6");
+  await page.waitForFunction(() => {
+    const debug = window.__ZEUS_GAME__?.getDiagnostics().navigationDebug;
+    return debug?.mode === "all" && debug.trackedEnemies > 0 && debug.displayedEnemies > 0 && debug.renderedSegments > 0;
+  });
+
   await page.keyboard.press("Backquote");
   await page.waitForSelector('[data-window-id="diagnostics"]:not([hidden])');
-  await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.textContent?.includes("Flow"));
+  await page.waitForFunction(() => {
+    const text = document.querySelector('[data-window-id="diagnostics"]')?.textContent ?? "";
+    return text.includes("Flow") && text.includes("Player route") && text.includes("Frame") && text.includes("Resources") && text.includes("Vectors cyan target");
+  });
+  const diagnosticsBounds = await page.$eval('[data-window-id="diagnostics"]', (element) => {
+    const rect = element.getBoundingClientRect();
+    const content = element.querySelector(".game-window__content");
+    return { top: rect.top, bottom: rect.bottom, contentScrollable: content.scrollHeight > content.clientHeight };
+  });
+  if (diagnosticsBounds.top < 0 || diagnosticsBounds.bottom > viewport.height || !diagnosticsBounds.contentScrollable) {
+    throw new Error(`${viewport.name} diagnostics window was not contained and scrollable: ${JSON.stringify(diagnosticsBounds)}`);
+  }
 
   diagnostics = await readDiagnostics(page);
   if (!diagnostics.profiler.enemyNavigation || diagnostics.profiler.enemyNavigation.flowRadius <= 0) {
     throw new Error("Diagnostics did not expose enemy flow-field metrics");
+  }
+  if (
+    !diagnostics.navigationDebug.fallbacks ||
+    !Number.isFinite(diagnostics.navigationDebug.fallbacks.active) ||
+    !Number.isFinite(diagnostics.navigationDebug.fallbacks.queued) ||
+    !Number.isFinite(diagnostics.navigationDebug.fallbacks.oldestQueuedSeconds)
+  ) {
+    throw new Error(`Diagnostics did not expose fallback lifecycle metrics: ${JSON.stringify(diagnostics.navigationDebug)}`);
+  }
+  const pacing = diagnostics.profiler.framePacing;
+  const memory = diagnostics.profiler.memory;
+  if (
+    !pacing ||
+    pacing.samples <= 0 ||
+    !Number.isFinite(pacing.p95DeltaMs) ||
+    !Number.isFinite(pacing.above20Ms) ||
+    !memory ||
+    !Number.isFinite(memory.resources.geometries) ||
+    !Number.isFinite(memory.resources.terrainCells)
+  ) {
+    throw new Error(`Diagnostics did not expose frame pacing and memory/resource metrics: ${JSON.stringify(diagnostics.profiler)}`);
   }
   verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, "diagnostics window");
 
@@ -1446,6 +1498,11 @@ async function verifyWindowUi(page, viewport) {
   await page.click('[data-window-id="diagnostics"] .game-window__action--close');
   await page.waitForFunction(() => document.querySelector('[data-window-id="diagnostics"]')?.hasAttribute("hidden"));
   await setUnlockUi(page, false);
+  await page.keyboard.press("F6");
+  await page.waitForFunction(() => {
+    const debug = window.__ZEUS_GAME__?.getDiagnostics().navigationDebug;
+    return debug?.mode === "off" && debug.trackedEnemies === 0 && debug.displayedEnemies === 0 && debug.renderedSegments === 0;
+  });
 }
 
 async function verifyPauseMenuCentered(page, viewport) {
@@ -1742,6 +1799,24 @@ function verifyEnemyPathfindingBudgetSnapshot(diagnostics, viewport, phase) {
   if (calls > 20) {
     throw new Error(`${viewport.name} pathfinding spike ${phase}: ${calls} calls`);
   }
+
+  const scheduler = diagnostics.profiler.navigationScheduler;
+  if (!scheduler || scheduler.budgetMs <= 0) {
+    throw new Error(`${viewport.name} missing navigation scheduler diagnostics ${phase}`);
+  }
+  for (const key of ["usedMs", "maxSliceMs", "overshootMs"]) {
+    if (!Number.isFinite(scheduler[key]) || scheduler[key] < 0) {
+      throw new Error(`${viewport.name} invalid navigation scheduler ${key} ${phase}: ${scheduler[key]}`);
+    }
+  }
+  if (scheduler.maxSliceMs > 12) {
+    throw new Error(`${viewport.name} navigation slice spike ${phase}: ${scheduler.maxSliceMs.toFixed(2)} ms`);
+  }
+  if (scheduler.usedMs > scheduler.budgetMs + 12) {
+    throw new Error(
+      `${viewport.name} navigation frame spike ${phase}: ${scheduler.usedMs.toFixed(2)}/${scheduler.budgetMs.toFixed(2)} ms`,
+    );
+  }
 }
 
 async function verifyEnemyHealthBarOptions(page) {
@@ -1750,6 +1825,36 @@ async function verifyEnemyHealthBarOptions(page) {
     const diagnostics = await readDiagnostics(page);
     if (diagnostics.enemyHealthBars.mode !== mode) {
       throw new Error(`Enemy health bar mode button did not select ${mode}`);
+    }
+  }
+}
+
+async function verifyNavigationDebugOptions(page) {
+  for (const mode of ["stalled", "all", "off"]) {
+    await page.click(`[data-navigation-debug-mode="${mode}"]`);
+    await page.waitForFunction(
+      (expected) => window.__ZEUS_GAME__?.getDiagnostics().input.navigationDebugMode === expected,
+      mode,
+    );
+    const selected = await page.$eval(
+      `[data-navigation-debug-mode="${mode}"]`,
+      (button) => button.getAttribute("aria-checked"),
+    );
+    if (selected !== "true") {
+      throw new Error(`Navigation Debug button did not select ${mode}`);
+    }
+
+    if (mode === "stalled") {
+      await page.evaluate(() => window.__ZEUS_GAME__?.damagePlayerForVerification(7));
+      const diagnostics = await readDiagnostics(page);
+      if (!diagnostics.input.debugInvulnerable || diagnostics.player.health !== diagnostics.upgrades.stats.maxHealth) {
+        throw new Error(`Navigation Debug did not protect the player: ${JSON.stringify(diagnostics.input)}`);
+      }
+    } else if (mode === "off") {
+      const diagnostics = await readDiagnostics(page);
+      if (diagnostics.input.debugInvulnerable) {
+        throw new Error("Navigation Debug invulnerability remained active after selecting Off");
+      }
     }
   }
 }
@@ -1862,6 +1967,11 @@ async function verifyCameraRigStability(page, viewport) {
 }
 
 async function verifyBlockerNavigation(page, viewport) {
+  await page.waitForFunction(() => {
+    const navigation = window.__ZEUS_GAME__?.getDiagnostics().player.navigation;
+    return navigation && navigation.pathLength === 0 && !navigation.pathJob && !navigation.pendingPath;
+  });
+  await page.waitForTimeout(100);
   const before = await readDiagnostics(page);
   const blocker = before.nearestBlockedCell;
   if (!blocker) {
@@ -1872,8 +1982,24 @@ async function verifyBlockerNavigation(page, viewport) {
     throw new Error(`${viewport.name} visible blocker projected outside viewport: ${JSON.stringify(blocker.screen)}`);
   }
 
-  await page.mouse.click(blocker.screen.x, blocker.screen.y);
-  await page.waitForTimeout(450);
+  await page.mouse.move(blocker.screen.x, blocker.screen.y);
+  await page.mouse.down();
+  let submitted;
+  try {
+    await page.waitForTimeout(25);
+    submitted = await readDiagnostics(page);
+    await page.waitForTimeout(425);
+  } finally {
+    await page.mouse.up();
+  }
+
+  const reticleDistance = groundDistance(submitted.player.navigation.requestedTarget, submitted.input.pointerWorld);
+  const completedBeforeSnapshot = submitted.player.navigation.appliedRoutes > before.player.navigation.appliedRoutes;
+  if (!completedBeforeSnapshot && reticleDistance > 0.5) {
+    throw new Error(
+      `${viewport.name} pending held blocker reticle did not match its submitted target: ${reticleDistance}`,
+    );
+  }
 
   const after = await readDiagnostics(page);
   const navigation = after.player.navigation;
@@ -1885,6 +2011,9 @@ async function verifyBlockerNavigation(page, viewport) {
   }
   if (!navigation.destinationDiscovered) {
     throw new Error(`${viewport.name} blocker navigation resolved into undiscovered space: ${JSON.stringify(navigation)}`);
+  }
+  if (navigation.appliedRoutes <= before.player.navigation.appliedRoutes) {
+    throw new Error(`${viewport.name} held blocker navigation did not apply a completed route`);
   }
 
   const moveTarget = navigation.moveTarget;

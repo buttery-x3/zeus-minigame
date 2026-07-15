@@ -1,10 +1,11 @@
 # Testing
 
-The project has three verification layers:
+The project has four verification layers:
 
 ```bash
 npm run build
 npm run test:terrain
+npm run test:game
 npm run verify:render
 ```
 
@@ -54,10 +55,10 @@ npm run verify
 - Checks that click and held movement commands reject undiscovered terrain.
 - Clicks a visible wall blocker and checks that navigation resolves to reachable discovered neighboring hex space.
 - Opens the pause menu and diagnostics window, including the diagnostics lock/close controls.
-- Checks the pause menu audio controls, enemy health bar visibility options, Quick Cast toggle, Allow Max Range Target Snap toggle, Unlock UI toggle, and confirms the expanded menu fits the supported desktop viewport.
+- Checks the pause menu audio controls, enemy health bar visibility options, Quick Cast toggle, Allow Max Range Target Snap toggle, Unlock UI toggle, session-only Navigation Debug options, and confirms the expanded menu fits the supported desktop viewport.
 - Confirms gameplay/UI preferences persist across reloads, including Potato rendering and every HUD panel position, while Terrain Debug remains session-only; partial and malformed stored settings must fall back safely.
 - Checks enemy local avoidance diagnostics for nearby-unit spacing and bounded movement speed.
-- Checks that diagnostics exposes enemy hex flow-field metrics and that the smoke path does not create a pathfinding call spike.
+- Checks that diagnostics exposes enemy hex flow-field, frame scheduler, 600-frame pacing, heap/resource, and pooled navigation-overlay metrics; exercises `F6` through Stalled/All/Off; confirms active navigation debugging makes the player invulnerable and Off removes that protection; and confirms Off clears tracked enemies and rendered lines. The smoke path must not create a pathfinding call or navigation-slice spike.
 - Presses `V` to verify enemy health bars toggle between smart and always visible modes while respecting world visibility.
 - Exercises click movement, default Quick Cast key-release casts, right-click targeting cancel, and the toggle-off legacy click-cast flow.
 - Re-checks the pathfinding budget after core interactions so fallback enemy navigation stays bounded.
@@ -70,6 +71,12 @@ Mobile layouts and controls are not currently supported or included in render ve
 ## Terrain Function Verification
 
 `npm run test:terrain` runs deterministic TypeScript function tests through Vitest. It validates every authored patch and rotation, confirms topology-group budgets and the absence of generated banks, exercises open-core and homogeneous/mixed enclosed procedural fills, checks deterministic output, and enumerates every center boundary reachable from six mutually compatible authored neighbors. Rotationally equivalent neighborhoods are solved as canonical classes and rotation behavior is verified separately. Feature-graph tests distinguish a three-patch cliff closure from an ordinary extension, detect a loop forced into the next frontier patch, and confirm forced closures remain selectable. Multi-seed rolling stress requires the new gentle-bend vocabulary and short-loop suppression to activate while synthesis failures, emergency substitutions, contradictions, and socket mismatches remain at zero.
+
+## Navigation Function Verification
+
+`npm run test:game` runs deterministic Vitest coverage for resumable linecasts, incremental Theta* and destination resolution, distinct path completion/failure reasons, long routes around extended barriers, active/staging flow-field swaps, latest-root coalescing, scheduler source fairness, obstacle-aware enemy movement choice, populated-flow direct-stall suppression, stale-goal cancellation, fallback queue timeout/rejoin, and multi-enemy path ownership. These tests use fixed operation limits in addition to wall-clock deadlines so correctness does not depend on machine speed.
+
+The browser verifier also holds movement while the camera tracks Zeus, checks that the requested reticle updates immediately, requires a route to complete while held requests refresh, and repeats held movement against a blocker to confirm the destination resolves to nearby discovered walkable ground.
 
 ## Browser Path
 

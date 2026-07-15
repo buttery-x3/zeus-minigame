@@ -16,6 +16,7 @@ type InputCallbacks = {
   toggleDiagnostics: () => void;
   toggleEnemyHealthBarMode: () => void;
   toggleTerrainDebugMode: () => void;
+  cycleNavigationDebugMode: () => void;
 };
 
 const HELD_MOVE_REFIRE_SECONDS = 0.1;
@@ -117,6 +118,11 @@ export class GameInput {
       return;
     }
 
+    if (event.key === "F6") {
+      this.callbacks.cycleNavigationDebugMode();
+      return;
+    }
+
     if (this.callbacks.isPaused()) {
       return;
     }
@@ -192,11 +198,6 @@ export class GameInput {
       return;
     }
     this.updatePointerWorld(event);
-
-    if (this.isHoldingMove()) {
-      this.moveRequestPending = true;
-      this.heldMoveRefireIn = HELD_MOVE_REFIRE_SECONDS;
-    }
   };
 
   private readonly handlePointerUp = (event: PointerEvent) => {

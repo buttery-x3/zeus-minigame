@@ -10,6 +10,8 @@ import { WindowManager } from "./window/WindowManager";
 import type { UpgradeId, UpgradeOfferSnapshot, UpgradeStacks } from "../game/upgrades/upgradeTypes";
 import type { HudPanelId, HudPanelPositions, RenderMode } from "../game/preferences/GamePreferences";
 import type { NormalizedWindowPosition } from "./window/types";
+import type { NavigationDebugDiagnostics, NavigationDebugMode } from "../game/enemies/navigation/NavigationDebugTypes";
+import type { PlayerNavigationDiagnostics } from "../game/player/PlayerController";
 
 type GameUiCallbacks = {
   resume: () => void;
@@ -28,6 +30,8 @@ type GameUiCallbacks = {
   setHudPanelPosition: (id: HudPanelId, position: NormalizedWindowPosition) => void;
   terrainDebugMode: boolean;
   setTerrainDebugMode: (enabled: boolean) => void;
+  navigationDebugMode: NavigationDebugMode;
+  setNavigationDebugMode: (mode: NavigationDebugMode) => void;
   audioPreferences: AudioPreferences;
   setSfxVolume: (volume: number) => void;
   setBgmVolume: (volume: number) => void;
@@ -70,6 +74,7 @@ export class GameUi {
         setUnlockUiEnabled: callbacks.setUnlockUiEnabled,
         setRenderMode: callbacks.setRenderMode,
         setTerrainDebugMode: callbacks.setTerrainDebugMode,
+        setNavigationDebugMode: callbacks.setNavigationDebugMode,
         setSfxVolume: callbacks.setSfxVolume,
         setBgmVolume: callbacks.setBgmVolume,
         setSpellFailureEnabled: callbacks.setSpellFailureEnabled,
@@ -80,6 +85,7 @@ export class GameUi {
       callbacks.unlockUiEnabled,
       callbacks.renderMode,
       callbacks.terrainDebugMode,
+      callbacks.navigationDebugMode,
       callbacks.audioPreferences,
     );
     this.setUnlockUiEnabled(callbacks.unlockUiEnabled);
@@ -123,6 +129,10 @@ export class GameUi {
     this.pauseMenu.setTerrainDebugMode(enabled);
   }
 
+  setNavigationDebugMode(mode: NavigationDebugMode) {
+    this.pauseMenu.setNavigationDebugMode(mode);
+  }
+
   setSfxVolume(volume: number) {
     this.pauseMenu.setSfxVolume(volume);
   }
@@ -140,8 +150,12 @@ export class GameUi {
     this.toolbar.setDiagnosticsOpen(this.diagnostics.isOpen());
   }
 
-  updateDiagnostics(snapshot: ProfilerSnapshot) {
-    this.diagnostics.update(snapshot);
+  updateDiagnostics(
+    snapshot: ProfilerSnapshot,
+    getNavigationDebug: () => NavigationDebugDiagnostics,
+    getPlayerNavigation: () => PlayerNavigationDiagnostics,
+  ) {
+    this.diagnostics.update(snapshot, getNavigationDebug, getPlayerNavigation);
   }
 
   remove() {

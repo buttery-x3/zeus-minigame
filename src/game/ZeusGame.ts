@@ -17,6 +17,7 @@ import { Profiler } from "./perf/Profiler";
 import { PlayerController } from "./player/PlayerController";
 import { GameScene } from "./scene/GameScene";
 import { getBoundedFrameDelta, SimulationStepper } from "./SimulationStepper";
+import { NavigationScheduler } from "./navigation/NavigationScheduler";
 import { SpellSystem } from "./spells/SpellSystem";
 import { TargetingRenderer } from "./spells/TargetingRenderer";
 import { TerrainSystem } from "./terrain/TerrainSystem";
@@ -31,11 +32,13 @@ import { GridWorld } from "../world/GridWorld";
 import { UpgradeSystem } from "./upgrades/UpgradeSystem";
 import type { UpgradeId } from "./upgrades/upgradeTypes";
 import { GamePreferencesStore, type RenderMode } from "./preferences/GamePreferences";
+import type { NavigationDebugMode } from "./enemies/navigation/NavigationDebugTypes";
 
 export class ZeusGame {
   private readonly clock = new THREE.Clock();
   private readonly profiler = new Profiler();
   private readonly simulationStepper = new SimulationStepper();
+  private readonly navigationScheduler = new NavigationScheduler();
   private readonly gridWorld = new GridWorld();
   private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
   private readonly visibility = new VisibilitySystem(this.gridWorld);
@@ -44,6 +47,7 @@ export class ZeusGame {
     blockers: new THREE.Group(),
     enemies: new THREE.Group(),
     enemyHealthBars: new THREE.Group(),
+    navigationDebug: new THREE.Group(),
     effects: new THREE.Group(),
     targeting: new THREE.Group(),
   };
@@ -92,6 +96,7 @@ export class ZeusGame {
   private allowMaxRangeTargetSnap = this.savedPreferences.allowMaxRangeTargetSnap;
   private unlockUiEnabled = this.savedPreferences.unlockUiEnabled;
   private terrainDebugMode = false;
+  private navigationDebugMode: NavigationDebugMode = "off";
   private manualPaused = false;
   private readonly ui = new GameUi({
     resume: () => this.setManualPaused(false),
@@ -110,6 +115,8 @@ export class ZeusGame {
     setHudPanelPosition: (id, position) => this.preferences.setHudPanelPosition(id, position),
     terrainDebugMode: this.terrainDebugMode,
     setTerrainDebugMode: (enabled) => this.setTerrainDebugMode(enabled),
+    navigationDebugMode: this.navigationDebugMode,
+    setNavigationDebugMode: (mode) => this.setNavigationDebugMode(mode),
     audioPreferences: this.audio.getPreferences(),
     setSfxVolume: (volume) => this.setSfxVolume(volume),
     setBgmVolume: (volume) => this.setBgmVolume(volume),
@@ -121,6 +128,7 @@ export class ZeusGame {
   private readonly enemies = new EnemySystem(
     this.groups.enemies,
     this.groups.enemyHealthBars,
+    this.groups.navigationDebug,
     this.collision,
     this.gridWorld,
     this.profiler,
@@ -173,6 +181,7 @@ export class ZeusGame {
     toggleDiagnostics: () => this.ui.toggleDiagnostics(),
     toggleEnemyHealthBarMode: () => this.toggleEnemyHealthBarMode(),
     toggleTerrainDebugMode: () => this.setTerrainDebugMode(!this.terrainDebugMode),
+    cycleNavigationDebugMode: () => this.cycleNavigationDebugMode(),
   });
 
   private state = createInitialState();
@@ -180,6 +189,7 @@ export class ZeusGame {
   private animationId = 0;
   private discardNextFrameDelta = false;
   private renderedFrameCount = 0;
+  private nextResourceSampleAt = 0;
 
   constructor() {
     this.scene.mount({
@@ -188,6 +198,7 @@ export class ZeusGame {
       visibility: this.visibilityOverlay.object,
       enemies: this.groups.enemies,
       enemyHealthBars: this.groups.enemyHealthBars,
+      navigationDebug: this.groups.navigationDebug,
       effects: this.groups.effects,
       targeting: this.groups.targeting,
       player: this.player.object,
@@ -214,7 +225,7 @@ export class ZeusGame {
     document.removeEventListener("visibilitychange", this.handleVisibilityChange);
     this.input.dispose();
     this.audio.dispose();
-    this.enemies.clear();
+    this.enemies.dispose();
     this.player.dispose();
     this.ui.remove();
     this.visibilityOverlay.dispose();
@@ -229,6 +240,8 @@ export class ZeusGame {
         allowMaxRangeTargetSnap: this.allowMaxRangeTargetSnap,
         unlockUiEnabled: this.unlockUiEnabled,
         terrainDebugMode: this.terrainDebugMode,
+        navigationDebugMode: this.navigationDebugMode,
+        debugInvulnerable: this.hasDebugInvulnerability(),
         renderMode: this.renderMode,
         pointerWorld: this.input.pointerWorld.toArray(),
       },
@@ -250,6 +263,7 @@ export class ZeusGame {
       },
       enemyVisibility: this.enemies.getVisibilityDiagnostics(),
       enemyAvoidance: this.enemies.getAvoidanceDiagnostics(),
+      navigationDebug: this.enemies.getNavigationDebugDiagnostics(),
       enemyAnimations: this.enemies.getAnimationDiagnostics(),
       audio: this.audio.getDiagnostics(),
       terrain: this.terrain.getDiagnostics(),
@@ -339,8 +353,22 @@ export class ZeusGame {
     this.profiler.measure("gameLogic", () => this.update(rawDt, discardForVisibility));
     this.profiler.measure("render", () => this.scene.render());
     this.renderedFrameCount += 1;
+    if (time >= this.nextResourceSampleAt) {
+      const resources = this.scene.getResourceDiagnostics();
+      this.profiler.recordRuntimeResources({
+        ...resources,
+        terrainCells: this.gridWorld.getCachedCellCount(),
+        enemies: this.enemies.getVisibilityDiagnostics().total,
+        effects: this.effects.getActiveCount(),
+      });
+      this.nextResourceSampleAt = time + 1000;
+    }
     this.profiler.endFrame();
-    this.ui.updateDiagnostics(this.profiler.snapshot());
+    this.ui.updateDiagnostics(
+      this.profiler.snapshot(),
+      () => this.enemies.getNavigationDebugDiagnostics(),
+      () => this.player.getNavigationDiagnostics(),
+    );
     this.animationId = window.requestAnimationFrame(this.tick);
   };
 
@@ -353,7 +381,7 @@ export class ZeusGame {
       this.syncPauseState();
     }
 
-    if (this.terrainDebugMode) {
+    if (this.hasDebugInvulnerability()) {
       this.state.health = runStats.maxHealth;
     }
 
@@ -366,6 +394,15 @@ export class ZeusGame {
     const timing = this.simulationStepper.advance(rawDt, this.state.paused, discardForVisibility, (dt) => {
       ground = this.updateSimulation(dt, ground);
     });
+    if (!this.state.paused && !this.state.gameOver) {
+      this.profiler.measure("navigation", () => {
+        const navigation = this.navigationScheduler.run([
+          this.player.getNavigationWorkSource(),
+          ...this.enemies.getNavigationWorkSources(),
+        ]);
+        this.profiler.recordNavigationScheduler(navigation);
+      });
+    }
     this.updatePresentation(frameDt, timing.simulatedDeltaSeconds, ground);
   }
 
@@ -408,7 +445,7 @@ export class ZeusGame {
     }
 
     this.profiler.measure("enemies", () => this.enemies.update(dt, this.state, playerPosition));
-    if (this.terrainDebugMode) {
+    if (this.hasDebugInvulnerability()) {
       this.state.health = this.upgrades.getStats().maxHealth;
     }
     this.profiler.measure("spawning", () => this.enemies.updateSpawner(dt, this.state, playerPosition));
@@ -461,6 +498,7 @@ export class ZeusGame {
         (enemy) => this.isEnemyVisible(enemy),
       ),
     );
+    this.profiler.measure("navigationDebug", () => this.enemies.updateNavigationDebug());
     this.profiler.measure("lighting", () => this.scene.updateLighting(playerPosition));
   }
 
@@ -471,7 +509,7 @@ export class ZeusGame {
 
   private damagePlayer(amount: number) {
     const maxHealth = this.upgrades.getStats().maxHealth;
-    if (this.terrainDebugMode) {
+    if (this.hasDebugInvulnerability()) {
       this.state.health = maxHealth;
       return;
     }
@@ -623,6 +661,28 @@ export class ZeusGame {
       this.state.health = this.upgrades.getStats().maxHealth;
     }
     this.ui.setTerrainDebugMode(enabled);
+  }
+
+  private setNavigationDebugMode(mode: NavigationDebugMode) {
+    this.navigationDebugMode = mode;
+    if (this.hasDebugInvulnerability()) {
+      this.state.health = this.upgrades.getStats().maxHealth;
+    }
+    this.enemies.setNavigationDebugMode(mode);
+    this.ui.setNavigationDebugMode(mode);
+  }
+
+  private hasDebugInvulnerability() {
+    return this.terrainDebugMode || this.navigationDebugMode !== "off";
+  }
+
+  private cycleNavigationDebugMode() {
+    const next: Record<NavigationDebugMode, NavigationDebugMode> = {
+      off: "stalled",
+      stalled: "all",
+      all: "off",
+    };
+    this.setNavigationDebugMode(next[this.navigationDebugMode]);
   }
 
   private setSfxVolume(volume: number) {

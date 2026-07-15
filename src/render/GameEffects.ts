@@ -9,6 +9,10 @@ export class GameEffects {
 
   constructor(private readonly group: THREE.Group) {}
 
+  getActiveCount() {
+    return this.effects.length;
+  }
+
   update(dt: number) {
     this.effects = this.effects.filter((effect) => {
       effect.ttl -= dt;

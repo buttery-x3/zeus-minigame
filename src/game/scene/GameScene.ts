@@ -12,6 +12,7 @@ type SceneObjects = {
   visibility: THREE.Object3D;
   enemies: THREE.Group;
   enemyHealthBars: THREE.Group;
+  navigationDebug: THREE.Group;
   effects: THREE.Group;
   targeting: THREE.Group;
   player: THREE.Group;
@@ -47,6 +48,7 @@ export class GameScene {
       objects.visibility,
       objects.enemies,
       objects.enemyHealthBars,
+      objects.navigationDebug,
       objects.effects,
       objects.targeting,
       objects.moveMarker,
@@ -88,6 +90,22 @@ export class GameScene {
       triangles: this.renderer.info.render.triangles,
       points: this.renderer.info.render.points,
       lines: this.renderer.info.render.lines,
+      geometries: this.renderer.info.memory.geometries,
+      textures: this.renderer.info.memory.textures,
+      programs: this.renderer.info.programs?.length ?? 0,
+    };
+  }
+
+  getResourceDiagnostics() {
+    let sceneObjects = 0;
+    this.scene.traverse(() => {
+      sceneObjects += 1;
+    });
+    return {
+      geometries: this.renderer.info.memory.geometries,
+      textures: this.renderer.info.memory.textures,
+      programs: this.renderer.info.programs?.length ?? 0,
+      sceneObjects,
     };
   }
 

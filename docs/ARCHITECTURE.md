@@ -6,9 +6,10 @@ The prototype is intentionally small, but the code is split by responsibility so
 
 1. `src/main.ts` imports CSS and boots `ZeusGame`.
 2. `ZeusGame` owns the Three.js scene, camera, input loop, high-level gameplay state, and system update order.
-3. The game loop records performance timings while updating camera, rolling terrain generation, player movement, ground interactions, spell recovery, terrain visuals, targeting, HUD, enemies, spawning, and effects.
-4. Normal and Potato modes both present every animation frame. Potato keeps the same simulation and presentation cadence while using a half-resolution shadowless Three.js profile.
-5. Three.js renders the scene; HUD, pause, and diagnostics are regular DOM windows over the canvas.
+3. The fixed-step simulation updates gameplay state, then one frame-level navigation scheduler advances player routes, enemy flow rebuilding, and fallback paths within a shared time budget.
+4. The game loop records performance timings while updating camera, rolling terrain generation, player movement, ground interactions, spell recovery, terrain visuals, targeting, HUD, enemies, spawning, and effects.
+5. Normal and Potato modes both present every animation frame. Potato keeps the same simulation and presentation cadence while using a half-resolution shadowless Three.js profile.
+6. Three.js renders the scene; HUD, pause, and diagnostics are regular DOM windows over the canvas.
 
 ## Module Map
 
@@ -17,15 +18,18 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/game/ZeusGame.ts`: composition root, shared runtime state, and update order.
 - `src/game/audio`: decoded/pooled SFX playback, streamed looping music, separate gain buses, persisted preferences, and audio diagnostics.
 - `src/game/camera/CameraRig.ts`: orthographic camera follow and resize behavior.
-- `src/game/collision`: hex occupancy, hex linecasts, Theta* individual pathfinding, and movement collision helpers.
+- `src/game/collision`: hex occupancy, resumable hex linecasts, incremental Theta* individual pathfinding, destination resolution, and movement collision helpers.
 - `src/game/diagnostics/GameDiagnostics.ts`: dev/test diagnostics snapshot and world-to-screen probes.
 - `src/game/enemies/EnemySystem.ts`: enemy spawning, movement, contact damage, kill handling, and wave spawn timing.
+- `src/game/enemies/EnemyMovement.ts`: obstacle-aware choice between crowd-avoidance steering and the navigation-preferred enemy move.
 - `src/game/enemies/EnemyHealthBars.ts`: in-world enemy health bar lifecycle, visibility modes, and diagnostics.
-- `src/game/enemies/navigation`: hybrid enemy navigation with direct chase, shared flow fields, acquisition steering, typed future intents, and a budgeted fallback path queue.
+- `src/game/enemies/navigation`: hybrid enemy navigation with direct chase, incrementally rebuilt weighted flow fields, acquisition steering, typed future intents, and a resumable fallback path queue.
+- `src/game/navigation/NavigationScheduler.ts`: frame-level round-robin budget shared by player paths, flow-field work, and enemy fallbacks.
 - `src/game/hud/HudPresenter.ts`: maps gameplay state into the DOM HUD.
 - `src/game/input/GameInput.ts`: pointer/keyboard input and ground-plane raycasting.
-- `src/game/perf/Profiler.ts`: rolling frame, subsystem, render, and pathfinding timing metrics.
-- `src/game/player/PlayerController.ts`: player mesh, movement target, move marker, and player visual state.
+- `src/game/perf/Profiler.ts`: rolling frame, subsystem, render, pathfinding, flow-build, and navigation-scheduler timing metrics.
+- `src/game/perf/RuntimePerformanceMonitor.ts`: fixed-capacity animation-frame pacing history, feature-detected approximate JS heap sampling, GC-correlated hitch counts, and renderer/world resource counters.
+- `src/game/player/PlayerController.ts`: player mesh, movement target, immediate request marker, resumable route request/application policy, and player visual state.
 - `src/game/scene/GameScene.ts`: Three.js renderer, scene, lights, shadow rig, and ground setup.
 - `src/game/spells/SpellSystem.ts`: spell targeting state, cooldowns, mana checks, and cast behavior.
 - `src/game/spells/TargetingRenderer.ts`: range ring and reticle rendering.
@@ -52,6 +56,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/world/SeedTerrainProvider.ts`: cheap deterministic hash terrain provider for fallback/debug use.
 - `src/world/hexCoordinates.ts`: shared axial hex coordinate types, directions, keys, and distance helpers.
 - `src/render/GameEffects.ts`: short-lived lightning and shockwave effects.
+- `src/render/NavigationDebugRenderer.ts`: session-only per-enemy navigation capture, lack-of-progress detection, and five-second stalled-state latching.
+- `src/render/NavigationDebugPainter.ts`: one pooled dynamic line buffer used for all navigation debug vectors and geometry.
 - `src/render/SpecialGroundEffects.ts`: low-cost charged/cursed glyph animation and the single occupied-tile particle system.
 - `src/render/materials.ts`: shared Three.js material creation.
 - `src/render/meshes.ts`: player, enemy, and terrain glyph mesh factories.
@@ -71,10 +77,16 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `Hud` should not mutate gameplay state; it only renders state passed into `update`.
 - UI windows should consume their own pointer events so game movement clicks do not leak through, except locked transparent HUD panels while Unlock UI is off; those are intentionally click-through.
 - Rendering helpers should create reusable `THREE.Object3D` instances and avoid owning gameplay state.
+- Navigation debugging uses fixed-capacity typed-array geometry while enabled and clears its per-enemy state when disabled; it is diagnostic state and must not affect movement decisions or persisted preferences.
 - Repeated terrain and blocker geometry should remain instanced in every render mode. Quality profiles may change materials and cadence without changing generated cells, collision, visibility, or simulation state.
 - `ZeusGame` can coordinate systems, but new large systems should become their own modules.
 - Navigation and future vision checks should share the hex linecast helper so blocker semantics stay consistent.
 - Normal melee enemies should not call Theta* directly during frame update; shared flow fields handle swarm chase and the path queue handles rare fallback paths.
+- Navigation work that can traverse many cells must be resumable. The scheduler owns the frame budget; callers enqueue or coalesce requests instead of running long searches inside input or simulation updates.
+- Completed player routes are rebased against the player's current position before application. A superseded result may establish an initial route, but it does not replace a route that is already usable while the newest held request remains queued.
+- Enemy crowd avoidance is advisory near structural collision: a steered move that makes no target progress is compared with the original navigation move. Direct line-of-sight crowd stalls remain local and never enter Theta*; only flow/acquisition stalls may enqueue a fallback.
+- Enemy fallbacks are temporary detours rather than destination commitments. Their source goal, age, queue time, and progress are tracked so stale player goals, changed acquisition edges, queue timeouts, restored line of sight, or a usable flow after local progress can cancel them.
+- Flow builds read only already-generated terrain and keep the last complete field active until a replacement is ready. Structural walkability caches are invalidated explicitly if runtime collision ever becomes mutable.
 
 ## Hex World
 

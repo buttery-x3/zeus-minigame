@@ -16,6 +16,8 @@ export type EnemyAvoidanceDiagnostics = {
   averageOverlap: number;
   maxOverlap: number;
   maxSpeedRatio: number;
+  obstacleFallbackAttempts: number;
+  obstacleFallbackWins: number;
 };
 
 const EMPTY_DIAGNOSTICS: EnemyAvoidanceDiagnostics = {
@@ -25,6 +27,8 @@ const EMPTY_DIAGNOSTICS: EnemyAvoidanceDiagnostics = {
   averageOverlap: 0,
   maxOverlap: 0,
   maxSpeedRatio: 0,
+  obstacleFallbackAttempts: 0,
+  obstacleFallbackWins: 0,
 };
 
 export class EnemyAvoidance {
@@ -73,6 +77,11 @@ export class EnemyAvoidance {
 
   recordSpeedRatio(speedRatio: number) {
     this.diagnosticsSnapshot.maxSpeedRatio = Math.max(this.diagnosticsSnapshot.maxSpeedRatio, speedRatio);
+  }
+
+  recordObstacleFallback(attempted: boolean, used: boolean) {
+    this.diagnosticsSnapshot.obstacleFallbackAttempts += attempted ? 1 : 0;
+    this.diagnosticsSnapshot.obstacleFallbackWins += used ? 1 : 0;
   }
 
   diagnostics() {
@@ -167,6 +176,8 @@ export class EnemyAvoidance {
       averageOverlap: overlappingPairs > 0 ? totalOverlap / overlappingPairs : 0,
       maxOverlap,
       maxSpeedRatio: 0,
+      obstacleFallbackAttempts: 0,
+      obstacleFallbackWins: 0,
     };
   }
 

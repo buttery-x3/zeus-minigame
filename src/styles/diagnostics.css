@@ -1,5 +1,7 @@
 .diagnostics-window .game-window__content {
+  max-height: calc(100vh - 184px);
   padding: 10px 12px 12px;
+  overflow-y: auto;
 }
 
 .diagnostics {
