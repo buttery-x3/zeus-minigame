@@ -49,6 +49,10 @@ type RollingWfcDiagnostics = {
   synthesisDurationMs: number;
   proceduralFillModeCounts: Record<string, number>;
   proceduralBoundarySignatureCounts: Record<string, number>;
+  topologySelectionCounts: Record<string, number>;
+  shortLoopCandidatesSuppressed: Record<"wall" | "river", number>;
+  forcedShortLoopSelectionCount: number;
+  selectedShortLoopLengthCounts: Record<string, number>;
   resolvedPatchCount: number;
   resolvedCells: number;
   structureCounts: Record<TerrainStructure, number>;
@@ -72,6 +76,9 @@ export class WfcTerrainProvider implements TerrainProvider {
   private readonly proceduralPatchCache = new Map<string, HexPatchTileVariant>();
   private readonly proceduralFillModeCounts: Record<string, number> = {};
   private readonly proceduralBoundarySignatureCounts: Record<string, number> = {};
+  private readonly topologySelectionCounts: Record<string, number> = {};
+  private readonly shortLoopCandidatesSuppressed = { wall: 0, river: 0 };
+  private readonly selectedShortLoopLengthCounts: Record<string, number> = {};
   private generatedPatchCount = 0;
   private generatedLastEnsure = 0;
   private emergencyPatchCount = 0;
@@ -81,6 +88,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   private synthesisAttemptCount = 0;
   private synthesisFailureCount = 0;
   private synthesisDurationMs = 0;
+  private forcedShortLoopSelectionCount = 0;
 
   constructor(private readonly seed = WFC_TERRAIN_SEED) {
     this.ensureGeneratedAround(0, 0);
@@ -148,6 +156,10 @@ export class WfcTerrainProvider implements TerrainProvider {
       synthesisDurationMs: this.synthesisDurationMs,
       proceduralFillModeCounts: { ...this.proceduralFillModeCounts },
       proceduralBoundarySignatureCounts: { ...this.proceduralBoundarySignatureCounts },
+      topologySelectionCounts: { ...this.topologySelectionCounts },
+      shortLoopCandidatesSuppressed: { ...this.shortLoopCandidatesSuppressed },
+      forcedShortLoopSelectionCount: this.forcedShortLoopSelectionCount,
+      selectedShortLoopLengthCounts: { ...this.selectedShortLoopLengthCounts },
       resolvedPatchCount: this.committedPatches.size,
       resolvedCells: this.generatedCells.size,
       structureCounts: { ...this.structureCounts },
@@ -170,6 +182,7 @@ export class WfcTerrainProvider implements TerrainProvider {
     const committed = { ...patch, variant, emergency };
     this.committedPatches.set(key, committed);
     this.patchVariantCounts[variant.id] = (this.patchVariantCounts[variant.id] ?? 0) + 1;
+    this.topologySelectionCounts[variant.topology] = (this.topologySelectionCounts[variant.topology] ?? 0) + 1;
     if (variant.provenance === "procedural") {
       this.proceduralPatchCount += 1;
       const fillMode = variant.procedural?.fillMode ?? "unknown";
@@ -189,7 +202,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   }
 
   private choosePatchVariant(patch: HexCoord) {
-    const authored = selectAuthoredPatchVariant({
+    const authoredSelection = selectAuthoredPatchVariant({
       patch,
       variants: this.variants,
       committedPatches: this.committedPatches,
@@ -197,7 +210,7 @@ export class WfcTerrainProvider implements TerrainProvider {
       safeStartRadius: SAFE_START_PATCH_RADIUS,
       requireFirstRiver: this.structureCounts.river === 0,
     });
-    if (!authored) {
+    if (!authoredSelection) {
       const constraints = collectPatchBoundaryConstraints(patch, this.committedPatches);
       const boundaryKey = serializeBoundaryConstraints(constraints);
       const cached = this.proceduralPatchCache.get(boundaryKey);
@@ -219,7 +232,16 @@ export class WfcTerrainProvider implements TerrainProvider {
       return { variant: this.openVariant, emergency: true };
     }
 
-    return { variant: authored, emergency: false };
+    this.shortLoopCandidatesSuppressed.wall += authoredSelection.loopPolicy.suppressedCandidates.wall;
+    this.shortLoopCandidatesSuppressed.river += authoredSelection.loopPolicy.suppressedCandidates.river;
+    if (authoredSelection.loopPolicy.forced) {
+      this.forcedShortLoopSelectionCount += 1;
+    }
+    for (const loop of authoredSelection.loopPolicy.selectedLoops) {
+      const key = `${loop.feature}:${loop.kind}:${loop.length}`;
+      this.selectedShortLoopLengthCounts[key] = (this.selectedShortLoopLengthCounts[key] ?? 0) + 1;
+    }
+    return { variant: authoredSelection.variant, emergency: false };
   }
 
   private expandPatch(patch: CommittedPatch) {

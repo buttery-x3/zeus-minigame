@@ -35,15 +35,19 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/world/GridWorld.ts`: unbounded axial hex-to-world mapping, cached terrain cell access, neighbor lookup, rings, ranges, and hex line sampling.
 - `src/world/HexTerrainPatch.ts`: radius-2 patch types, authored-layout construction, rotations, edge derivation, and micro/patch coordinate mapping.
 - `src/world/HexTerrainPatchGeometry.ts`: canonical patch cells/edges and patch-to-micro coordinate conversion.
-- `src/world/HexTerrainCatalog.ts`: explicit authored patch layouts and their weights, rotations, and terrain families.
+- `src/world/HexTerrainCatalog.ts`: explicit authored patch layouts and their topology-group weights, rotations, and terrain families.
+- `src/world/HexTerrainCliffPatches.ts`: authored cliff endpoints, lines, sways, dog-legs, bends, junctions, and masses.
+- `src/world/HexTerrainRiverPatches.ts`: authored river sources, lines, sways, dog-legs, bends, and forks.
+- `src/world/HexTerrainLinearShapes.ts`: shared radius-2 linear feature cell paths used by cliff and river authored patches.
 - `src/world/HexTerrainPatchValidation.ts`: authored and procedural patch structural validation.
 - `src/world/ProceduralTerrainPatch.ts`: deterministic seven-cell interior solver used only when no safe authored patch fits accumulated boundary constraints.
 - `src/world/ProceduralTerrainPatchScoring.ts`: procedural fill connectivity constraints and coherence scoring.
+- `src/world/TerrainPatchLoopPolicy.ts`: patch-feature connectivity graphs and bounded river/cliff short-loop detection.
 - `src/world/HexTerrainRules.ts`: patch edge compatibility, diagnostics validation, and surface/blocking helper rules.
 - `src/world/HexTerrainWfcSolver.ts`: finite axial patch WFC solver kept as a reference for patch solving experiments.
 - `src/world/TerrainProvider.ts`: terrain provider interface and shared `TerrainCell` construction helpers.
 - `src/world/WfcTerrainProvider.ts`: default terrain provider that wraps the grammar/WFC pipeline.
-- `src/world/RollingTerrainPatchSelection.ts`: authored-first compatibility, frontier-safety, and deterministic weighted selection.
+- `src/world/RollingTerrainPatchSelection.ts`: authored-first compatibility, frontier-safety, topology-budgeted selection, and short-loop avoidance.
 - `src/world/SeedTerrainProvider.ts`: cheap deterministic hash terrain provider for fallback/debug use.
 - `src/world/hexCoordinates.ts`: shared axial hex coordinate types, directions, keys, and distance helpers.
 - `src/render/GameEffects.ts`: short-lived lightning and shockwave effects.
@@ -80,7 +84,9 @@ Terrain starts with a declarative patch grammar. A micro hex is an actual gamepl
 
 `WfcTerrainProvider` commits terrain one patch at a time as the player moves. It keeps committed patch variants by patch coordinate and expanded micro cells by micro coordinate. The active generation radius is measured in patch coordinates around the player's current patch. Missing patches are generated in deterministic ring order, filtered against already-committed neighbor edge signatures, then committed permanently. Existing patches are never regenerated.
 
-Authored variants are always preferred and remain the weighted WFC vocabulary. If no authored variant can safely satisfy the accumulated neighbor boundary, `ProceduralTerrainPatch` treats the 12 boundary cells as fixed and solves the seven-cell interior. Open boundaries receive a connected open core; homogeneous enclosures fill inward with their enclosing structure; compatible mixed enclosures grow their structures inward until they meet. Procedural results have zero selection weight, are cached by normalized boundary signature, and exist only to make the authored grammar closed. A synthesis failure is a real contradiction and must remain at zero in verification.
+Authored variants are always preferred and remain the weighted WFC vocabulary. Visual alternatives share topology-group budgets so adding another authored realization does not automatically increase that feature's global selection weight. Before selection, bounded wall and river feature graphs suppress candidates that would create an avoidable short loop now or force one in an adjacent frontier patch. If every compatible authored candidate carries the same risk, the authored set remains available so aesthetic policy cannot manufacture a contradiction.
+
+If no authored variant can safely satisfy the accumulated neighbor boundary, `ProceduralTerrainPatch` treats the 12 boundary cells as fixed and solves the seven-cell interior. Open boundaries receive a connected open core; homogeneous enclosures fill inward with their enclosing structure; compatible mixed enclosures grow their structures inward until they meet. Procedural results have zero selection weight, are cached by normalized boundary signature, and exist only to make the authored grammar closed. A synthesis failure is a real contradiction and must remain at zero in verification.
 
 ## Run Progression and Pause Ownership
 
@@ -94,11 +100,11 @@ The world no longer has a gameplay boundary. The old finite-world `WORLD_CELLS`,
 
 Terrain is split into structural cells and derived surfaces:
 
-- Structures: `open`, `wall`, `bank`, `lake`, `river`; the active authored catalog emits all five.
+- Structures: `open`, `wall`, `bank`, `lake`, `river`; `bank` is reserved for a future water-adjacency post-pass and is not emitted by patch generation.
 - Surfaces: `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, `charged`, `cursed`.
 - Edge/socket vocabulary: `open`, `closed`, `river`, `lake`.
 
-`open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Only `wall` blocks visibility; water is a movement obstacle but not an occluder. The authored catalog includes open basins, isolated rocks, longer cliff endpoints/ridges/bends/junctions/masses, river sources/lines/sways/bends/forks, lake coves/shores/basins/cores, banks, and river/lake/cliff transitions. Banks do not yet apply a movement-speed modifier.
+`open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Only `wall` blocks visibility; water is a movement obstacle but not an occluder. The authored catalog includes open basins, isolated rocks, cliff endpoints/ridges/mirrored sways/dog-legs/tight and gentle bends/junctions/masses, equivalent expanded river shapes, lake coves/shores/basins/cores, and river/lake/cliff transitions. Bank placement and its eventual movement-speed modifier are deferred to a post-generation terrain-decoration pass.
 
 Charged and cursed surfaces are assigned deterministically to a small share of open micro cells as patches are expanded. They are surface decorations rather than patch socket types, so they do not affect WFC compatibility or structural generation. `GroundEffectSystem` keeps mutable per-run state separate from the immutable procedural cells: charged usage accumulates per coordinate, while cleansed cursed coordinates are recorded as scarred display overrides. `TerrainSystem` reads these runtime states when rebuilding its rolling render window.
 

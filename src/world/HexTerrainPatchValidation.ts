@@ -19,6 +19,9 @@ export function validateHexPatchVariant(variant: HexPatchTileVariant): HexPatchV
   if (variant.provenance === "authored" && variant.weight <= 0) {
     errors.push("authored patch weight must be positive");
   }
+  if (variant.provenance === "authored" && (!variant.selectionGroup || variant.selectionGroupWeight <= 0)) {
+    errors.push("authored patch selection group and weight must be defined");
+  }
   if (variant.provenance === "procedural" && variant.weight !== 0) {
     errors.push("procedural patch weight must be zero");
   }

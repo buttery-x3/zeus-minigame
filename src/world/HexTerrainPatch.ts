@@ -17,6 +17,7 @@ export * from "./HexTerrainPatchGeometry";
 export type HexPatchEdgeSignature = HexEdgeKind[];
 export type HexPatchFamily = "open" | "cliff" | "river" | "lake" | "transition";
 export type HexPatchProvenance = "authored" | "procedural";
+export type HexPatchTopology = "open" | "isolated" | "endpoint" | "straight" | "tight-bend" | "gentle-bend" | "junction" | "mixed";
 
 export type HexPatchCell = HexCoord & {
   structure: TerrainStructure;
@@ -31,6 +32,9 @@ export type HexPatchTileVariant = {
   cells: Map<string, HexPatchCell>;
   edges: Record<HexDirection, HexPatchEdgeSignature>;
   weight: number;
+  selectionGroup: string;
+  selectionGroupWeight: number;
+  topology: HexPatchTopology;
   diagnostics: {
     kind: "open" | "wall" | "river" | "lake" | "mixed";
     riverExitCount: number;
@@ -47,6 +51,9 @@ export type AuthoredPatchDefinition = {
   id: string;
   family: HexPatchFamily;
   weight: number;
+  selectionGroup?: string;
+  selectionGroupWeight?: number;
+  topology?: HexPatchTopology;
   baseSurface?: TerrainSurface;
   rotations?: number;
   cells?: Partial<Record<Exclude<TerrainStructure, "open">, readonly HexCoord[]>>;
@@ -83,7 +90,13 @@ export function createAuthoredPatchVariants(definition: AuthoredPatchDefinition)
       "authored",
       definition.weight,
       cells,
+      undefined,
+      definition,
     ));
+  }
+  const groupWeight = definition.selectionGroupWeight ?? definition.weight * variants.length;
+  for (const variant of variants) {
+    variant.selectionGroupWeight = groupWeight;
   }
   return variants;
 }
@@ -95,6 +108,7 @@ export function createPatchVariant(
   weight: number,
   cells: Map<string, HexPatchCell>,
   procedural?: HexPatchTileVariant["procedural"],
+  authored?: Pick<AuthoredPatchDefinition, "selectionGroup" | "selectionGroupWeight" | "topology">,
 ): HexPatchTileVariant {
   const edges = derivePatchEdges(cells);
   const riverExitCount = countEdgesContaining(edges, "river");
@@ -109,6 +123,9 @@ export function createPatchVariant(
     cells,
     edges,
     weight,
+    selectionGroup: authored?.selectionGroup ?? id,
+    selectionGroupWeight: authored?.selectionGroupWeight ?? weight,
+    topology: authored?.topology ?? "mixed",
     diagnostics: {
       kind: kinds.length > 1 ? "mixed" : kinds[0] === "river" ? "river" : kinds[0] === "lake" ? "lake" : kinds[0] === "wall" ? "wall" : "open",
       riverExitCount,

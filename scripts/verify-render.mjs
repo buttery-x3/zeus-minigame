@@ -616,9 +616,17 @@ async function verifyTerrainGrammar(page, viewport) {
     wfc.structureCounts.open < 1 ||
     wfc.structureCounts.river < 1 ||
     wfc.structureCounts.lake < 1 ||
-    wfc.structureCounts.bank < 1
+    wfc.structureCounts.bank !== 0
   ) {
     throw new Error(`${viewport.name} rolling patch terrain did not produce the authored terrain vocabulary: ${JSON.stringify(wfc)}`);
+  }
+  if (
+    !wfc.topologySelectionCounts ||
+    (wfc.topologySelectionCounts["gentle-bend"] ?? 0) < 1 ||
+    !wfc.shortLoopCandidatesSuppressed ||
+    wfc.shortLoopCandidatesSuppressed.wall + wfc.shortLoopCandidatesSuppressed.river < 1
+  ) {
+    throw new Error(`${viewport.name} authored terrain topology policy was inactive: ${JSON.stringify(wfc)}`);
   }
   if (!wfc.surfaceCounts || wfc.surfaceCounts.charged < 1 || wfc.surfaceCounts.cursed < 1) {
     throw new Error(`${viewport.name} rolling terrain did not produce charged and cursed ground: ${JSON.stringify(wfc.surfaceCounts)}`);
@@ -770,7 +778,13 @@ async function verifyGroundEffects(page, viewport) {
       (key) => {
         const diagnostics = window.__ZEUS_GAME__?.getDiagnostics();
         const usage = diagnostics?.groundEffects?.chargedCells?.find((entry) => entry.key === key);
-        return usage?.remainingSeconds <= 0 && diagnostics.groundEffects.phase === "depleted";
+        return (
+          usage?.remainingSeconds <= 0 &&
+          diagnostics.groundEffects.phase === "depleted" &&
+          diagnostics.groundEffects.cooldownRecoveryMultiplier === 1 &&
+          diagnostics.groundEffects.energyRecoveryMultiplier === 1 &&
+          diagnostics.audio.activeLoop === null
+        );
       },
       chargedKey,
       { timeout: 5000 },

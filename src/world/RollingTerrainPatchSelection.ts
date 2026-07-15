@@ -9,11 +9,28 @@ import {
 import type { HexPatchTileVariant } from "./HexTerrainPatch";
 import { patchVariantsCanNeighbor } from "./HexTerrainRules";
 import {
+  createFeatureLoopContext,
+  findFrontierShortFeatureLoops,
+  findShortFeatureLoops,
+  SHORT_LOOP_LIMITS,
+  type LoopFeature,
+  type ShortFeatureLoop,
+} from "./TerrainPatchLoopPolicy";
+import {
   proceduralBoundaryConstraintsAreConsistent,
   type HexPatchBoundaryConstraints,
 } from "./ProceduralTerrainPatch";
 
 export type SelectedPatchNeighbor = HexCoord & { variant: HexPatchTileVariant };
+
+export type AuthoredPatchSelection = {
+  variant: HexPatchTileVariant;
+  loopPolicy: {
+    suppressedCandidates: Record<LoopFeature, number>;
+    forced: boolean;
+    selectedLoops: ShortFeatureLoop[];
+  };
+};
 
 type AuthoredSelectionOptions = {
   patch: HexCoord;
@@ -33,7 +50,48 @@ export function selectAuthoredPatchVariant(options: AuthoredSelectionOptions) {
     ? frontierSafe.filter((variant) => variant.family === "river")
     : [];
   const candidates = safeCandidates.length > 0 ? safeCandidates : riverCandidates.length > 0 ? riverCandidates : frontierSafe;
-  return candidates.length > 0 ? chooseWeightedVariant(options.seed, options.patch, candidates) : null;
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const loopContext = createFeatureLoopContext(options.committedPatches.values());
+  const evaluated = candidates.map((variant) => ({
+    variant,
+    loops: [
+      ...findShortFeatureLoops(loopContext, options.patch, variant),
+      ...findFrontierShortFeatureLoops(options.committedPatches.values(), options.patch, variant),
+    ],
+  }));
+  const loopFree = evaluated.filter((entry) => entry.loops.length === 0);
+  const minimumRisk = Math.min(...evaluated.map((entry) => loopRiskScore(entry.loops)));
+  const pool = loopFree.length > 0
+    ? loopFree
+    : evaluated.filter((entry) => loopRiskScore(entry.loops) === minimumRisk);
+  const selected = chooseWeightedVariant(options.seed, options.patch, pool.map((entry) => entry.variant));
+  const selectedEvaluation = pool.find((entry) => entry.variant === selected)!;
+  const suppressedCandidates: Record<LoopFeature, number> = { wall: 0, river: 0 };
+  if (loopFree.length > 0) {
+    for (const entry of evaluated) {
+      for (const feature of new Set(entry.loops.map((loop) => loop.feature))) {
+        suppressedCandidates[feature] += 1;
+      }
+    }
+  }
+  return {
+    variant: selected,
+    loopPolicy: {
+      suppressedCandidates,
+      forced: loopFree.length === 0 && evaluated.some((entry) => entry.loops.length > 0),
+      selectedLoops: selectedEvaluation.loops,
+    },
+  } satisfies AuthoredPatchSelection;
+}
+
+function loopRiskScore(loops: readonly ShortFeatureLoop[]) {
+  return loops.reduce((score, loop) => {
+    const remainingBudget = SHORT_LOOP_LIMITS[loop.feature] - loop.length + 1;
+    return score + remainingBudget * (loop.kind === "closed" ? 2 : 1);
+  }, 0);
 }
 
 export function collectPatchBoundaryConstraints(
@@ -109,12 +167,32 @@ function collectConstraints(
 }
 
 function chooseWeightedVariant(seed: number, patch: HexCoord, candidates: readonly HexPatchTileVariant[]) {
-  const totalWeight = candidates.reduce((sum, variant) => sum + variant.weight, 0);
-  let roll = seededUnit(seed, patch.q, patch.r) * totalWeight;
+  const groups = new Map<string, HexPatchTileVariant[]>();
   for (const variant of candidates) {
-    roll -= variant.weight;
+    const members = groups.get(variant.selectionGroup) ?? [];
+    members.push(variant);
+    groups.set(variant.selectionGroup, members);
+  }
+  const groupedCandidates = [...groups.values()];
+  const selectedGroup = chooseWeighted(
+    seededUnit(seed ^ 0x51ed270b, patch.q, patch.r),
+    groupedCandidates,
+    (members) => members[0].selectionGroupWeight,
+  );
+  return chooseWeighted(
+    seededUnit(seed ^ 0x68bc21eb, patch.q, patch.r),
+    selectedGroup,
+    (variant) => variant.weight,
+  );
+}
+
+function chooseWeighted<T>(rollUnit: number, candidates: readonly T[], weightOf: (candidate: T) => number) {
+  const totalWeight = candidates.reduce((sum, candidate) => sum + weightOf(candidate), 0);
+  let roll = rollUnit * totalWeight;
+  for (const candidate of candidates) {
+    roll -= weightOf(candidate);
     if (roll <= 0) {
-      return variant;
+      return candidate;
     }
   }
   return candidates[candidates.length - 1];

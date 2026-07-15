@@ -37,7 +37,7 @@ npm run verify
 - Streams and loops the arena BGM after the first user gesture, confirms it continues through pause and game restart, and checks that its playback position advances without joining the decoded SFX buffer catalog.
 - Checks the pause-menu SFX/BGM sliders, live percentage outputs, pause-time SFX suppression, default-off spell-failure toggle, enabled cooldown pitch behavior, and local preference persistence across reload.
 - Checks gameplay visibility diagnostics, 2x continuous visibility overlay diagnostics, wall shadow samples, hidden-cast rejection, undiscovered movement rejection, discovered unlit terrain, hidden dark walls, and wall-occluded memory after exploration.
-- Checks rolling patch terrain diagnostics, including authored-first selection, active patch-radius generation, river/lake/bank output, zero synthesis failures or emergency patches, and ordered patch edge socket agreement.
+- Checks rolling patch terrain diagnostics, including authored-first selection, active patch-radius generation, expanded bend topology, zero patch-generated banks, active short-loop suppression, zero synthesis failures or emergency patches, and ordered patch edge socket agreement.
 - Checks deterministic special-ground generation, including reachable charged and cursed cells and the requirement that cursed ground remains rarer.
 - Exercises charged ground to confirm both cooldown and Power recovery run at `1.75x`, leaving preserves consumed capacity, returning resumes consumption, and the tile depletes after about three cumulative seconds.
 - Exercises cursed ground to confirm pause freezes cleansing, leaving resets progress, completion grants exactly one Cursed Energy, and the tile becomes cleansed.
@@ -68,7 +68,7 @@ Mobile layouts and controls are not currently supported or included in render ve
 
 ## Terrain Function Verification
 
-`npm run test:terrain` runs deterministic TypeScript function tests through Vitest. It validates every authored patch and rotation, exercises open-core and homogeneous/mixed enclosed procedural fills, checks deterministic output, and enumerates every center boundary reachable from six mutually compatible authored neighbors. Rotationally equivalent neighborhoods are solved as canonical classes and rotation behavior is verified separately. Multi-seed rolling stress checks require zero synthesis failures, emergency substitutions, contradictions, or socket mismatches while authored patches remain the majority.
+`npm run test:terrain` runs deterministic TypeScript function tests through Vitest. It validates every authored patch and rotation, confirms topology-group budgets and the absence of generated banks, exercises open-core and homogeneous/mixed enclosed procedural fills, checks deterministic output, and enumerates every center boundary reachable from six mutually compatible authored neighbors. Rotationally equivalent neighborhoods are solved as canonical classes and rotation behavior is verified separately. Feature-graph tests distinguish a three-patch cliff closure from an ordinary extension, detect a loop forced into the next frontier patch, and confirm forced closures remain selectable. Multi-seed rolling stress requires the new gentle-bend vocabulary and short-loop suppression to activate while synthesis failures, emergency substitutions, contradictions, and socket mismatches remain at zero.
 
 ## Browser Path
 

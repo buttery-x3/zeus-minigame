@@ -21,6 +21,12 @@ import {
   type HexDirection,
 } from "./hexCoordinates";
 import { WfcTerrainProvider } from "./WfcTerrainProvider";
+import { selectAuthoredPatchVariant } from "./RollingTerrainPatchSelection";
+import {
+  createFeatureLoopContext,
+  findFrontierShortFeatureLoops,
+  findShortFeatureLoops,
+} from "./TerrainPatchLoopPolicy";
 
 describe("authored terrain patches", () => {
   const variants = createHexPatchTileCatalog();
@@ -33,8 +39,20 @@ describe("authored terrain patches", () => {
       expect(ids.has(variant.id), variant.id).toBe(false);
       expect(variant.provenance).toBe("authored");
       expect(variant.cells.size).toBe(HEX_PATCH_LOCAL_CELLS.length);
+      expect([...variant.cells.values()].some((cell) => cell.structure === "bank"), variant.id).toBe(false);
       ids.add(variant.id);
     }
+
+    const groupWeights = new Map<string, number>();
+    for (const variant of variants) {
+      const previous = groupWeights.get(variant.selectionGroup);
+      expect(previous === undefined || previous === variant.selectionGroupWeight, variant.selectionGroup).toBe(true);
+      groupWeights.set(variant.selectionGroup, variant.selectionGroupWeight);
+    }
+    expect(variants.some((variant) => variant.id.startsWith("patch.cliff.bend.gentle"))).toBe(true);
+    expect(variants.some((variant) => variant.id.startsWith("patch.river.bend.gentle"))).toBe(true);
+    expect(variants.some((variant) => variant.id.startsWith("patch.cliff.ridge.dogleg"))).toBe(true);
+    expect(variants.some((variant) => variant.id.startsWith("patch.river.line.dogleg"))).toBe(true);
 
     const families = summarizeAuthoredPatchFamilies(variants);
     expect(families.open).toBeGreaterThanOrEqual(3);
@@ -42,6 +60,66 @@ describe("authored terrain patches", () => {
     expect(families.river).toBeGreaterThanOrEqual(12);
     expect(families.lake).toBeGreaterThanOrEqual(6);
     expect(families.transition).toBeGreaterThanOrEqual(6);
+  });
+});
+
+describe("terrain feature loop policy", () => {
+  const variants = createHexPatchTileCatalog();
+
+  test("detects a cliff candidate that closes a three-patch ring", () => {
+    const east = findTwoExitVariant(variants, "closed", ["sw", "w"]);
+    const southeast = findTwoExitVariant(variants, "closed", ["ne", "nw"]);
+    const candidate = findTwoExitVariant(variants, "closed", ["e", "se"]);
+    const context = createFeatureLoopContext([
+      { q: 1, r: 0, variant: east },
+      { q: 0, r: 1, variant: southeast },
+    ]);
+
+    expect(findShortFeatureLoops(context, { q: 0, r: 0 }, candidate)).toContainEqual({
+      feature: "wall",
+      length: 3,
+      kind: "closed",
+    });
+  });
+
+  test("does not classify a one-sided extension as a loop", () => {
+    const east = findTwoExitVariant(variants, "closed", ["sw", "w"]);
+    const candidate = findTwoExitVariant(variants, "closed", ["e", "se"]);
+    const context = createFeatureLoopContext([{ q: 1, r: 0, variant: east }]);
+
+    expect(findShortFeatureLoops(context, { q: 0, r: 0 }, candidate)).toEqual([]);
+  });
+
+  test("detects when a candidate would force a short loop into the frontier", () => {
+    const southeast = findTwoExitVariant(variants, "closed", ["ne", "nw"]);
+    const candidate = findTwoExitVariant(variants, "closed", ["e", "se"]);
+
+    expect(findFrontierShortFeatureLoops(
+      [{ q: 0, r: 1, variant: southeast }],
+      { q: 0, r: 0 },
+      candidate,
+    )).toContainEqual({ feature: "wall", length: 3, kind: "frontier" });
+  });
+
+  test("retains a forced short-loop candidate instead of creating a contradiction", () => {
+    const east = findTwoExitVariant(variants, "closed", ["sw", "w"]);
+    const southeast = findTwoExitVariant(variants, "closed", ["ne", "nw"]);
+    const candidate = findTwoExitVariant(variants, "closed", ["e", "se"]);
+    const committed = new Map([
+      ["1,0", { q: 1, r: 0, variant: east }],
+      ["0,1", { q: 0, r: 1, variant: southeast }],
+    ]);
+    const selection = selectAuthoredPatchVariant({
+      patch: { q: 0, r: 0 },
+      variants: [candidate],
+      committedPatches: committed,
+      seed: 41,
+      safeStartRadius: -1,
+      requireFirstRiver: false,
+    });
+
+    expect(selection?.variant).toBe(candidate);
+    expect(selection?.loopPolicy.forced).toBe(true);
   });
 });
 
@@ -163,6 +241,8 @@ describe("procedural patch closure", () => {
 
 describe("rolling authored-first generation", () => {
   test("uses procedural patches without socket mismatches or emergency substitution", { timeout: 30_000 }, () => {
+    let suppressedShortLoops = 0;
+    let gentleBends = 0;
     for (const seed of [20260517, 20260518, 20260519, 20260520]) {
       const provider = new WfcTerrainProvider(seed);
       provider.ensureGeneratedAround(0, 0, 5);
@@ -172,9 +252,30 @@ describe("rolling authored-first generation", () => {
       expect(diagnostics.synthesisFailureCount, `seed ${seed}`).toBe(0);
       expect(diagnostics.patchSocketMismatchSample, `seed ${seed}`).toBeNull();
       expect(diagnostics.authoredPatchCount, `seed ${seed}`).toBeGreaterThan(diagnostics.proceduralPatchCount);
+      expect(diagnostics.structureCounts.bank, `seed ${seed}`).toBe(0);
+      suppressedShortLoops += diagnostics.shortLoopCandidatesSuppressed.wall + diagnostics.shortLoopCandidatesSuppressed.river;
+      gentleBends += diagnostics.topologySelectionCounts["gentle-bend"] ?? 0;
     }
+    expect(suppressedShortLoops).toBeGreaterThan(0);
+    expect(gentleBends).toBeGreaterThan(0);
   });
 });
+
+function findTwoExitVariant(
+  variants: readonly HexPatchTileVariant[],
+  edgeKind: HexEdgeKind,
+  directions: readonly HexDirection[],
+) {
+  const expected = [...directions].sort().join(",");
+  const variant = variants.find((candidate) => {
+    const exits = HEX_DIRECTION_ORDER.filter((direction) => candidate.edges[direction].includes(edgeKind));
+    return exits.length === 2 && [...exits].sort().join(",") === expected;
+  });
+  if (!variant) {
+    throw new Error(`Missing authored ${edgeKind} variant with exits ${expected}`);
+  }
+  return variant;
+}
 
 function enumerateReachableCenterBoundaries(variants: readonly HexPatchTileVariant[]) {
   const ringCoords = HEX_DIRECTION_ORDER.map((direction) => HEX_DIRECTIONS[direction]);
