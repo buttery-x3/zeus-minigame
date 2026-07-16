@@ -1,4 +1,5 @@
 import type { ProfilerSnapshot } from "../game/perf/Profiler";
+import type { TerrainGenerationDiagnostics } from "./DiagnosticsPanel";
 import type { EnemyHealthBarVisibilityMode } from "../types";
 import type { AudioPreferences } from "../game/audio/AudioPreferences";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
@@ -154,8 +155,9 @@ export class GameUi {
     snapshot: ProfilerSnapshot,
     getNavigationDebug: () => NavigationDebugDiagnostics,
     getPlayerNavigation: () => PlayerNavigationDiagnostics,
+    getTerrainGeneration: () => TerrainGenerationDiagnostics,
   ) {
-    this.diagnostics.update(snapshot, getNavigationDebug, getPlayerNavigation);
+    this.diagnostics.update(snapshot, getNavigationDebug, getPlayerNavigation, getTerrainGeneration);
   }
 
   remove() {

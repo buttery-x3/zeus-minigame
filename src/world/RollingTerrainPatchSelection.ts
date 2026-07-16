@@ -20,7 +20,7 @@ import {
   proceduralBoundaryConstraintsAreConsistent,
   type HexPatchBoundaryConstraints,
 } from "./ProceduralTerrainPatch";
-import { candidatePreservesMovementTopology } from "./TerrainEnclosurePolicy";
+import { createMovementTopologyContext, type MovementTopologyContext } from "./TerrainTopologyContext";
 
 export type SelectedPatchNeighbor = HexCoord & { variant: HexPatchTileVariant };
 
@@ -45,9 +45,11 @@ type AuthoredSelectionOptions = {
   seed: number;
   safeStartRadius: number;
   requireFirstRiver: boolean;
+  topologyContext?: MovementTopologyContext;
 };
 
 export function selectAuthoredPatchVariant(options: AuthoredSelectionOptions) {
+  const topologyContext = options.topologyContext ?? createMovementTopologyContext(options.committedPatches.values());
   const compatible = options.variants.filter((variant) => matchesCommittedNeighbors(options, options.patch, variant));
   const frontierSafe = compatible.filter((variant) => keepsNeighborDomainsOpen(options, options.patch, variant));
   const safeStart = hexDistance(options.patch, { q: 0, r: 0 }) <= options.safeStartRadius;
@@ -57,31 +59,54 @@ export function selectAuthoredPatchVariant(options: AuthoredSelectionOptions) {
     : [];
   const preferred = safeCandidates.length > 0 ? safeCandidates : riverCandidates.length > 0 ? riverCandidates : frontierSafe;
   const candidates = preferred.filter((variant) =>
-    candidatePreservesMovementTopology(options.committedPatches.values(), options.patch, variant).safe,
+    topologyContext.evaluateVariant(options.patch, variant).safe,
   );
   const enclosureCandidatesRejected = preferred.length - candidates.length;
   if (candidates.length === 0) {
     return { selection: null, enclosureCandidatesRejected } satisfies AuthoredPatchSelectionResult;
   }
 
-  const loopContext = createFeatureLoopContext(options.committedPatches.values());
+  const localCommitted = [...options.committedPatches.values()].filter(
+    (entry) => hexDistance(entry, options.patch) <= Math.max(...Object.values(SHORT_LOOP_LIMITS)),
+  );
+  const loopContext = createFeatureLoopContext(localCommitted);
   const evaluated = candidates.map((variant) => ({
     variant,
-    loops: [
-      ...findShortFeatureLoops(loopContext, options.patch, variant),
-      ...findFrontierShortFeatureLoops(options.committedPatches.values(), options.patch, variant),
-    ],
+    loops: findShortFeatureLoops(loopContext, options.patch, variant),
   }));
   const loopFree = evaluated.filter((entry) => entry.loops.length === 0);
   const minimumRisk = Math.min(...evaluated.map((entry) => loopRiskScore(entry.loops)));
-  const pool = loopFree.length > 0
+  const immediatePool = loopFree.length > 0
     ? loopFree
     : evaluated.filter((entry) => loopRiskScore(entry.loops) === minimumRisk);
-  const selected = chooseWeightedVariant(options.seed, options.patch, pool.map((entry) => entry.variant));
-  const selectedEvaluation = pool.find((entry) => entry.variant === selected)!;
+  let selectedEvaluation = chooseWeightedEntry(options, immediatePool);
+  const frontierRejected: typeof evaluated = [];
+
+  if (loopFree.length > 0) {
+    const remaining = [...immediatePool];
+    while (remaining.length > 0) {
+      const selected = chooseWeightedEntry(options, remaining);
+      const loops = findFrontierShortFeatureLoops(localCommitted, options.patch, selected.variant);
+      const index = remaining.indexOf(selected);
+      remaining.splice(index, 1);
+      if (loops.length === 0) {
+        selectedEvaluation = selected;
+        break;
+      }
+      frontierRejected.push({ variant: selected.variant, loops });
+      if (remaining.length === 0) {
+        const minimumFrontierRisk = Math.min(...frontierRejected.map((entry) => loopRiskScore(entry.loops)));
+        selectedEvaluation = chooseWeightedEntry(
+          options,
+          frontierRejected.filter((entry) => loopRiskScore(entry.loops) === minimumFrontierRisk),
+        );
+      }
+    }
+  }
+
   const suppressedCandidates: Record<LoopFeature, number> = { wall: 0, river: 0 };
   if (loopFree.length > 0) {
-    for (const entry of evaluated) {
+    for (const entry of [...evaluated.filter((entry) => entry.loops.length > 0), ...frontierRejected]) {
       for (const feature of new Set(entry.loops.map((loop) => loop.feature))) {
         suppressedCandidates[feature] += 1;
       }
@@ -89,15 +114,23 @@ export function selectAuthoredPatchVariant(options: AuthoredSelectionOptions) {
   }
   return {
     selection: {
-      variant: selected,
+      variant: selectedEvaluation.variant,
       loopPolicy: {
         suppressedCandidates,
-        forced: loopFree.length === 0 && evaluated.some((entry) => entry.loops.length > 0),
+        forced: loopFree.length === 0 || frontierRejected.length === immediatePool.length,
         selectedLoops: selectedEvaluation.loops,
       },
     },
     enclosureCandidatesRejected,
   } satisfies AuthoredPatchSelectionResult;
+}
+
+function chooseWeightedEntry<T extends { variant: HexPatchTileVariant }>(
+  options: Pick<AuthoredSelectionOptions, "seed" | "patch">,
+  candidates: readonly T[],
+) {
+  const variant = chooseWeightedVariant(options.seed, options.patch, candidates.map((entry) => entry.variant));
+  return candidates.find((entry) => entry.variant === variant)!;
 }
 
 function loopRiskScore(loops: readonly ShortFeatureLoop[]) {

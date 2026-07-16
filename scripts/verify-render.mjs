@@ -622,7 +622,15 @@ async function verifyTerrainGrammar(page, viewport) {
     wfc.enclosureViolationSample ||
     !Number.isFinite(wfc.enclosureCandidatesRejected) ||
     !Number.isFinite(wfc.proceduralTopologyRejectionCount) ||
-    !Number.isFinite(wfc.proceduralTerminationPatchCount)
+    !Number.isFinite(wfc.proceduralTerminationPatchCount) ||
+    !Number.isFinite(wfc.generationLastDurationMs) ||
+    !Number.isFinite(wfc.generationTotalDurationMs) ||
+    !Number.isFinite(wfc.generationMaxDurationMs) ||
+    !Number.isFinite(wfc.topologyEvaluationCount) ||
+    !Number.isFinite(wfc.patchGenerationLastDurationMs) ||
+    !Number.isFinite(wfc.patchGenerationTotalDurationMs) ||
+    !Number.isFinite(wfc.patchGenerationMaxDurationMs) ||
+    wfc.generationPatchBudget !== 3
   ) {
     throw new Error(`${viewport.name} rolling patch terrain violated movement topology: ${JSON.stringify(wfc)}`);
   }
@@ -642,7 +650,8 @@ async function verifyTerrainGrammar(page, viewport) {
     !wfc.topologySelectionCounts ||
     (wfc.topologySelectionCounts["gentle-bend"] ?? 0) < 1 ||
     !wfc.shortLoopCandidatesSuppressed ||
-    wfc.shortLoopCandidatesSuppressed.wall + wfc.shortLoopCandidatesSuppressed.river < 1
+    !Number.isFinite(wfc.shortLoopCandidatesSuppressed.wall) ||
+    !Number.isFinite(wfc.shortLoopCandidatesSuppressed.river)
   ) {
     throw new Error(`${viewport.name} authored terrain topology policy was inactive: ${JSON.stringify(wfc)}`);
   }

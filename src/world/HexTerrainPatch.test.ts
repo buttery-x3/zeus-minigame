@@ -3,6 +3,7 @@ import type { HexEdgeKind } from "../types";
 import {
   HEX_PATCH_LOCAL_CELLS,
   createHexPatchTileCatalog,
+  patchCoordToWorld,
   summarizeAuthoredPatchFamilies,
   type HexPatchTileVariant,
 } from "./HexTerrainCatalog";
@@ -204,6 +205,23 @@ describe("procedural patch closure", () => {
     }
   });
 
+  test("uses the constant-work termination path for runtime topology repair", () => {
+    const result = synthesizeProceduralPatch({
+      ne: ["open", "river", "open"],
+      e: ["open", "closed", "open"],
+      sw: ["open", "river", "open"],
+    }, 47, {
+      preferFastTermination: true,
+      acceptsCells: () => true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.attemptedAssignments).toBe(1);
+    if (result.ok) {
+      expect(result.variant.cells.get("0,0")?.structure).toBe("open");
+    }
+  });
+
   test("closes every reachable authored-neighbor boundary", { timeout: 60_000 }, () => {
     const variants = createHexPatchTileCatalog();
     const neighborhoods = enumerateReachableCenterBoundaries(variants);
@@ -262,6 +280,18 @@ describe("procedural patch closure", () => {
 });
 
 describe("rolling authored-first generation", () => {
+  test("respects a per-frame generation budget", () => {
+    const provider = new WfcTerrainProvider(20260517);
+    const before = provider.getDiagnostics().wfc.committedPatchCount;
+    const center = patchCoordToWorld({ q: 2, r: 0 });
+    provider.ensureGeneratedAround(center.q, center.r, 3, 3);
+    const diagnostics = provider.getDiagnostics().wfc;
+
+    expect(diagnostics.committedPatchCount - before).toBe(3);
+    expect(diagnostics.generatedLastEnsure).toBe(3);
+    expect(diagnostics.generationPatchBudget).toBe(3);
+  });
+
   test("uses procedural patches without socket mismatches or emergency substitution", { timeout: 30_000 }, () => {
     let suppressedShortLoops = 0;
     let gentleBends = 0;

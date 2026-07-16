@@ -28,6 +28,7 @@ import { GameEffects } from "../render/GameEffects";
 import { VisibilityOverlay } from "../render/VisibilityOverlay";
 import { createGameMaterialPalettes } from "../render/materials";
 import { GameUi } from "../ui/GameUi";
+import type { TerrainGenerationDiagnostics } from "../ui/DiagnosticsPanel";
 import { GridWorld } from "../world/GridWorld";
 import { UpgradeSystem } from "./upgrades/UpgradeSystem";
 import type { UpgradeId } from "./upgrades/upgradeTypes";
@@ -368,6 +369,7 @@ export class ZeusGame {
       this.profiler.snapshot(),
       () => this.enemies.getNavigationDebugDiagnostics(),
       () => this.player.getNavigationDiagnostics(),
+      () => this.gridWorld.getTerrainDiagnostics() as TerrainGenerationDiagnostics,
     );
     this.animationId = window.requestAnimationFrame(this.tick);
   };

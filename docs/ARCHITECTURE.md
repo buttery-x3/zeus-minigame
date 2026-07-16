@@ -49,6 +49,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/world/ProceduralTerrainPatchScoring.ts`: procedural fill connectivity constraints and coherence scoring.
 - `src/world/TerrainPatchLoopPolicy.ts`: patch-feature connectivity graphs and bounded river/cliff short-loop detection.
 - `src/world/TerrainEnclosurePolicy.ts`: exact micro-cell topology audit for bounded walkable regions enclosed by any mixture of movement blockers.
+- `src/world/TerrainTopologyContext.ts`: incrementally maintained blocker components, edges, and vertices used for constant-size candidate topology checks.
 - `src/world/HexTerrainRules.ts`: patch edge compatibility, diagnostics validation, and surface/blocking helper rules.
 - `src/world/HexTerrainWfcSolver.ts`: finite axial patch WFC solver kept as a reference for patch solving experiments.
 - `src/world/TerrainProvider.ts`: terrain provider interface and shared `TerrainCell` construction helpers.
@@ -98,6 +99,8 @@ The default provider is `WfcTerrainProvider`, which uses the explicit patch tile
 Terrain starts with a declarative patch grammar. A micro hex is an actual gameplay terrain cell. A patch tile is a non-overlapping radius-2 group of 19 micro hexes used as one generation unit. A patch edge signature is an ordered list of socket values along one patch side. Authored patches explicitly define their internal micro-cell layout; rotations are generated from the authored canonical layout instead of routing every feature through the patch center.
 
 `WfcTerrainProvider` commits terrain one patch at a time as the player moves. It keeps committed patch variants by patch coordinate and expanded micro cells by micro coordinate. The active generation radius is measured in patch coordinates around the player's current patch. Missing patches are generated in deterministic ring order, filtered against already-committed neighbor edge signatures, then committed permanently. Existing patches are never regenerated.
+
+Runtime generation commits at most three missing frontier patches per frame, allowing a newly required seven-patch outer arc to fill over several frames without monopolizing one frame. Direct cell requests still commit their containing patch immediately. The movement-topology context is updated incrementally after each commit, so testing an authored or procedural candidate examines only that radius-2 candidate rather than rebuilding topology for the explored world. Procedural repair first tries a constant-work terminating-arm/open-core layout and retains exhaustive interior search as a correctness fallback.
 
 Authored variants are always preferred and remain the weighted WFC vocabulary. Visual alternatives share topology-group budgets so adding another authored realization does not automatically increase that feature's global selection weight. Before selection, every candidate is expanded to micro cells and evaluated against the committed world. The combined wall, river, and lake blocker set may not contain a hole, so neither same-feature nor mixed-feature barriers can enclose walkable or ungenerated terrain. This is a hard eligibility rule and runs before weighting. Bounded wall and river feature graphs remain as a secondary aesthetic policy that suppresses avoidable short loops and near-closures among otherwise topology-safe candidates.
 

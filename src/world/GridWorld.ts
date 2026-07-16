@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { TILE_SIZE } from "../config";
+import { ROLLING_TERRAIN_PATCHES_PER_FRAME, TILE_SIZE } from "../config";
 import type { TerrainCell } from "../types";
 import {
   HEX_DIRECTIONS,
@@ -86,7 +86,7 @@ export class GridWorld {
   }
 
   ensureTerrainGeneratedAroundCell(q: number, r: number) {
-    this.terrainProvider.ensureGeneratedAround?.(q, r);
+    this.terrainProvider.ensureGeneratedAround?.(q, r, undefined, ROLLING_TERRAIN_PATCHES_PER_FRAME);
   }
 
   ensureTerrainGeneratedAroundWorld(point: THREE.Vector3) {

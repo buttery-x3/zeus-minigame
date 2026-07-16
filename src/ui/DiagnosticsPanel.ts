@@ -10,6 +10,8 @@ const METRICS = [
   ["render", "Render"],
   ["camera", "Camera"],
   ["lighting", "Lighting"],
+  ["terrainGeneration", "Terrain Gen"],
+  ["terrainPreparation", "Terrain Prep"],
   ["terrain", "Terrain"],
   ["targeting", "Targeting"],
   ["hud", "HUD"],
@@ -20,6 +22,19 @@ const METRICS = [
   ["spawning", "Spawning"],
   ["effects", "Effects"],
 ] as const;
+
+export type TerrainGenerationDiagnostics = {
+  wfc?: {
+    generatedLastEnsure: number;
+    generationPatchBudget: number | null;
+    generationLastDurationMs: number;
+    generationMaxDurationMs: number;
+    patchGenerationLastDurationMs: number;
+    patchGenerationMaxDurationMs: number;
+    topologyEvaluationCount: number;
+    synthesisDurationMs: number;
+  };
+};
 
 export class DiagnosticsPanel {
   private readonly window: GameWindow;
@@ -33,6 +48,7 @@ export class DiagnosticsPanel {
   private readonly framePacingValue: HTMLElement;
   private readonly memoryValue: HTMLElement;
   private readonly resourcesValue: HTMLElement;
+  private readonly terrainGenerationValue: HTMLElement;
   private readonly navigationDebugValue: HTMLElement;
   private readonly navigationDebugLegend: HTMLElement;
   private nextUpdateAt = 0;
@@ -51,6 +67,7 @@ export class DiagnosticsPanel {
       <div class="diagnostics__path" data-frame-pacing></div>
       <div class="diagnostics__path" data-memory></div>
       <div class="diagnostics__path" data-resources></div>
+      <div class="diagnostics__path" data-terrain-generation></div>
       <div class="diagnostics__path" data-navigation-debug></div>
       <div class="diagnostics__path" data-navigation-debug-legend hidden></div>
     `;
@@ -72,6 +89,7 @@ export class DiagnosticsPanel {
     this.framePacingValue = content.querySelector("[data-frame-pacing]") as HTMLElement;
     this.memoryValue = content.querySelector("[data-memory]") as HTMLElement;
     this.resourcesValue = content.querySelector("[data-resources]") as HTMLElement;
+    this.terrainGenerationValue = content.querySelector("[data-terrain-generation]") as HTMLElement;
     this.navigationDebugValue = content.querySelector("[data-navigation-debug]") as HTMLElement;
     this.navigationDebugLegend = content.querySelector("[data-navigation-debug-legend]") as HTMLElement;
     this.window = windowManager.createWindow({
@@ -104,6 +122,7 @@ export class DiagnosticsPanel {
     snapshot: ProfilerSnapshot,
     getNavigationDebug: () => NavigationDebugDiagnostics,
     getPlayerNavigation: () => PlayerNavigationDiagnostics,
+    getTerrainGeneration: () => TerrainGenerationDiagnostics,
   ) {
     if (!this.window.isVisible() || performance.now() < this.nextUpdateAt) {
       return;
@@ -115,7 +134,9 @@ export class DiagnosticsPanel {
       const metric = snapshot.metrics[key];
       const row = this.rows.get(label);
       if (metric && row) {
-        row.textContent = `${metric.avg.toFixed(2)} ms`;
+        row.textContent = key === "terrainGeneration"
+          ? `${metric.avg.toFixed(2)} ms · max ${metric.max.toFixed(2)}`
+          : `${metric.avg.toFixed(2)} ms`;
       }
     }
 
@@ -140,6 +161,10 @@ export class DiagnosticsPanel {
       : "Heap unavailable in this browser";
     const resources = memory.resources;
     this.resourcesValue.textContent = `Resources geo ${resources.geometries}, tex ${resources.textures}, prog ${resources.programs}, objects ${resources.sceneObjects}, cells ${resources.terrainCells}, enemies ${resources.enemies}, FX ${resources.effects}`;
+    const terrainGeneration = getTerrainGeneration().wfc;
+    this.terrainGenerationValue.textContent = terrainGeneration
+      ? `Terrain gen patch ${terrainGeneration.patchGenerationLastDurationMs.toFixed(2)} ms, max ${terrainGeneration.patchGenerationMaxDurationMs.toFixed(2)}, ensure ${terrainGeneration.generationLastDurationMs.toFixed(2)} ms/${terrainGeneration.generatedLastEnsure} patches, budget ${terrainGeneration.generationPatchBudget ?? "∞"}, topo ${terrainGeneration.topologyEvaluationCount}, synth ${terrainGeneration.synthesisDurationMs.toFixed(2)} ms`
+      : "Terrain generation unavailable";
     const debug = getNavigationDebug();
     const stalled = debug.stalled
       .map((enemy) => `#${enemy.id} ${enemy.mode} ${enemy.collision} ${enemy.stationaryMs.toFixed(0)}ms p${enemy.pathLength}${enemy.pathQueued ? "q" : ""}`)

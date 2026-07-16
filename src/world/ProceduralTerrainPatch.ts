@@ -30,6 +30,7 @@ export type ProceduralPatchResult =
 export type ProceduralPatchOptions = {
   idPrefix?: string;
   acceptsCells?: (cells: ReadonlyMap<string, HexPatchCell>) => boolean;
+  preferFastTermination?: boolean;
 };
 
 const INTERIOR_CELLS = HEX_PATCH_LOCAL_CELLS.filter((cell) => hexDistance(cell, { q: 0, r: 0 }) < 2);
@@ -88,6 +89,17 @@ export function synthesizeProceduralPatch(
     assignment.set(CENTER_KEY, "open");
   }
 
+  if (options.preferFastTermination) {
+    attemptedAssignments += 1;
+    const fastCells = createFastTerminationCells(boundary, hasOpenBoundary);
+    if (
+      satisfiesProceduralConnectivity(fastCells, boundary, hasOpenBoundary) &&
+      (!options.acceptsCells || options.acceptsCells(fastCells))
+    ) {
+      bestCells = fastCells;
+    }
+  }
+
   const search = (index: number) => {
     if (index < mutableCells.length) {
       const coord = mutableCells[index];
@@ -113,19 +125,22 @@ export function synthesizeProceduralPatch(
     if (!satisfiesProceduralConnectivity(cells, boundary, hasOpenBoundary)) {
       return;
     }
+    const score = scoreProceduralCells(cells, boundary, hasOpenBoundary);
+    const tie = seededTie(seed, boundaryKey, assignment);
+    if (score > bestScore || (score === bestScore && tie >= bestTie)) {
+      return;
+    }
     if (options.acceptsCells && !options.acceptsCells(cells)) {
       return;
     }
-    const score = scoreProceduralCells(cells, boundary, hasOpenBoundary);
-    const tie = seededTie(seed, boundaryKey, assignment);
-    if (score < bestScore || (score === bestScore && tie < bestTie)) {
-      bestCells = cells;
-      bestScore = score;
-      bestTie = tie;
-    }
+    bestCells = cells;
+    bestScore = score;
+    bestTie = tie;
   };
 
-  search(0);
+  if (!bestCells) {
+    search(0);
+  }
   if (!bestCells) {
     return { ok: false, boundaryKey, reason: "no interior assignment satisfied connectivity", attemptedAssignments };
   }
@@ -149,6 +164,33 @@ export function synthesizeProceduralPatch(
     return { ok: false, boundaryKey, reason: validation.errors.join("; "), attemptedAssignments };
   }
   return { ok: true, variant, attemptedAssignments };
+}
+
+function createFastTerminationCells(
+  boundary: ReadonlyMap<string, { coord: HexCoord; structure: TerrainStructure }>,
+  hasOpenBoundary: boolean,
+) {
+  const cells = createBaseCells();
+  for (const entry of boundary.values()) {
+    setPatchCell(cells, entry.coord, entry.structure);
+  }
+  if (hasOpenBoundary) {
+    return cells;
+  }
+
+  const counts = new Map<TerrainStructure, number>();
+  for (const entry of boundary.values()) {
+    if (entry.structure !== "open" && entry.structure !== "bank") {
+      counts.set(entry.structure, (counts.get(entry.structure) ?? 0) + 1);
+    }
+  }
+  const fill = [...counts].sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))[0]?.[0];
+  if (fill) {
+    for (const coord of INTERIOR_CELLS) {
+      setPatchCell(cells, coord, fill);
+    }
+  }
+  return cells;
 }
 
 export function serializeBoundaryConstraints(constraints: HexPatchBoundaryConstraints) {

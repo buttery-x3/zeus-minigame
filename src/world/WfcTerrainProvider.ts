@@ -23,11 +23,8 @@ import {
   synthesizeProceduralPatch,
 } from "./ProceduralTerrainPatch";
 import { collectPatchBoundaryConstraints, selectAuthoredPatchVariant } from "./RollingTerrainPatchSelection";
-import {
-  candidateCellsPreserveMovementTopology,
-  candidatePreservesMovementTopology,
-  evaluateMovementEnclosures,
-} from "./TerrainEnclosurePolicy";
+import { evaluateMovementEnclosures } from "./TerrainEnclosurePolicy";
+import { createMovementTopologyContext } from "./TerrainTopologyContext";
 
 type CommittedPatch = HexCoord & {
   variant: HexPatchTileVariant;
@@ -51,6 +48,7 @@ type RollingWfcDiagnostics = {
   proceduralPatchCacheSize: number;
   synthesisAttemptCount: number;
   synthesisFailureCount: number;
+  synthesisAssignmentCount: number;
   synthesisDurationMs: number;
   proceduralFillModeCounts: Record<string, number>;
   proceduralBoundarySignatureCounts: Record<string, number>;
@@ -62,6 +60,16 @@ type RollingWfcDiagnostics = {
   proceduralTopologyRejectionCount: number;
   proceduralTerminationPatchCount: number;
   enclosureViolationSample: { q: number; r: number; cellCount: number } | null;
+  generationEnsureCount: number;
+  generationLastDurationMs: number;
+  generationTotalDurationMs: number;
+  generationMaxDurationMs: number;
+  topologyEvaluationCount: number;
+  authoredSelectionDurationMs: number;
+  generationPatchBudget: number | null;
+  patchGenerationLastDurationMs: number;
+  patchGenerationTotalDurationMs: number;
+  patchGenerationMaxDurationMs: number;
   resolvedPatchCount: number;
   resolvedCells: number;
   structureCounts: Record<TerrainStructure, number>;
@@ -83,6 +91,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   private readonly surfaceCounts = createTerrainSurfaceCounts();
   private readonly patchVariantCounts: Record<string, number> = {};
   private readonly proceduralPatchCache = new Map<string, HexPatchTileVariant[]>();
+  private readonly topologyContext = createMovementTopologyContext([]);
   private readonly proceduralFillModeCounts: Record<string, number> = {};
   private readonly proceduralBoundarySignatureCounts: Record<string, number> = {};
   private readonly topologySelectionCounts: Record<string, number> = {};
@@ -96,11 +105,21 @@ export class WfcTerrainProvider implements TerrainProvider {
   private proceduralPatchCount = 0;
   private synthesisAttemptCount = 0;
   private synthesisFailureCount = 0;
+  private synthesisAssignmentCount = 0;
   private synthesisDurationMs = 0;
   private forcedShortLoopSelectionCount = 0;
   private enclosureCandidatesRejected = 0;
   private proceduralTopologyRejectionCount = 0;
   private proceduralTerminationPatchCount = 0;
+  private generationEnsureCount = 0;
+  private generationLastDurationMs = 0;
+  private generationTotalDurationMs = 0;
+  private generationMaxDurationMs = 0;
+  private authoredSelectionDurationMs = 0;
+  private generationLastBudget = Number.POSITIVE_INFINITY;
+  private patchGenerationLastDurationMs = 0;
+  private patchGenerationTotalDurationMs = 0;
+  private patchGenerationMaxDurationMs = 0;
 
   constructor(private readonly seed = WFC_TERRAIN_SEED) {
     this.ensureGeneratedAround(0, 0);
@@ -136,7 +155,14 @@ export class WfcTerrainProvider implements TerrainProvider {
     return this.generatedPatchCount;
   }
 
-  ensureGeneratedAround(q: number, r: number, radius = ROLLING_TERRAIN_PATCH_RADIUS) {
+  ensureGeneratedAround(
+    q: number,
+    r: number,
+    radius = ROLLING_TERRAIN_PATCH_RADIUS,
+    maxNewPatches = Number.POSITIVE_INFINITY,
+  ) {
+    const startedAt = performance.now();
+    this.generationLastBudget = maxNewPatches;
     const center = microToPatchLocal({ q, r }).patch;
     const required = createHexPatchRegion(radius)
       .map((patch) => ({ q: center.q + patch.q, r: center.r + patch.r }))
@@ -144,11 +170,19 @@ export class WfcTerrainProvider implements TerrainProvider {
 
     let generated = 0;
     for (const patch of required) {
+      if (generated >= maxNewPatches) {
+        break;
+      }
       if (this.commitPatchIfMissing(patch)) {
         generated += 1;
       }
     }
     this.generatedLastEnsure = generated;
+    const duration = performance.now() - startedAt;
+    this.generationEnsureCount += 1;
+    this.generationLastDurationMs = duration;
+    this.generationTotalDurationMs += duration;
+    this.generationMaxDurationMs = Math.max(this.generationMaxDurationMs, duration);
   }
 
   getDiagnostics() {
@@ -170,6 +204,7 @@ export class WfcTerrainProvider implements TerrainProvider {
       proceduralPatchCacheSize: [...this.proceduralPatchCache.values()].reduce((sum, variants) => sum + variants.length, 0),
       synthesisAttemptCount: this.synthesisAttemptCount,
       synthesisFailureCount: this.synthesisFailureCount,
+      synthesisAssignmentCount: this.synthesisAssignmentCount,
       synthesisDurationMs: this.synthesisDurationMs,
       proceduralFillModeCounts: { ...this.proceduralFillModeCounts },
       proceduralBoundarySignatureCounts: { ...this.proceduralBoundarySignatureCounts },
@@ -183,6 +218,18 @@ export class WfcTerrainProvider implements TerrainProvider {
       enclosureViolationSample: enclosureAudit.safe
         ? null
         : { ...enclosureAudit.enclosure.sample, cellCount: enclosureAudit.enclosure.cellCount },
+      generationEnsureCount: this.generationEnsureCount,
+      generationLastDurationMs: this.generationLastDurationMs,
+      generationTotalDurationMs: this.generationTotalDurationMs,
+      generationMaxDurationMs: this.generationMaxDurationMs,
+      topologyEvaluationCount: this.topologyContext.evaluationCount,
+      authoredSelectionDurationMs: this.authoredSelectionDurationMs,
+      generationPatchBudget: Number.isFinite(this.generationLastBudget)
+        ? this.generationLastBudget
+        : null,
+      patchGenerationLastDurationMs: this.patchGenerationLastDurationMs,
+      patchGenerationTotalDurationMs: this.patchGenerationTotalDurationMs,
+      patchGenerationMaxDurationMs: this.patchGenerationMaxDurationMs,
       resolvedPatchCount: this.committedPatches.size,
       resolvedCells: this.generatedCells.size,
       structureCounts: { ...this.structureCounts },
@@ -201,8 +248,10 @@ export class WfcTerrainProvider implements TerrainProvider {
       return false;
     }
 
+    const startedAt = performance.now();
     const { variant, emergency } = this.choosePatchVariant(patch);
     const committed = { ...patch, variant, emergency };
+    this.topologyContext.commitVariant(patch, variant);
     this.committedPatches.set(key, committed);
     this.patchVariantCounts[variant.id] = (this.patchVariantCounts[variant.id] ?? 0) + 1;
     this.topologySelectionCounts[variant.topology] = (this.topologySelectionCounts[variant.topology] ?? 0) + 1;
@@ -221,10 +270,15 @@ export class WfcTerrainProvider implements TerrainProvider {
     }
 
     this.expandPatch(committed);
+    const duration = performance.now() - startedAt;
+    this.patchGenerationLastDurationMs = duration;
+    this.patchGenerationTotalDurationMs += duration;
+    this.patchGenerationMaxDurationMs = Math.max(this.patchGenerationMaxDurationMs, duration);
     return true;
   }
 
   private choosePatchVariant(patch: HexCoord) {
+    const selectionStartedAt = performance.now();
     const authoredResult = selectAuthoredPatchVariant({
       patch,
       variants: this.variants,
@@ -232,14 +286,16 @@ export class WfcTerrainProvider implements TerrainProvider {
       seed: this.seed,
       safeStartRadius: SAFE_START_PATCH_RADIUS,
       requireFirstRiver: this.structureCounts.river === 0,
+      topologyContext: this.topologyContext,
     });
+    this.authoredSelectionDurationMs += performance.now() - selectionStartedAt;
     this.enclosureCandidatesRejected += authoredResult.enclosureCandidatesRejected;
     const authoredSelection = authoredResult.selection;
     if (!authoredSelection) {
       const constraints = collectPatchBoundaryConstraints(patch, this.committedPatches);
       const boundaryKey = serializeBoundaryConstraints(constraints);
       const cached = this.proceduralPatchCache.get(boundaryKey)?.find((variant) =>
-        candidatePreservesMovementTopology(this.committedPatches.values(), patch, variant).safe,
+        this.topologyContext.evaluateVariant(patch, variant).safe,
       );
       if (cached) {
         if (authoredResult.enclosureCandidatesRejected > 0) {
@@ -252,14 +308,16 @@ export class WfcTerrainProvider implements TerrainProvider {
       const startedAt = performance.now();
       let topologyRejections = 0;
       const result = synthesizeProceduralPatch(constraints, this.seed, {
+        preferFastTermination: true,
         acceptsCells: (cells) => {
-          const safe = candidateCellsPreserveMovementTopology(this.committedPatches.values(), patch, cells).safe;
+          const safe = this.topologyContext.evaluateCells(patch, cells).safe;
           if (!safe) {
             topologyRejections += 1;
           }
           return safe;
         },
       });
+      this.synthesisAssignmentCount += result.attemptedAssignments;
       this.proceduralTopologyRejectionCount += topologyRejections;
       this.synthesisDurationMs += performance.now() - startedAt;
       if (result.ok) {
