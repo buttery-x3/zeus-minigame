@@ -1,5 +1,6 @@
 import type { HexEdgeKind, HexTileSignature, TerrainCell, TerrainStructure, TerrainSurface } from "../types";
 import { terrainBlocksMovement, terrainBlocksSight } from "./HexTerrainRules";
+import type { GeneratedTerrainSnapshot } from "./TerrainCompositionReport";
 
 export interface TerrainProvider {
   getCell(q: number, r: number): TerrainCell;
@@ -8,6 +9,8 @@ export interface TerrainProvider {
   ensureGeneratedAround?(q: number, r: number, radius?: number, maxNewPatches?: number): void;
   getGeneratedCellsInRange?(center: { q: number; r: number }, radius: number): TerrainCell[];
   getGenerationVersion?(): number;
+  /** Copies committed terrain state without generating or demanding cells. */
+  getGeneratedTerrainSnapshot?(): GeneratedTerrainSnapshot;
   getDiagnostics(): unknown;
 }
 

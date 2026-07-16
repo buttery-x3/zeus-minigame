@@ -6,6 +6,7 @@ import { SpecialGroundEffects } from "../../render/SpecialGroundEffects";
 import { createTerrainPatchDebugOverlay } from "../../render/TerrainPatchDebugOverlay";
 import type { GridWorld } from "../../world/GridWorld";
 import { collectTerrainPatchBoundarySegments } from "../../world/TerrainPatchBoundaries";
+import { summarizeTerrainStructures } from "../../world/TerrainCompositionReport";
 import type { TerrainCell, TerrainSurface } from "../../types";
 import type { RenderMode } from "../preferences/GamePreferences";
 import type { VisibilitySystem } from "../visibility/VisibilitySystem";
@@ -37,6 +38,12 @@ export class TerrainSystem {
   private instanceBatchCount = 0;
   private terrainInstanceCount = 0;
   private patchBorderSegmentCount = 0;
+  private renderedComposition = {
+    center: { q: 0, r: 0 },
+    radius: 0,
+    generationVersion: 0,
+    structures: summarizeTerrainStructures([]),
+  };
   private visibilityVersion = -1;
   private blockerVisibility = {
     total: 0,
@@ -118,6 +125,15 @@ export class TerrainSystem {
         visible: this.patchBorderSegmentCount > 0,
         segmentCount: this.patchBorderSegmentCount,
       },
+      renderedComposition: {
+        ...this.renderedComposition,
+        center: { ...this.renderedComposition.center },
+        structures: {
+          ...this.renderedComposition.structures,
+          counts: { ...this.renderedComposition.structures.counts },
+          percentages: { ...this.renderedComposition.structures.percentages },
+        },
+      },
       specialGround: this.specialEffects.getDiagnostics(),
     };
   }
@@ -146,6 +162,7 @@ export class TerrainSystem {
     const bankGeometry = createHexCylinderGeometry(this.gridWorld.hexSize * 0.96, 0.12);
     const batches = new Map<string, InstanceBatch>();
     const blockerRecords: Array<Omit<BlockerRecord, "index">> = [];
+    const renderedCells: TerrainCell[] = [];
 
     const addInstance = (key: string, geometry: THREE.BufferGeometry, material: THREE.Material, matrix: THREE.Matrix4) => {
       let batch = batches.get(key);
@@ -157,6 +174,7 @@ export class TerrainSystem {
     };
 
     const renderCell = (cell: TerrainCell) => {
+      renderedCells.push(cell);
       const world = this.gridWorld.cellToWorld(cell.q, cell.r);
       const visual = this.groundEffects.getCellVisualState(cell);
       const isWater = cell.structure === "lake" || cell.structure === "river";
@@ -200,6 +218,13 @@ export class TerrainSystem {
         renderCell(this.gridWorld.getCell(q, r));
       });
     }
+
+    this.renderedComposition = {
+      center: { ...center },
+      radius,
+      generationVersion: this.gridWorld.getTerrainGenerationVersion(),
+      structures: summarizeTerrainStructures(renderedCells),
+    };
 
     const useShadows = this.renderMode === "normal";
     for (const batch of batches.values()) {

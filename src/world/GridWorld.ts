@@ -90,6 +90,10 @@ export class GridWorld {
     return this.terrainProvider.getGenerationVersion?.() ?? this.cells.size;
   }
 
+  getGeneratedTerrainSnapshot() {
+    return this.terrainProvider.getGeneratedTerrainSnapshot?.() ?? null;
+  }
+
   hasBudgetedTerrainGeneration() {
     return Boolean(this.terrainProvider.ensureGeneratedAround);
   }

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
-    "test:terrain": "vitest run src/world",
+    "test:terrain": "vitest run src/world --exclude **/*.soak.test.ts",
+    "test:terrain:soak": "vitest run src/world/TerrainComposition.soak.test.ts",
     "test:game": "vitest run src/game/collision src/game/enemies src/game/navigation src/game/perf",
     "preview": "vite preview --host 127.0.0.1",
     "start": "node server/static-server.mjs",
