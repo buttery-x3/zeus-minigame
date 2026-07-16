@@ -3,7 +3,9 @@ import { VISIBILITY_LIGHT_EPSILON } from "../../config";
 import { disposeObject3D } from "../../render/dispose";
 import type { GameMaterialPalettes, GameMaterials } from "../../render/materials";
 import { SpecialGroundEffects } from "../../render/SpecialGroundEffects";
+import { createTerrainPatchDebugOverlay } from "../../render/TerrainPatchDebugOverlay";
 import type { GridWorld } from "../../world/GridWorld";
+import { collectTerrainPatchBoundarySegments } from "../../world/TerrainPatchBoundaries";
 import type { TerrainCell, TerrainSurface } from "../../types";
 import type { RenderMode } from "../preferences/GamePreferences";
 import type { VisibilitySystem } from "../visibility/VisibilitySystem";
@@ -34,6 +36,7 @@ export class TerrainSystem {
   private renderMode: RenderMode;
   private instanceBatchCount = 0;
   private terrainInstanceCount = 0;
+  private patchBorderSegmentCount = 0;
   private visibilityVersion = -1;
   private blockerVisibility = {
     total: 0,
@@ -70,7 +73,7 @@ export class TerrainSystem {
     }
 
     this.preparedTerrainWindowKey = key;
-    if (revealAll) {
+    if (revealAll || this.gridWorld.hasBudgetedTerrainGeneration()) {
       return;
     }
 
@@ -111,6 +114,10 @@ export class TerrainSystem {
         terrainInstances: this.terrainInstanceCount,
         blockerInstances: this.blockers.length,
       },
+      patchBorders: {
+        visible: this.patchBorderSegmentCount > 0,
+        segmentCount: this.patchBorderSegmentCount,
+      },
       specialGround: this.specialEffects.getDiagnostics(),
     };
   }
@@ -122,6 +129,7 @@ export class TerrainSystem {
     this.blockerMesh = null;
     this.instanceBatchCount = 0;
     this.terrainInstanceCount = 0;
+    this.patchBorderSegmentCount = 0;
     this.specialEffects.resetForRebuild();
     const preservedMaterials = [
       ...Object.values(this.materialPalettes.normal),
@@ -174,9 +182,18 @@ export class TerrainSystem {
       }
     };
 
-    if (useGeneratedOnly) {
-      for (const cell of this.gridWorld.getGeneratedCellsInRange(center, radius)) {
+    if (useGeneratedOnly || this.gridWorld.hasBudgetedTerrainGeneration()) {
+      const generatedCells = this.gridWorld.getGeneratedCellsInRange(center, radius);
+      for (const cell of generatedCells) {
         renderCell(cell);
+      }
+      if (useGeneratedOnly) {
+        const patchBorders = collectTerrainPatchBoundarySegments(generatedCells);
+        const patchBorderOverlay = createTerrainPatchDebugOverlay(this.gridWorld, patchBorders);
+        if (patchBorderOverlay) {
+          this.terrainGroup.add(patchBorderOverlay);
+          this.patchBorderSegmentCount = patchBorders.length;
+        }
       }
     } else {
       this.gridWorld.forEachCellInRange(center, radius, (q, r) => {

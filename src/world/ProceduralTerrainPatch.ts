@@ -27,13 +27,19 @@ export type ProceduralPatchResult =
   | { ok: true; variant: HexPatchTileVariant; attemptedAssignments: number }
   | { ok: false; boundaryKey: string; reason: string; attemptedAssignments: number };
 
+export type ProceduralPatchOptions = {
+  idPrefix?: string;
+  acceptsCells?: (cells: ReadonlyMap<string, HexPatchCell>) => boolean;
+  preferFastTermination?: boolean;
+};
+
 const INTERIOR_CELLS = HEX_PATCH_LOCAL_CELLS.filter((cell) => hexDistance(cell, { q: 0, r: 0 }) < 2);
 const CENTER_KEY = hexCellKey(0, 0);
 
 export function synthesizeProceduralPatch(
   constraints: HexPatchBoundaryConstraints,
   seed: number,
-  idPrefix = "patch.procedural",
+  options: ProceduralPatchOptions = {},
 ): ProceduralPatchResult {
   const resolution = resolveBoundaryEdges(constraints);
   if (!resolution.ok) {
@@ -83,6 +89,17 @@ export function synthesizeProceduralPatch(
     assignment.set(CENTER_KEY, "open");
   }
 
+  if (options.preferFastTermination) {
+    attemptedAssignments += 1;
+    const fastCells = createFastTerminationCells(boundary, hasOpenBoundary);
+    if (
+      satisfiesProceduralConnectivity(fastCells, boundary, hasOpenBoundary) &&
+      (!options.acceptsCells || options.acceptsCells(fastCells))
+    ) {
+      bestCells = fastCells;
+    }
+  }
+
   const search = (index: number) => {
     if (index < mutableCells.length) {
       const coord = mutableCells[index];
@@ -110,14 +127,20 @@ export function synthesizeProceduralPatch(
     }
     const score = scoreProceduralCells(cells, boundary, hasOpenBoundary);
     const tie = seededTie(seed, boundaryKey, assignment);
-    if (score < bestScore || (score === bestScore && tie < bestTie)) {
-      bestCells = cells;
-      bestScore = score;
-      bestTie = tie;
+    if (score > bestScore || (score === bestScore && tie >= bestTie)) {
+      return;
     }
+    if (options.acceptsCells && !options.acceptsCells(cells)) {
+      return;
+    }
+    bestCells = cells;
+    bestScore = score;
+    bestTie = tie;
   };
 
-  search(0);
+  if (!bestCells) {
+    search(0);
+  }
   if (!bestCells) {
     return { ok: false, boundaryKey, reason: "no interior assignment satisfied connectivity", attemptedAssignments };
   }
@@ -128,13 +151,46 @@ export function synthesizeProceduralPatch(
       ? "enclosed"
       : "mixed-enclosure";
   const family = familyForStructures(boundaryStructures);
-  const id = `${idPrefix}.${hashString(boundaryKey).toString(16).padStart(8, "0")}`;
-  const variant = createPatchVariant(id, family, "procedural", 0, bestCells, { boundaryKey, fillMode });
+  const selectedCells = bestCells as Map<string, HexPatchCell>;
+  const layoutKey = [...selectedCells.values()]
+    .sort((a, b) => a.q - b.q || a.r - b.r)
+    .map((cell) => `${cell.q},${cell.r}:${cell.structure}`)
+    .join("|");
+  const idPrefix = options.idPrefix ?? "patch.procedural";
+  const id = `${idPrefix}.${hashString(`${boundaryKey}|${layoutKey}`).toString(16).padStart(8, "0")}`;
+  const variant = createPatchVariant(id, family, "procedural", 0, selectedCells, { boundaryKey, fillMode });
   const validation = validateHexPatchVariant(variant);
   if (!validation.valid) {
     return { ok: false, boundaryKey, reason: validation.errors.join("; "), attemptedAssignments };
   }
   return { ok: true, variant, attemptedAssignments };
+}
+
+function createFastTerminationCells(
+  boundary: ReadonlyMap<string, { coord: HexCoord; structure: TerrainStructure }>,
+  hasOpenBoundary: boolean,
+) {
+  const cells = createBaseCells();
+  for (const entry of boundary.values()) {
+    setPatchCell(cells, entry.coord, entry.structure);
+  }
+  if (hasOpenBoundary) {
+    return cells;
+  }
+
+  const counts = new Map<TerrainStructure, number>();
+  for (const entry of boundary.values()) {
+    if (entry.structure !== "open" && entry.structure !== "bank") {
+      counts.set(entry.structure, (counts.get(entry.structure) ?? 0) + 1);
+    }
+  }
+  const fill = [...counts].sort(([a, countA], [b, countB]) => countB - countA || a.localeCompare(b))[0]?.[0];
+  if (fill) {
+    for (const coord of INTERIOR_CELLS) {
+      setPatchCell(cells, coord, fill);
+    }
+  }
+  return cells;
 }
 
 export function serializeBoundaryConstraints(constraints: HexPatchBoundaryConstraints) {

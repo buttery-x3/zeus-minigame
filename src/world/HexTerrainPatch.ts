@@ -2,6 +2,7 @@ import type { HexEdgeKind, HexTileSignature, TerrainStructure, TerrainSurface } 
 import {
   HEX_DIRECTION_ORDER,
   hexCellKey,
+  hexDistance,
   type HexCoord,
   type HexDirection,
 } from "./hexCoordinates";
@@ -11,13 +12,28 @@ import {
   HEX_PATCH_LOCAL_CELL_KEYS,
   HEX_PATCH_RADIUS,
 } from "./HexTerrainPatchGeometry";
+import {
+  reverseRiverPorts,
+  rotateRiverFlow,
+  serializeRiverPorts,
+  type AuthoredPatchRiverFlow,
+  type HexPatchRiverPorts,
+} from "./HexTerrainRiverPorts";
 
 export * from "./HexTerrainPatchGeometry";
+export type { AuthoredPatchRiverFlow, HexPatchRiverPort, HexPatchRiverPorts } from "./HexTerrainRiverPorts";
 
 export type HexPatchEdgeSignature = HexEdgeKind[];
 export type HexPatchFamily = "open" | "cliff" | "river" | "lake" | "transition";
 export type HexPatchProvenance = "authored" | "procedural";
 export type HexPatchTopology = "open" | "isolated" | "endpoint" | "straight" | "tight-bend" | "gentle-bend" | "junction" | "mixed";
+export type HexPatchRiverTerminal = "lake" | "cliff";
+export type HexPatchLakeRole = "cove" | "shore" | "core" | "mouth";
+export type HexPatchHydrologyEdgeInfluence = {
+  river: readonly HexCoord[];
+  lake: readonly HexCoord[];
+  cliff: readonly HexCoord[];
+};
 
 export type HexPatchCell = HexCoord & {
   structure: TerrainStructure;
@@ -35,6 +51,10 @@ export type HexPatchTileVariant = {
   selectionGroup: string;
   selectionGroupWeight: number;
   topology: HexPatchTopology;
+  riverTerminal?: HexPatchRiverTerminal;
+  riverPorts: HexPatchRiverPorts;
+  lakeRole?: HexPatchLakeRole;
+  hydrologyEdges: Record<HexDirection, HexPatchHydrologyEdgeInfluence>;
   diagnostics: {
     kind: "open" | "wall" | "river" | "lake" | "mixed";
     riverExitCount: number;
@@ -54,6 +74,9 @@ export type AuthoredPatchDefinition = {
   selectionGroup?: string;
   selectionGroupWeight?: number;
   topology?: HexPatchTopology;
+  riverTerminal?: HexPatchRiverTerminal;
+  riverFlow?: AuthoredPatchRiverFlow;
+  lakeRole?: HexPatchLakeRole;
   baseSurface?: TerrainSurface;
   rotations?: number;
   cells?: Partial<Record<Exclude<TerrainStructure, "open">, readonly HexCoord[]>>;
@@ -79,20 +102,29 @@ export function createAuthoredPatchVariants(definition: AuthoredPatchDefinition)
   const seen = new Set<string>();
   for (let step = 0; step < rotations; step += 1) {
     const cells = rotateCells(baseCells, step);
-    const signature = serializeCells(cells);
-    if (seen.has(signature)) {
-      continue;
+    const riverPorts = rotateRiverFlow(definition.riverFlow, step);
+    const flowOrientations = definition.riverFlow?.reversible
+      ? [riverPorts, reverseRiverPorts(riverPorts)]
+      : [riverPorts];
+    for (let flowIndex = 0; flowIndex < flowOrientations.length; flowIndex += 1) {
+      const orientedPorts = flowOrientations[flowIndex];
+      const signature = `${serializeCells(cells)}|${serializeRiverPorts(orientedPorts)}`;
+      if (seen.has(signature)) {
+        continue;
+      }
+      seen.add(signature);
+      const rotationId = rotations === 1 ? definition.id : `${definition.id}.${step}`;
+      variants.push(createPatchVariant(
+        flowIndex === 0 ? rotationId : `${rotationId}.reverse`,
+        definition.family,
+        "authored",
+        definition.weight,
+        cells,
+        undefined,
+        definition,
+        orientedPorts,
+      ));
     }
-    seen.add(signature);
-    variants.push(createPatchVariant(
-      rotations === 1 ? definition.id : `${definition.id}.${step}`,
-      definition.family,
-      "authored",
-      definition.weight,
-      cells,
-      undefined,
-      definition,
-    ));
   }
   const groupWeight = definition.selectionGroupWeight ?? definition.weight * variants.length;
   for (const variant of variants) {
@@ -108,9 +140,11 @@ export function createPatchVariant(
   weight: number,
   cells: Map<string, HexPatchCell>,
   procedural?: HexPatchTileVariant["procedural"],
-  authored?: Pick<AuthoredPatchDefinition, "selectionGroup" | "selectionGroupWeight" | "topology">,
+  authored?: Pick<AuthoredPatchDefinition, "selectionGroup" | "selectionGroupWeight" | "topology" | "riverTerminal" | "lakeRole">,
+  riverPorts: HexPatchRiverPorts = {},
 ): HexPatchTileVariant {
   const edges = derivePatchEdges(cells);
+  const hydrologyEdges = deriveHydrologyEdgeInfluence(cells);
   const riverExitCount = countEdgesContaining(edges, "river");
   const lakeExitCount = countEdgesContaining(edges, "lake");
   const closedExitCount = countEdgesContaining(edges, "closed");
@@ -126,6 +160,10 @@ export function createPatchVariant(
     selectionGroup: authored?.selectionGroup ?? id,
     selectionGroupWeight: authored?.selectionGroupWeight ?? weight,
     topology: authored?.topology ?? "mixed",
+    riverTerminal: authored?.riverTerminal,
+    riverPorts,
+    lakeRole: authored?.lakeRole,
+    hydrologyEdges,
     diagnostics: {
       kind: kinds.length > 1 ? "mixed" : kinds[0] === "river" ? "river" : kinds[0] === "lake" ? "lake" : kinds[0] === "wall" ? "wall" : "open",
       riverExitCount,
@@ -171,6 +209,21 @@ export function derivePatchEdges(cells: ReadonlyMap<string, HexPatchCell>) {
     });
   }
   return edges;
+}
+
+export function deriveHydrologyEdgeInfluence(cells: ReadonlyMap<string, Pick<HexPatchCell, "q" | "r" | "structure">>) {
+  const influence = {} as Record<HexDirection, HexPatchHydrologyEdgeInfluence>;
+  for (const direction of HEX_DIRECTION_ORDER) {
+    const nearEdge = [...cells.values()].filter((cell) =>
+      HEX_PATCH_EDGE_CELLS[direction].some((edgeCell) => hexDistance(cell, edgeCell) <= 3),
+    );
+    influence[direction] = {
+      river: nearEdge.filter((cell) => cell.structure === "river").map(({ q, r }) => ({ q, r })),
+      lake: nearEdge.filter((cell) => cell.structure === "lake").map(({ q, r }) => ({ q, r })),
+      cliff: nearEdge.filter((cell) => cell.structure === "wall").map(({ q, r }) => ({ q, r })),
+    };
+  }
+  return influence;
 }
 
 export function edgeForStructure(structure: TerrainStructure): HexEdgeKind {

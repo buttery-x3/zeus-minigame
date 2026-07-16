@@ -18,14 +18,14 @@ export const CLIFF_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
   {
     id: "patch.rock.island",
     family: "cliff",
-    weight: 4,
+    weight: 2,
     topology: "isolated",
     cells: { wall: [c(0, 0)] },
   },
   {
     id: "patch.rock.pair",
     family: "cliff",
-    weight: 2,
+    weight: 1,
     topology: "isolated",
     rotations: 6,
     cells: { wall: [c(0, 0), c(1, -1)] },
@@ -33,9 +33,9 @@ export const CLIFF_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
   {
     id: "patch.cliff.endpoint",
     family: "cliff",
-    weight: 3,
+    weight: 1.5,
     selectionGroup: "cliff.endpoint",
-    selectionGroupWeight: 18,
+    selectionGroupWeight: 9,
     topology: "endpoint",
     rotations: 6,
     cells: { wall: [c(1, -2), c(1, -1), c(0, 0)] },
@@ -45,7 +45,7 @@ export const CLIFF_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
   {
     id: "patch.cliff.junction",
     family: "cliff",
-    weight: 1.5,
+    weight: 0.75,
     topology: "junction",
     rotations: 6,
     cells: { wall: LINE_FORK },
@@ -53,14 +53,14 @@ export const CLIFF_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
   {
     id: "patch.cliff.mass",
     family: "cliff",
-    weight: 2,
+    weight: 1,
     topology: "isolated",
     cells: { wall: CENTER_RING },
   },
   {
     id: "patch.cliff.core",
     family: "cliff",
-    weight: 0.5,
+    weight: 0.25,
     topology: "isolated",
     cells: { wall: HEX_PATCH_LOCAL_CELLS },
   },
@@ -68,18 +68,18 @@ export const CLIFF_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
 
 function straightCliffPatches(): AuthoredPatchDefinition[] {
   const layouts = [
-    ["ridge", 6, LINE_STRAIGHT],
-    ["ridge.sway", 5, LINE_SWAY],
-    ["ridge.sway.mirror", 5, LINE_SWAY_MIRROR],
-    ["ridge.dogleg-a", 4, LINE_DOGLEG_A],
-    ["ridge.dogleg-b", 4, LINE_DOGLEG_B],
+    ["ridge", 3, LINE_STRAIGHT],
+    ["ridge.sway", 2.5, LINE_SWAY],
+    ["ridge.sway.mirror", 2.5, LINE_SWAY_MIRROR],
+    ["ridge.dogleg-a", 2, LINE_DOGLEG_A],
+    ["ridge.dogleg-b", 2, LINE_DOGLEG_B],
   ] as const;
   return layouts.map(([name, weight, wall]) => ({
     id: `patch.cliff.${name}`,
     family: "cliff",
     weight,
     selectionGroup: "cliff.straight",
-    selectionGroupWeight: 30,
+    selectionGroupWeight: 15,
     topology: "straight",
     rotations: 6,
     cells: { wall },
@@ -88,10 +88,10 @@ function straightCliffPatches(): AuthoredPatchDefinition[] {
 
 function bendCliffPatches(): AuthoredPatchDefinition[] {
   return [
-    ["bend", 4, "cliff.tight-bend", 12, "tight-bend", TIGHT_BEND],
-    ["bend.alternate", 4, "cliff.tight-bend", 12, "tight-bend", TIGHT_BEND_ALTERNATE],
-    ["bend.gentle-a", 5, "cliff.gentle-bend", 15, "gentle-bend", GENTLE_BEND_A],
-    ["bend.gentle-b", 5, "cliff.gentle-bend", 15, "gentle-bend", GENTLE_BEND_B],
+    ["bend", 2, "cliff.tight-bend", 6, "tight-bend", TIGHT_BEND],
+    ["bend.alternate", 2, "cliff.tight-bend", 6, "tight-bend", TIGHT_BEND_ALTERNATE],
+    ["bend.gentle-a", 2.5, "cliff.gentle-bend", 7.5, "gentle-bend", GENTLE_BEND_A],
+    ["bend.gentle-b", 2.5, "cliff.gentle-bend", 7.5, "gentle-bend", GENTLE_BEND_B],
   ].map(([name, weight, selectionGroup, selectionGroupWeight, topology, wall]) => ({
     id: `patch.cliff.${name}`,
     family: "cliff",

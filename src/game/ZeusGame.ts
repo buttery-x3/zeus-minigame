@@ -28,6 +28,7 @@ import { GameEffects } from "../render/GameEffects";
 import { VisibilityOverlay } from "../render/VisibilityOverlay";
 import { createGameMaterialPalettes } from "../render/materials";
 import { GameUi } from "../ui/GameUi";
+import type { TerrainGenerationDiagnostics } from "../ui/DiagnosticsPanel";
 import { GridWorld } from "../world/GridWorld";
 import { UpgradeSystem } from "./upgrades/UpgradeSystem";
 import type { UpgradeId } from "./upgrades/upgradeTypes";
@@ -39,7 +40,7 @@ export class ZeusGame {
   private readonly profiler = new Profiler();
   private readonly simulationStepper = new SimulationStepper();
   private readonly navigationScheduler = new NavigationScheduler();
-  private readonly gridWorld = new GridWorld();
+  private readonly gridWorld = new GridWorld(undefined, (sample) => this.profiler.recordTerrainGeneration(sample));
   private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
   private readonly visibility = new VisibilitySystem(this.gridWorld);
   private readonly groups = {
@@ -363,12 +364,13 @@ export class ZeusGame {
       });
       this.nextResourceSampleAt = time + 1000;
     }
-    this.profiler.endFrame();
-    this.ui.updateDiagnostics(
+    this.profiler.measure("diagnostics", () => this.ui.updateDiagnostics(
       this.profiler.snapshot(),
       () => this.enemies.getNavigationDebugDiagnostics(),
       () => this.player.getNavigationDiagnostics(),
-    );
+      () => this.gridWorld.getTerrainDiagnostics() as TerrainGenerationDiagnostics,
+    ));
+    this.profiler.endFrame();
     this.animationId = window.requestAnimationFrame(this.tick);
   };
 
@@ -385,7 +387,7 @@ export class ZeusGame {
       this.state.health = runStats.maxHealth;
     }
 
-    this.profiler.measure("terrainGeneration", () => this.gridWorld.ensureTerrainGeneratedAroundWorld(playerPosition));
+    this.gridWorld.ensureTerrainGeneratedAroundWorld(playerPosition);
     this.profiler.measure("terrainPreparation", () => this.terrain.prepare(playerPosition, this.terrainDebugMode));
     const frameDt = getBoundedFrameDelta(rawDt, discardForVisibility);
     this.profiler.measure("camera", () => this.cameraRig.update(frameDt, playerPosition));
