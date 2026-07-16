@@ -12,8 +12,9 @@ test("deterministic terrain composition soak", { timeout: 300_000 }, () => {
   const startedAt = performance.now();
   const snapshots = SOAK_SEEDS.map((seed) => {
     const provider = new WfcTerrainProvider(seed);
-    provider.ensureGeneratedAround(0, 0, 10);
-    return provider.getGeneratedTerrainSnapshot();
+    provider.requestGenerationAround(0, 0, 10);
+    provider.stepGeneration(Number.POSITIVE_INFINITY);
+    return provider.captureGeneratedTerrainSnapshot({ q: 0, r: 0 }, 10);
   });
   const composition = analyzeTerrainComposition(snapshots, 3);
   const diagnostics = formatTerrainCompositionFailure(composition, performance.now() - startedAt);

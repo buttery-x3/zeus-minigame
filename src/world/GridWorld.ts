@@ -9,16 +9,10 @@ import {
   hexDistance,
   type HexCoord,
 } from "./hexCoordinates";
-import type { TerrainProvider } from "./TerrainProvider";
+import type { TerrainGenerationStepResult, TerrainProvider } from "./TerrainProvider";
 import { WfcTerrainProvider } from "./WfcTerrainProvider";
 
 export type { HexCoord };
-
-export type TerrainGenerationSample = {
-  source: "ensure" | "demand";
-  durationMs: number;
-  generatedPatches: number;
-};
 
 export class GridWorld {
   readonly tileSize = TILE_SIZE;
@@ -26,12 +20,7 @@ export class GridWorld {
   readonly hexHeight = this.hexSize * 2;
   readonly hexVerticalSpacing = this.hexSize * 1.5;
 
-  private cells = new Map<string, TerrainCell>();
-
-  constructor(
-    private readonly terrainProvider: TerrainProvider = new WfcTerrainProvider(),
-    private readonly onTerrainGeneration?: (sample: TerrainGenerationSample) => void,
-  ) {}
+  constructor(private readonly terrainProvider: TerrainProvider = new WfcTerrainProvider()) {}
 
   worldToCell(worldX: number, worldZ: number): HexCoord {
     const r = worldZ / this.hexVerticalSpacing;
@@ -46,79 +35,50 @@ export class GridWorld {
     };
   }
 
-  getCell(q: number, r: number): TerrainCell {
-    const key = this.cellKey(q, r);
-    const existing = this.cells.get(key);
-    if (existing) {
-      return existing;
-    }
-
-    const cell = this.measureTerrainGeneration("demand", () => this.terrainProvider.getCell(q, r));
-    this.cells.set(key, cell);
-    return cell;
+  readCommittedCell(q: number, r: number) {
+    return this.terrainProvider.readCommittedCell(q, r);
   }
 
-  getGeneratedCell(q: number, r: number) {
-    const key = this.cellKey(q, r);
-    const existing = this.cells.get(key);
-    if (existing) {
-      return existing;
+  getCommittedCellsInRange(center: HexCoord, radius: number) {
+    if (!Number.isInteger(radius) || radius < 0 || radius > 64) {
+      throw new RangeError(`Committed terrain read radius must be an integer from 0 to 64; received ${radius}`);
     }
-
-    const generated = this.terrainProvider.getGeneratedCell?.(q, r) ?? null;
-    if (generated) {
-      this.cells.set(key, generated);
-    }
-    return generated;
-  }
-
-  getGeneratedCellsInRange(center: HexCoord, radius: number) {
-    if (this.terrainProvider.getGeneratedCellsInRange) {
-      return this.terrainProvider.getGeneratedCellsInRange(center, radius);
-    }
-
-    const cells: TerrainCell[] = [];
-    for (const cell of this.cells.values()) {
-      if (this.hexDistance(center, cell) <= radius) {
-        cells.push(cell);
-      }
-    }
+    const cells: Readonly<TerrainCell>[] = [];
+    this.forEachCellInRange(center, radius, (q, r) => {
+      const cell = this.readCommittedCell(q, r);
+      if (cell) cells.push(cell);
+    });
     return cells;
   }
 
   getTerrainGenerationVersion() {
-    return this.terrainProvider.getGenerationVersion?.() ?? this.cells.size;
+    return this.terrainProvider.getGenerationVersion();
   }
 
-  getGeneratedTerrainSnapshot() {
-    return this.terrainProvider.getGeneratedTerrainSnapshot?.() ?? null;
+  captureGeneratedTerrainSnapshot(center: HexCoord, patchRadius: number) {
+    return this.terrainProvider.captureGeneratedTerrainSnapshot(center, patchRadius);
   }
 
-  hasBudgetedTerrainGeneration() {
-    return Boolean(this.terrainProvider.ensureGeneratedAround);
+  getCommittedCellCount() {
+    return this.terrainProvider.getCommittedCellCount();
   }
 
-  getCachedCellCount() {
-    return this.cells.size;
+  requestTerrainGenerationAroundCell(q: number, r: number, radius?: number) {
+    this.terrainProvider.requestGenerationAround(q, r, radius);
   }
 
-  ensureTerrainGeneratedAroundCell(q: number, r: number) {
-    if (!this.terrainProvider.ensureGeneratedAround) {
-      return;
-    }
-    this.measureTerrainGeneration("ensure", () =>
-      this.terrainProvider.ensureGeneratedAround?.(q, r, undefined, ROLLING_TERRAIN_PATCHES_PER_FRAME),
-    );
-  }
-
-  ensureTerrainGeneratedAroundWorld(point: THREE.Vector3) {
+  requestTerrainGenerationAroundWorld(point: THREE.Vector3, radius?: number) {
     const cell = this.worldToCell(point.x, point.z);
-    this.ensureTerrainGeneratedAroundCell(cell.q, cell.r);
+    this.requestTerrainGenerationAroundCell(cell.q, cell.r, radius);
+  }
+
+  stepTerrainGeneration(maxNewPatches = ROLLING_TERRAIN_PATCHES_PER_FRAME): TerrainGenerationStepResult {
+    return this.terrainProvider.stepGeneration(maxNewPatches);
   }
 
   isBlockedWorld(worldX: number, worldZ: number) {
     const cell = this.worldToCell(worldX, worldZ);
-    return this.getCell(cell.q, cell.r).blocked;
+    return this.readCommittedCell(cell.q, cell.r)?.blocked ?? true;
   }
 
   clampWorld(point: THREE.Vector3, margin = 2) {
@@ -218,21 +178,6 @@ export class GridWorld {
     }
 
     return corners;
-  }
-
-  private measureTerrainGeneration<T>(source: TerrainGenerationSample["source"], work: () => T) {
-    const beforeVersion = this.terrainProvider.getGenerationVersion?.();
-    const startedAt = performance.now();
-    const result = work();
-    const durationMs = performance.now() - startedAt;
-    const afterVersion = this.terrainProvider.getGenerationVersion?.();
-    const generatedPatches = beforeVersion === undefined || afterVersion === undefined
-      ? 0
-      : Math.max(0, afterVersion - beforeVersion);
-    if (source === "ensure" || generatedPatches > 0) {
-      this.onTerrainGeneration?.({ source, durationMs, generatedPatches });
-    }
-    return result;
   }
 
   cellsOnLine(from: HexCoord, to: HexCoord) {

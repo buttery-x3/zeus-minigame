@@ -13,11 +13,11 @@ export function isCellInBounds(gridWorld: GridWorld, q: number, r: number) {
 }
 
 export function isCellBlocked(gridWorld: GridWorld, q: number, r: number) {
-  return !isCellInBounds(gridWorld, q, r) || gridWorld.getCell(q, r).blocked;
+  return !isCellInBounds(gridWorld, q, r) || (gridWorld.readCommittedCell(q, r)?.blocked ?? true);
 }
 
 export function isCellOpaque(gridWorld: GridWorld, q: number, r: number) {
-  return !isCellInBounds(gridWorld, q, r) || gridWorld.getCell(q, r).opaque;
+  return !isCellInBounds(gridWorld, q, r) || (gridWorld.readCommittedCell(q, r)?.opaque ?? true);
 }
 
 export function getCellCenter(gridWorld: GridWorld, q: number, r: number) {

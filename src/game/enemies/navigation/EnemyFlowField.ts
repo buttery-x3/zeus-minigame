@@ -115,7 +115,7 @@ export class EnemyFlowField {
           continue;
         }
 
-        const terrain = this.gridWorld.getGeneratedCell(neighbor.q, neighbor.r);
+        const terrain = this.gridWorld.readCommittedCell(neighbor.q, neighbor.r);
         if (!terrain) {
           build.terrainLimited = true;
           continue;
@@ -274,7 +274,7 @@ export class EnemyFlowField {
       return cached;
     }
 
-    const cell = this.gridWorld.getGeneratedCell(q, r);
+    const cell = this.gridWorld.readCommittedCell(q, r);
     if (!cell) {
       return null;
     }

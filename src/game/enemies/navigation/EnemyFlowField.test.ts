@@ -5,7 +5,7 @@ import { EnemyFlowField } from "./EnemyFlowField";
 
 describe("EnemyFlowField", () => {
   it("keeps the active weighted field while a replacement is built", () => {
-    const world = new GridWorld(new SeedTerrainProvider());
+    const world = createGeneratedWorld();
     const field = new EnemyFlowField(world, 8);
     const firstRoot = world.cellToWorldPoint({ q: 0, r: 0 });
     field.request(firstRoot);
@@ -34,7 +34,7 @@ describe("EnemyFlowField", () => {
   });
 
   it("coalesces moving roots without discarding the active build", () => {
-    const world = new GridWorld(new SeedTerrainProvider());
+    const world = createGeneratedWorld();
     const field = new EnemyFlowField(world, 6);
     field.request(world.cellToWorldPoint({ q: 0, r: 0 }));
     field.step(Number.POSITIVE_INFINITY, 1);
@@ -48,3 +48,10 @@ describe("EnemyFlowField", () => {
     expect(field.diagnostics().coalescedRequests).toBeGreaterThan(0);
   });
 });
+
+function createGeneratedWorld() {
+  const world = new GridWorld(new SeedTerrainProvider());
+  world.requestTerrainGenerationAroundCell(0, 0, 3);
+  world.stepTerrainGeneration(Number.POSITIVE_INFINITY);
+  return world;
+}

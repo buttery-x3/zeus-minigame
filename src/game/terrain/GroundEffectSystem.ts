@@ -68,11 +68,30 @@ export class GroundEffectSystem {
   update(dt: number, playerCell: HexCoord) {
     this.rewardFeedbackSeconds = Math.max(0, this.rewardFeedbackSeconds - dt);
     const cell = playerCell;
-    const terrain = this.gridWorld.getCell(cell.q, cell.r);
+    const terrain = this.gridWorld.readCommittedCell(cell.q, cell.r);
     const key = this.gridWorld.cellKey(cell.q, cell.r);
     let cooldownRecoveryMultiplier = 1;
     let energyRecoveryMultiplier = 1;
     let activeInteraction: { key: string; surface: "charged" | "cursed"; cell: HexCoord } | null = null;
+
+    if (!terrain) {
+      this.resetCurseProgress();
+      this.syncSpecialTileInteraction(null);
+      this.snapshot = {
+        cell,
+        surface: "grass",
+        phase: "normal",
+        cooldownRecoveryMultiplier,
+        energyRecoveryMultiplier,
+        chargedRemainingSeconds: 0,
+        chargedProgress: 0,
+        curseProgress: 0,
+        rewardFeedbackVisible: this.rewardFeedbackSeconds > 0,
+        cleansedCount: this.cleansedCurses.size,
+        depletedCount: this.countDepletedChargedTiles(),
+      };
+      return this.snapshot;
+    }
 
     if (terrain.surface === "charged") {
       this.resetCurseProgress();

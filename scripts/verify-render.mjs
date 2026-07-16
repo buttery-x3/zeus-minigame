@@ -81,6 +81,7 @@ async function verifyInBrowser() {
       await verifyWindowUi(page, viewport);
       await exerciseCoreInteractions(page, viewport);
       await verifyEnemyPathfindingBudget(page, viewport, "after core interactions");
+      await verifyDiagnosticsTerrainReadsArePure(page, viewport);
 
       const hud = await collectHudMetrics(page);
       const result = { viewport, hud, errors };
@@ -1192,8 +1193,8 @@ async function verifyTerrainDebugMode(page, viewport) {
   if (after.terrainGrammar?.wfc?.generatedPatchCount !== beforeGeneratedPatches) {
     throw new Error(`${viewport.name} terrain debug mode generated new patches: before=${beforeGeneratedPatches}, after=${after.terrainGrammar?.wfc?.generatedPatchCount}`);
   }
-  if ((after.terrain?.blockers?.total ?? 0) <= beforeBlockers) {
-    throw new Error(`${viewport.name} terrain debug mode did not expand rendered terrain window: before=${beforeBlockers}, after=${after.terrain?.blockers?.total}`);
+  if ((after.terrain?.blockers?.total ?? 0) < beforeBlockers) {
+    throw new Error(`${viewport.name} terrain debug mode lost committed blockers: before=${beforeBlockers}, after=${after.terrain?.blockers?.total}`);
   }
   if (!after.terrain?.patchBorders?.visible || (after.terrain?.patchBorders?.segmentCount ?? 0) < 1) {
     throw new Error(`${viewport.name} terrain debug mode did not render patch borders: ${JSON.stringify(after.terrain?.patchBorders)}`);
@@ -1219,6 +1220,29 @@ async function verifyTerrainDebugMode(page, viewport) {
   }
   if (restored.terrain?.patchBorders?.visible || (restored.terrain?.patchBorders?.segmentCount ?? 0) !== 0) {
     throw new Error(`${viewport.name} terrain debug mode did not remove patch borders: ${JSON.stringify(restored.terrain?.patchBorders)}`);
+  }
+}
+
+async function verifyDiagnosticsTerrainReadsArePure(page, viewport) {
+  const comparison = await page.evaluate(() => {
+    const readTerrainState = () => {
+      const diagnostics = window.__ZEUS_GAME__?.getDiagnostics().terrainGrammar?.wfc;
+      return diagnostics ? {
+        generatedPatchCount: diagnostics.generatedPatchCount,
+        resolvedCells: diagnostics.resolvedCells,
+        generationStepCount: diagnostics.generationStepCount,
+        pendingGeneration: diagnostics.pendingGeneration,
+      } : null;
+    };
+    const before = readTerrainState();
+    for (let index = 0; index < 25; index += 1) {
+      window.__ZEUS_GAME__?.getDiagnostics();
+    }
+    return { before, after: readTerrainState() };
+  });
+
+  if (!comparison.before || JSON.stringify(comparison.before) !== JSON.stringify(comparison.after)) {
+    throw new Error(`${viewport.name} diagnostics mutated terrain generation state: ${JSON.stringify(comparison)}`);
   }
 }
 
@@ -1561,9 +1585,10 @@ async function verifyWindowUi(page, viewport) {
     !Number.isFinite(memory.resources.geometries) ||
     !Number.isFinite(memory.resources.terrainCells) ||
     !Number.isFinite(terrainGeneration?.totalMs) ||
-    !Number.isFinite(terrainGeneration?.ensureMs) ||
-    !Number.isFinite(terrainGeneration?.demandMs) ||
-    !Number.isFinite(terrainGeneration?.generatedPatches)
+    terrainGeneration?.calls !== 1 ||
+    !Number.isFinite(terrainGeneration?.generatedPatches) ||
+    terrainGeneration.generatedPatches < 0 ||
+    terrainGeneration.generatedPatches > 3
   ) {
     throw new Error(`Diagnostics did not expose frame pacing and memory/resource metrics: ${JSON.stringify(diagnostics.profiler)}`);
   }
@@ -2136,6 +2161,11 @@ async function verifyBlockerNavigation(page, viewport) {
 }
 
 async function verifyEnemyHealthBars(page, viewport) {
+  await page.waitForFunction(
+    () => (window.__ZEUS_GAME__?.getDiagnostics().enemyVisibility?.visible ?? 0) >= 1,
+    undefined,
+    { timeout: 12000 },
+  );
   const before = await readDiagnostics(page);
   if (!before.enemyHealthBars) {
     throw new Error(`${viewport.name} missing enemy health bar diagnostics`);
@@ -2388,7 +2418,7 @@ async function verifyPotatoRendering(page, viewport) {
   if (
     normal.rendering.mode !== "normal" ||
     !normal.rendering.shadowsEnabled ||
-    normal.terrain.instancing.terrainInstances < 900 ||
+    normal.terrain.instancing.terrainInstances < 650 ||
     normal.terrain.instancing.materialMode !== "normal" ||
     normal.terrain.instancing.batches > 20 ||
     normal.rendering.calls > 250 ||
@@ -2419,7 +2449,7 @@ async function verifyPotatoRendering(page, viewport) {
   const potato = await readDiagnostics(page);
   if (
     potato.rendering.renderedFrames - normal.rendering.renderedFrames < 3 ||
-    potato.terrain.instancing.terrainInstances < 900 ||
+    potato.terrain.instancing.terrainInstances < 650 ||
     potato.terrain.instancing.materialMode !== "potato" ||
     potato.terrain.instancing.batches > 20 ||
     potato.enemyAnimations.lowDetail !== potato.enemyAnimations.total ||

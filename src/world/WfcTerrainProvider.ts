@@ -16,7 +16,12 @@ import {
   type HexPatchSocketMismatch,
 } from "./HexTerrainRules";
 import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, hexCellKey, hexDistance, type HexCoord } from "./hexCoordinates";
-import { createTerrainCell, type TerrainProvider } from "./TerrainProvider";
+import {
+  createTerrainCell,
+  requireBoundedPatchRadius,
+  type TerrainGenerationStepResult,
+  type TerrainProvider,
+} from "./TerrainProvider";
 import {
   serializeBoundaryConstraints,
   synthesizeProceduralPatch,
@@ -46,7 +51,8 @@ type RollingWfcDiagnostics = {
   patchVariantCount: number;
   committedPatchCount: number;
   generatedPatchCount: number;
-  generatedLastEnsure: number;
+  generatedLastStep: number;
+  pendingGeneration: { q: number; r: number; radius: number } | null;
   emergencyPatchCount: number;
   contradictionCount: number;
   authoredPatchCount: number;
@@ -77,7 +83,7 @@ type RollingWfcDiagnostics = {
   committedCoveConnectionSample: CoveConnection | null;
   committedRiverFlowViolationSample: RiverFlowViolation | null;
   enclosureViolationSample: { q: number; r: number; cellCount: number } | null;
-  generationEnsureCount: number;
+  generationStepCount: number;
   generationLastDurationMs: number;
   generationTotalDurationMs: number;
   generationMaxDurationMs: number;
@@ -92,6 +98,10 @@ type RollingWfcDiagnostics = {
   structureCounts: Record<TerrainStructure, number>;
   surfaceCounts: Record<TerrainSurface, number>;
   patchVariantCounts: Record<string, number>;
+  diagnosticCountEntriesTruncated: {
+    proceduralBoundarySignatures: boolean;
+    patchVariants: boolean;
+  };
   patchSocketMismatchSample: HexPatchSocketMismatch | null;
   fellBack: false;
 };
@@ -114,8 +124,12 @@ export class WfcTerrainProvider implements TerrainProvider {
   private readonly topologySelectionCounts: Record<string, number> = {};
   private readonly shortLoopCandidatesSuppressed = { wall: 0, river: 0 };
   private readonly selectedShortLoopLengthCounts: Record<string, number> = {};
+  private pendingGeneration: { q: number; r: number; radius: number } | null = null;
+  private proceduralPatchCacheSize = 0;
+  private proceduralBoundarySignaturesTruncated = false;
+  private patchVariantsTruncated = false;
   private generatedPatchCount = 0;
-  private generatedLastEnsure = 0;
+  private generatedLastStep = 0;
   private emergencyPatchCount = 0;
   private contradictionCount = 0;
   private authoredPatchCount = 0;
@@ -136,7 +150,7 @@ export class WfcTerrainProvider implements TerrainProvider {
   private hydrologyCandidatesSuppressed = 0;
   private hydrologyConnectionPreferredSelectionCount = 0;
   private hydrologySoftNearMissesSelected = 0;
-  private generationEnsureCount = 0;
+  private generationStepCount = 0;
   private generationLastDurationMs = 0;
   private generationTotalDurationMs = 0;
   private generationMaxDurationMs = 0;
@@ -151,45 +165,29 @@ export class WfcTerrainProvider implements TerrainProvider {
   private enclosureViolationSample: RollingWfcDiagnostics["enclosureViolationSample"] = null;
   private patchSocketMismatchSample: HexPatchSocketMismatch | null = null;
 
-  constructor(private readonly seed = WFC_TERRAIN_SEED) {
-    this.ensureGeneratedAround(0, 0);
-  }
+  constructor(private readonly seed = WFC_TERRAIN_SEED) {}
 
-  getCell(q: number, r: number): TerrainCell {
-    const key = hexCellKey(q, r);
-    const existing = this.generatedCells.get(key);
-    if (existing) {
-      return existing;
-    }
-
-    const address = microToPatchLocal({ q, r });
-    this.commitPatchIfMissing(address.patch);
-    return this.generatedCells.get(key) ?? createTerrainCell(q, r, "open", "grass");
-  }
-
-  getGeneratedCell(q: number, r: number) {
+  readCommittedCell(q: number, r: number) {
     return this.generatedCells.get(hexCellKey(q, r)) ?? null;
-  }
-
-  getGeneratedCellsInRange(center: HexCoord, radius: number) {
-    const cells: TerrainCell[] = [];
-    for (const cell of this.generatedCells.values()) {
-      if (hexDistance(center, cell) <= radius) {
-        cells.push(cell);
-      }
-    }
-    return cells;
   }
 
   getGenerationVersion() {
     return this.generatedPatchCount;
   }
 
-  getGeneratedTerrainSnapshot(): GeneratedTerrainSnapshot {
+  getCommittedCellCount() {
+    return this.generatedCells.size;
+  }
+
+  captureGeneratedTerrainSnapshot(center: HexCoord, patchRadius: number): GeneratedTerrainSnapshot {
+    requireBoundedPatchRadius(patchRadius);
+    const patches = createHexPatchRegion(patchRadius)
+      .map((offset) => this.committedPatches.get(hexCellKey(center.q + offset.q, center.r + offset.r)))
+      .filter((patch): patch is CommittedPatch => Boolean(patch));
     return {
       seed: this.seed,
       generationVersion: this.generatedPatchCount,
-      patches: [...this.committedPatches.values()].map((patch) => ({
+      patches: patches.map((patch) => ({
         q: patch.q,
         r: patch.r,
         variantId: patch.variant.id,
@@ -197,24 +195,32 @@ export class WfcTerrainProvider implements TerrainProvider {
         family: patch.variant.family,
         structureCounts: countVariantStructures(patch.variant),
       })),
-      cells: [...this.generatedCells.values()].map((cell) => ({
-        q: cell.q,
-        r: cell.r,
-        structure: cell.structure,
+      cells: patches.flatMap((patch) => [...patch.variant.cells.values()].map((local) => {
+        const cell = patchLocalToWorld(patch, local);
+        return { q: cell.q, r: cell.r, structure: local.structure };
       })),
     };
   }
 
-  ensureGeneratedAround(
-    q: number,
-    r: number,
-    radius = ROLLING_TERRAIN_PATCH_RADIUS,
-    maxNewPatches = Number.POSITIVE_INFINITY,
-  ) {
+  requestGenerationAround(q: number, r: number, radius = ROLLING_TERRAIN_PATCH_RADIUS) {
+    requireBoundedPatchRadius(radius);
+    this.pendingGeneration = { q, r, radius };
+  }
+
+  stepGeneration(maxNewPatches: number): TerrainGenerationStepResult {
     const startedAt = performance.now();
     this.generationLastBudget = maxNewPatches;
-    const center = microToPatchLocal({ q, r }).patch;
-    const required = createHexPatchRegion(radius)
+    const request = this.pendingGeneration;
+    if (!request) {
+      return {
+        requested: false,
+        generatedPatches: 0,
+        generationVersion: this.generatedPatchCount,
+        complete: true,
+      };
+    }
+    const center = microToPatchLocal(request).patch;
+    const required = createHexPatchRegion(request.radius)
       .map((patch) => ({ q: center.q + patch.q, r: center.r + patch.r }))
       .sort((a, b) => hexDistance(center, a) - hexDistance(center, b) || a.q - b.q || a.r - b.r);
 
@@ -227,15 +233,27 @@ export class WfcTerrainProvider implements TerrainProvider {
         generated += 1;
       }
     }
-    this.generatedLastEnsure = generated;
+    const complete = required.every((patch) => this.committedPatches.has(hexCellKey(patch.q, patch.r)));
+    if (complete) {
+      this.pendingGeneration = null;
+    }
+    this.generatedLastStep = generated;
     const duration = performance.now() - startedAt;
-    this.generationEnsureCount += 1;
+    this.generationStepCount += 1;
     this.generationLastDurationMs = duration;
     this.generationTotalDurationMs += duration;
     this.generationMaxDurationMs = Math.max(this.generationMaxDurationMs, duration);
+    return {
+      requested: true,
+      generatedPatches: generated,
+      generationVersion: this.generatedPatchCount,
+      complete,
+    };
   }
 
   getDiagnostics() {
+    const boundedBoundarySignatures = copyBoundedCounts(this.proceduralBoundarySignatureCounts);
+    const boundedPatchVariants = copyBoundedCounts(this.patchVariantCounts);
     const wfc: RollingWfcDiagnostics = {
       enabled: true,
       mode: "rolling-patch",
@@ -245,18 +263,19 @@ export class WfcTerrainProvider implements TerrainProvider {
       patchVariantCount: this.variants.length,
       committedPatchCount: this.committedPatches.size,
       generatedPatchCount: this.generatedPatchCount,
-      generatedLastEnsure: this.generatedLastEnsure,
+      generatedLastStep: this.generatedLastStep,
+      pendingGeneration: this.pendingGeneration ? { ...this.pendingGeneration } : null,
       emergencyPatchCount: this.emergencyPatchCount,
       contradictionCount: this.contradictionCount,
       authoredPatchCount: this.authoredPatchCount,
       proceduralPatchCount: this.proceduralPatchCount,
-      proceduralPatchCacheSize: [...this.proceduralPatchCache.values()].reduce((sum, variants) => sum + variants.length, 0),
+      proceduralPatchCacheSize: this.proceduralPatchCacheSize,
       synthesisAttemptCount: this.synthesisAttemptCount,
       synthesisFailureCount: this.synthesisFailureCount,
       synthesisAssignmentCount: this.synthesisAssignmentCount,
       synthesisDurationMs: this.synthesisDurationMs,
       proceduralFillModeCounts: { ...this.proceduralFillModeCounts },
-      proceduralBoundarySignatureCounts: { ...this.proceduralBoundarySignatureCounts },
+      proceduralBoundarySignatureCounts: boundedBoundarySignatures.counts,
       topologySelectionCounts: { ...this.topologySelectionCounts },
       shortLoopCandidatesSuppressed: { ...this.shortLoopCandidatesSuppressed },
       forcedShortLoopSelectionCount: this.forcedShortLoopSelectionCount,
@@ -272,11 +291,11 @@ export class WfcTerrainProvider implements TerrainProvider {
       hydrologyCandidatesSuppressed: this.hydrologyCandidatesSuppressed,
       hydrologyConnectionPreferredSelectionCount: this.hydrologyConnectionPreferredSelectionCount,
       hydrologySoftNearMissesSelected: this.hydrologySoftNearMissesSelected,
-      committedHydrologyNearMissSample: this.committedHydrologyNearMissSample,
-      committedCoveConnectionSample: this.committedCoveConnectionSample,
-      committedRiverFlowViolationSample: this.committedRiverFlowViolationSample,
-      enclosureViolationSample: this.enclosureViolationSample,
-      generationEnsureCount: this.generationEnsureCount,
+      committedHydrologyNearMissSample: cloneDiagnostic(this.committedHydrologyNearMissSample),
+      committedCoveConnectionSample: cloneDiagnostic(this.committedCoveConnectionSample),
+      committedRiverFlowViolationSample: cloneDiagnostic(this.committedRiverFlowViolationSample),
+      enclosureViolationSample: cloneDiagnostic(this.enclosureViolationSample),
+      generationStepCount: this.generationStepCount,
       generationLastDurationMs: this.generationLastDurationMs,
       generationTotalDurationMs: this.generationTotalDurationMs,
       generationMaxDurationMs: this.generationMaxDurationMs,
@@ -292,8 +311,12 @@ export class WfcTerrainProvider implements TerrainProvider {
       resolvedCells: this.generatedCells.size,
       structureCounts: { ...this.structureCounts },
       surfaceCounts: { ...this.surfaceCounts },
-      patchVariantCounts: { ...this.patchVariantCounts },
-      patchSocketMismatchSample: this.patchSocketMismatchSample,
+      patchVariantCounts: boundedPatchVariants.counts,
+      diagnosticCountEntriesTruncated: {
+        proceduralBoundarySignatures: this.proceduralBoundarySignaturesTruncated || boundedBoundarySignatures.truncated,
+        patchVariants: this.patchVariantsTruncated || boundedPatchVariants.truncated,
+      },
+      patchSocketMismatchSample: cloneDiagnostic(this.patchSocketMismatchSample),
       fellBack: false,
     };
 
@@ -312,14 +335,18 @@ export class WfcTerrainProvider implements TerrainProvider {
     this.auditCommittedPatch(committed);
     this.topologyContext.commitVariant(patch, variant);
     this.committedPatches.set(key, committed);
-    this.patchVariantCounts[variant.id] = (this.patchVariantCounts[variant.id] ?? 0) + 1;
+    if (!incrementBoundedCount(this.patchVariantCounts, variant.id)) {
+      this.patchVariantsTruncated = true;
+    }
     this.topologySelectionCounts[variant.topology] = (this.topologySelectionCounts[variant.topology] ?? 0) + 1;
     if (variant.provenance === "procedural") {
       this.proceduralPatchCount += 1;
       const fillMode = variant.procedural?.fillMode ?? "unknown";
       const boundaryKey = variant.procedural?.boundaryKey ?? "unknown";
       this.proceduralFillModeCounts[fillMode] = (this.proceduralFillModeCounts[fillMode] ?? 0) + 1;
-      this.proceduralBoundarySignatureCounts[boundaryKey] = (this.proceduralBoundarySignatureCounts[boundaryKey] ?? 0) + 1;
+      if (!incrementBoundedCount(this.proceduralBoundarySignatureCounts, boundaryKey)) {
+        this.proceduralBoundarySignaturesTruncated = true;
+      }
     } else {
       this.authoredPatchCount += 1;
     }
@@ -425,6 +452,7 @@ export class WfcTerrainProvider implements TerrainProvider {
         if (!cachedVariants.some((variant) => variant.id === result.variant.id)) {
           cachedVariants.push(result.variant);
           this.proceduralPatchCache.set(boundaryKey, cachedVariants);
+          this.proceduralPatchCacheSize += 1;
         }
         if (authoredResult.enclosureCandidatesRejected > 0) {
           this.proceduralTerminationPatchCount += 1;
@@ -475,6 +503,31 @@ export class WfcTerrainProvider implements TerrainProvider {
       this.surfaceCounts[cell.surface] += 1;
     }
   }
+}
+
+function cloneDiagnostic<T>(value: T): T {
+  return value === null || value === undefined ? value : structuredClone(value);
+}
+
+function copyBoundedCounts(counts: Record<string, number>, maxEntries = 256) {
+  const entries = Object.entries(counts);
+  return {
+    counts: Object.fromEntries(entries.slice(0, maxEntries)),
+    truncated: entries.length > maxEntries,
+  };
+}
+
+function incrementBoundedCount(counts: Record<string, number>, key: string, maxEntries = 256) {
+  if (counts[key] !== undefined) {
+    counts[key] += 1;
+    return true;
+  }
+  if (Object.keys(counts).length < maxEntries) {
+    counts[key] = 1;
+    return true;
+  }
+  counts.__other__ = (counts.__other__ ?? 0) + 1;
+  return false;
 }
 
 function countVariantStructures(variant: HexPatchTileVariant) {

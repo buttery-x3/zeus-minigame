@@ -6,25 +6,16 @@ import {
 } from "../../../config";
 import type { EnemyState } from "../../../types";
 import { GridWorld } from "../../../world/GridWorld";
-import { createTerrainCell, type TerrainProvider } from "../../../world/TerrainProvider";
+import { createStaticTerrainProvider } from "../../../world/StaticTerrainProvider.test-support";
+import { createTerrainCell } from "../../../world/TerrainProvider";
 import { CollisionSystem } from "../../collision/CollisionSystem";
 import { Profiler } from "../../perf/Profiler";
 import { EnemyNavigation } from "./EnemyNavigation";
 
-class TestTerrainProvider implements TerrainProvider {
-  constructor(private readonly blocked = new Set<string>()) {}
-
-  getCell(q: number, r: number) {
-    return createTerrainCell(q, r, this.blocked.has(`${q},${r}`) ? "wall" : "open", "grass");
-  }
-
-  getGeneratedCell(q: number, r: number) {
-    return this.getCell(q, r);
-  }
-
-  getDiagnostics() {
-    return {};
-  }
+function createTestTerrainProvider(blocked = new Set<string>()) {
+  return createStaticTerrainProvider((q, r) =>
+    createTerrainCell(q, r, blocked.has(`${q},${r}`) ? "wall" : "open", "grass"),
+  );
 }
 
 describe("enemy navigation recovery", () => {
@@ -105,7 +96,7 @@ describe("enemy navigation recovery", () => {
 });
 
 function createNavigation(blocked = new Set<string>()) {
-  const world = new GridWorld(new TestTerrainProvider(blocked));
+  const world = new GridWorld(createTestTerrainProvider(blocked));
   return {
     world,
     navigation: new EnemyNavigation(world, new CollisionSystem(world), new Profiler()),

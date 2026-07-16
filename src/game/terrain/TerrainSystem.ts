@@ -30,7 +30,6 @@ const DEBUG_RENDER_RADIUS = 56;
 
 export class TerrainSystem {
   private terrainWindowKey = "";
-  private preparedTerrainWindowKey = "";
   private readonly blockers: BlockerRecord[] = [];
   private readonly specialEffects: SpecialGroundEffects;
   private blockerMesh: THREE.InstancedMesh | null = null;
@@ -69,24 +68,6 @@ export class TerrainSystem {
     }
     this.renderMode = renderMode;
     this.terrainWindowKey = "";
-  }
-
-  prepare(playerPosition: THREE.Vector3, revealAll = false) {
-    const center = this.gridWorld.worldToCell(playerPosition.x, playerPosition.z);
-    const radius = revealAll ? DEBUG_RENDER_RADIUS : NORMAL_RENDER_RADIUS;
-    const key = `${Math.floor(center.q / 2)},${Math.floor(center.r / 2)},${radius},${revealAll}`;
-    if (key === this.preparedTerrainWindowKey) {
-      return;
-    }
-
-    this.preparedTerrainWindowKey = key;
-    if (revealAll || this.gridWorld.hasBudgetedTerrainGeneration()) {
-      return;
-    }
-
-    this.gridWorld.forEachCellInRange(center, radius, (q, r) => {
-      this.gridWorld.getCell(q, r);
-    });
   }
 
   update(
@@ -200,23 +181,17 @@ export class TerrainSystem {
       }
     };
 
-    if (useGeneratedOnly || this.gridWorld.hasBudgetedTerrainGeneration()) {
-      const generatedCells = this.gridWorld.getGeneratedCellsInRange(center, radius);
-      for (const cell of generatedCells) {
-        renderCell(cell);
+    const committedCells = this.gridWorld.getCommittedCellsInRange(center, radius);
+    for (const cell of committedCells) {
+      renderCell(cell);
+    }
+    if (useGeneratedOnly) {
+      const patchBorders = collectTerrainPatchBoundarySegments(committedCells);
+      const patchBorderOverlay = createTerrainPatchDebugOverlay(this.gridWorld, patchBorders);
+      if (patchBorderOverlay) {
+        this.terrainGroup.add(patchBorderOverlay);
+        this.patchBorderSegmentCount = patchBorders.length;
       }
-      if (useGeneratedOnly) {
-        const patchBorders = collectTerrainPatchBoundarySegments(generatedCells);
-        const patchBorderOverlay = createTerrainPatchDebugOverlay(this.gridWorld, patchBorders);
-        if (patchBorderOverlay) {
-          this.terrainGroup.add(patchBorderOverlay);
-          this.patchBorderSegmentCount = patchBorders.length;
-        }
-      }
-    } else {
-      this.gridWorld.forEachCellInRange(center, radius, (q, r) => {
-        renderCell(this.gridWorld.getCell(q, r));
-      });
     }
 
     this.renderedComposition = {

@@ -1,30 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { PLAYER_COLLISION_RADIUS } from "../../config";
 import { GridWorld } from "../../world/GridWorld";
-import { createTerrainCell, type TerrainProvider } from "../../world/TerrainProvider";
+import { createStaticTerrainProvider } from "../../world/StaticTerrainProvider.test-support";
+import { createTerrainCell } from "../../world/TerrainProvider";
 import { LinecastJob } from "./linecast";
 import { PathResolutionJob } from "./PathResolutionJob";
 import { PathSearchJob } from "./pathfinding";
 
-class TestTerrainProvider implements TerrainProvider {
-  constructor(private readonly blocked = new Set<string>()) {}
-
-  getCell(q: number, r: number) {
-    return createTerrainCell(q, r, this.blocked.has(`${q},${r}`) ? "wall" : "open", "grass");
-  }
-
-  getGeneratedCell(q: number, r: number) {
-    return this.getCell(q, r);
-  }
-
-  getDiagnostics() {
-    return {};
-  }
+function createTestTerrainProvider(blocked = new Set<string>()) {
+  return createStaticTerrainProvider((q, r) =>
+    createTerrainCell(q, r, blocked.has(`${q},${r}`) ? "wall" : "open", "grass"),
+  );
 }
 
 describe("scheduled pathfinding", () => {
   it("resumes clear and blocked linecasts across small work units", () => {
-    const openWorld = new GridWorld(new TestTerrainProvider());
+    const openWorld = new GridWorld(createTestTerrainProvider());
     const start = openWorld.cellToWorldPoint({ q: 0, r: 0 });
     const goal = openWorld.cellToWorldPoint({ q: 6, r: 0 });
     const clear = new LinecastJob(openWorld, start, goal, PLAYER_COLLISION_RADIUS);
@@ -36,7 +27,7 @@ describe("scheduled pathfinding", () => {
     expect(clearSteps).toBeGreaterThan(1);
     expect(clear.isClear()).toBe(true);
 
-    const blockedWorld = new GridWorld(new TestTerrainProvider(new Set(["3,0"])));
+    const blockedWorld = new GridWorld(createTestTerrainProvider(new Set(["3,0"])));
     const blocked = new LinecastJob(blockedWorld, start, goal, PLAYER_COLLISION_RADIUS);
     while (!blocked.isComplete()) {
       blocked.step(Number.POSITIVE_INFINITY, 1);
@@ -45,7 +36,7 @@ describe("scheduled pathfinding", () => {
   });
 
   it("finds and smooths a route around a blocker incrementally", () => {
-    const world = new GridWorld(new TestTerrainProvider(new Set(["1,0", "2,0"])));
+    const world = new GridWorld(createTestTerrainProvider(new Set(["1,0", "2,0"])));
     const start = world.cellToWorldPoint({ q: 0, r: 0 });
     const goal = world.cellToWorldPoint({ q: 4, r: 0 });
     const job = new PathSearchJob(world, start, goal, { radius: PLAYER_COLLISION_RADIUS });
@@ -63,7 +54,7 @@ describe("scheduled pathfinding", () => {
   });
 
   it("reports the iteration limit distinctly from an exhausted search", () => {
-    const world = new GridWorld(new TestTerrainProvider(new Set(["1,0", "2,0"])));
+    const world = new GridWorld(createTestTerrainProvider(new Set(["1,0", "2,0"])));
     const start = world.cellToWorldPoint({ q: 0, r: 0 });
     const goal = world.cellToWorldPoint({ q: 8, r: 0 });
     const job = new PathSearchJob(world, start, goal, { radius: PLAYER_COLLISION_RADIUS, maxIterations: 1 });
@@ -77,7 +68,7 @@ describe("scheduled pathfinding", () => {
 
   it("finishes a long incremental route around an extended barrier", () => {
     const blocked = new Set(Array.from({ length: 15 }, (_, index) => `${index + 1},0`));
-    const world = new GridWorld(new TestTerrainProvider(blocked));
+    const world = new GridWorld(createTestTerrainProvider(blocked));
     const start = world.cellToWorldPoint({ q: 0, r: 0 });
     const goal = world.cellToWorldPoint({ q: 20, r: 0 });
     const job = new PathSearchJob(world, start, goal, { radius: PLAYER_COLLISION_RADIUS, maxIterations: 4000 });
@@ -93,7 +84,7 @@ describe("scheduled pathfinding", () => {
   });
 
   it("resolves a blocked request to a nearby reachable destination", () => {
-    const world = new GridWorld(new TestTerrainProvider(new Set(["3,0"])));
+    const world = new GridWorld(createTestTerrainProvider(new Set(["3,0"])));
     const start = world.cellToWorldPoint({ q: 0, r: 0 });
     const blockedTarget = world.cellToWorldPoint({ q: 3, r: 0 });
     const job = new PathResolutionJob(world, start, blockedTarget, PLAYER_COLLISION_RADIUS, {

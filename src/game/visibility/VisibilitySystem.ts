@@ -284,7 +284,7 @@ export class VisibilitySystem {
         if (
           this.getLightReachCell(cell.q, cell.r) <= VISIBILITY_LIGHT_EPSILON ||
           this.isVisibleCell(cell.q, cell.r) ||
-          this.gridWorld.getCell(cell.q, cell.r).opaque
+          (this.gridWorld.readCommittedCell(cell.q, cell.r)?.opaque ?? true)
         ) {
           continue;
         }

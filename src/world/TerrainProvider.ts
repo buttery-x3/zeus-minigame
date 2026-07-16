@@ -2,15 +2,33 @@ import type { HexEdgeKind, HexTileSignature, TerrainCell, TerrainStructure, Terr
 import { terrainBlocksMovement, terrainBlocksSight } from "./HexTerrainRules";
 import type { GeneratedTerrainSnapshot } from "./TerrainCompositionReport";
 
+export const MAX_TERRAIN_PATCH_REQUEST_RADIUS = 16;
+
+export function requireBoundedPatchRadius(radius: number) {
+  if (!Number.isInteger(radius) || radius < 0 || radius > MAX_TERRAIN_PATCH_REQUEST_RADIUS) {
+    throw new RangeError(`Terrain patch radius must be an integer from 0 to ${MAX_TERRAIN_PATCH_REQUEST_RADIUS}; received ${radius}`);
+  }
+  return radius;
+}
+
+export type TerrainGenerationStepResult = {
+  requested: boolean;
+  generatedPatches: number;
+  generationVersion: number;
+  complete: boolean;
+};
+
 export interface TerrainProvider {
-  getCell(q: number, r: number): TerrainCell;
-  /** Returns a committed cell without expanding rolling terrain. */
-  getGeneratedCell?(q: number, r: number): TerrainCell | null;
-  ensureGeneratedAround?(q: number, r: number, radius?: number, maxNewPatches?: number): void;
-  getGeneratedCellsInRange?(center: { q: number; r: number }, radius: number): TerrainCell[];
-  getGenerationVersion?(): number;
-  /** Copies committed terrain state without generating or demanding cells. */
-  getGeneratedTerrainSnapshot?(): GeneratedTerrainSnapshot;
+  /** Reads provider-owned committed state without generating, caching, or scheduling work. */
+  readCommittedCell(q: number, r: number): Readonly<TerrainCell> | null;
+  /** Replaces the rolling request. This method must not commit terrain. */
+  requestGenerationAround(q: number, r: number, radius?: number): void;
+  /** Performs the only bounded rolling terrain commit operation. */
+  stepGeneration(maxNewPatches: number): TerrainGenerationStepResult;
+  getGenerationVersion(): number;
+  getCommittedCellCount(): number;
+  /** Captures only the requested bounded patch region from committed state. */
+  captureGeneratedTerrainSnapshot(center: { q: number; r: number }, patchRadius: number): GeneratedTerrainSnapshot;
   getDiagnostics(): unknown;
 }
 
