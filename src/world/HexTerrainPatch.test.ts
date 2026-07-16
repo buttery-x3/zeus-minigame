@@ -24,6 +24,8 @@ import {
 } from "./hexCoordinates";
 import { WfcTerrainProvider } from "./WfcTerrainProvider";
 import { selectAuthoredPatchVariant } from "./RollingTerrainPatchSelection";
+import { analyzeTerrainComposition, formatTerrainCompositionFailure } from "./TerrainCompositionRegression";
+import type { GeneratedTerrainSnapshot } from "./TerrainCompositionReport";
 import {
   createFeatureLoopContext,
   findFrontierShortFeatureLoops,
@@ -392,12 +394,15 @@ describe("rolling authored-first generation", () => {
   });
 
   test("uses procedural patches without socket mismatches or emergency substitution", { timeout: 30_000 }, () => {
+    const startedAt = performance.now();
+    const snapshots: GeneratedTerrainSnapshot[] = [];
     let gentleBends = 0;
     let hydrologyCandidatesRejected = 0;
     let riverCliffCandidatesRejected = 0;
     for (const seed of [20260517, 20260518, 20260519, 20260520]) {
       const provider = new WfcTerrainProvider(seed);
       provider.ensureGeneratedAround(0, 0, 5);
+      snapshots.push(provider.getGeneratedTerrainSnapshot());
       const diagnostics = provider.getDiagnostics().wfc;
       expect(diagnostics.emergencyPatchCount, `seed ${seed}`).toBe(0);
       expect(diagnostics.contradictionCount, `seed ${seed}`).toBe(0);
@@ -411,7 +416,7 @@ describe("rolling authored-first generation", () => {
       expect(diagnostics.committedRiverFlowViolationSample, `seed ${seed}`).toBeNull();
       expect(
         Object.keys(diagnostics.patchVariantCounts).some((id) => id.startsWith("patch.transition.cliff-river")),
-        `seed ${seed}`,
+        `seed ${seed} cliff-origin river bootstrap transition`,
       ).toBe(true);
       expect(Number.isFinite(diagnostics.proceduralHydrologyRejectionCount), `seed ${seed}`).toBe(true);
       expect(Number.isFinite(diagnostics.riverFlowCandidatesRejected), `seed ${seed}`).toBe(true);
@@ -422,6 +427,12 @@ describe("rolling authored-first generation", () => {
     expect(gentleBends).toBeGreaterThan(0);
     expect(hydrologyCandidatesRejected).toBeGreaterThan(0);
     expect(riverCliffCandidatesRejected).toBeGreaterThan(0);
+    const composition = analyzeTerrainComposition(snapshots, 3);
+    if (composition.violations.length > 0) {
+      const diagnostics = formatTerrainCompositionFailure(composition, performance.now() - startedAt);
+      console.error(diagnostics);
+      throw new Error(`Terrain composition catastrophe guards failed:\n${diagnostics}`);
+    }
   });
 });
 

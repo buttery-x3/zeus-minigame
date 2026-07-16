@@ -686,6 +686,25 @@ async function verifyTerrainGrammar(page, viewport) {
   if (wfc.patchSocketMismatchSample) {
     throw new Error(`${viewport.name} rolling patch terrain produced a socket mismatch: ${JSON.stringify(wfc.patchSocketMismatchSample)}`);
   }
+  verifyRenderedBlockerParity(diagnostics, viewport, "normal terrain");
+}
+
+function verifyRenderedBlockerParity(diagnostics, viewport, phase) {
+  const terrain = diagnostics.terrain;
+  const blockers = terrain?.blockers;
+  const renderedWalls = terrain?.renderedComposition?.structures?.counts?.wall;
+  const blockerInstances = terrain?.instancing?.blockerInstances;
+  if (
+    !Number.isFinite(renderedWalls) ||
+    !blockers ||
+    blockers.total !== renderedWalls ||
+    blockerInstances !== renderedWalls ||
+    blockers.visible + blockers.hidden !== blockers.total
+  ) {
+    throw new Error(
+      `${viewport.name} ${phase} rendered blockers disagreed with generated wall content: ${JSON.stringify({ renderedComposition: terrain?.renderedComposition, blockers, blockerInstances })}`,
+    );
+  }
 }
 
 async function stallMainThreadOnAnimationFrame(page, durationMs) {
@@ -1186,6 +1205,7 @@ async function verifyTerrainDebugMode(page, viewport) {
   ) {
     throw new Error(`${viewport.name} terrain debug mode terrain diagnostics invalid: ${JSON.stringify(after.terrainGrammar?.wfc)}`);
   }
+  verifyRenderedBlockerParity(after, viewport, "terrain debug");
 
   await page.keyboard.press("F4");
   await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === false);

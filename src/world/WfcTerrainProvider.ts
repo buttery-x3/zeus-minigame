@@ -30,6 +30,7 @@ import {
 } from "./TerrainHydrologyPolicy";
 import type { CoveConnection } from "./TerrainLakePolicy";
 import { authoredRiverFlowsCanNeighbor, type RiverFlowViolation } from "./TerrainRiverFlowPolicy";
+import type { GeneratedTerrainSnapshot } from "./TerrainCompositionReport";
 
 type CommittedPatch = HexCoord & {
   variant: HexPatchTileVariant;
@@ -182,6 +183,26 @@ export class WfcTerrainProvider implements TerrainProvider {
 
   getGenerationVersion() {
     return this.generatedPatchCount;
+  }
+
+  getGeneratedTerrainSnapshot(): GeneratedTerrainSnapshot {
+    return {
+      seed: this.seed,
+      generationVersion: this.generatedPatchCount,
+      patches: [...this.committedPatches.values()].map((patch) => ({
+        q: patch.q,
+        r: patch.r,
+        variantId: patch.variant.id,
+        provenance: patch.variant.provenance,
+        family: patch.variant.family,
+        structureCounts: countVariantStructures(patch.variant),
+      })),
+      cells: [...this.generatedCells.values()].map((cell) => ({
+        q: cell.q,
+        r: cell.r,
+        structure: cell.structure,
+      })),
+    };
   }
 
   ensureGeneratedAround(
@@ -454,4 +475,12 @@ export class WfcTerrainProvider implements TerrainProvider {
       this.surfaceCounts[cell.surface] += 1;
     }
   }
+}
+
+function countVariantStructures(variant: HexPatchTileVariant) {
+  const counts = createTerrainStructureCounts();
+  for (const cell of variant.cells.values()) {
+    counts[cell.structure] += 1;
+  }
+  return counts;
 }
