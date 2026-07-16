@@ -60,7 +60,8 @@ export class GameDiagnostics {
           this.player.object.position,
           18,
           (q, r) => {
-            const cell = this.gridWorld.getCell(q, r);
+            const cell = this.gridWorld.readCommittedCell(q, r);
+            if (!cell) return false;
             const visual = this.groundEffects.getCellVisualState(cell);
             return cell.surface === "charged" && visual.phase === "charged" && visual.progress > 0 && this.isDirectVisibleMoveCell(q, r);
           },
@@ -69,7 +70,8 @@ export class GameDiagnostics {
           this.player.object.position,
           18,
           (q, r) => {
-            const cell = this.gridWorld.getCell(q, r);
+            const cell = this.gridWorld.readCommittedCell(q, r);
+            if (!cell) return false;
             return cell.surface === "charged" && this.groundEffects.getCellVisualState(cell).phase === "charged" && this.isDirectVisibleMoveCell(q, r);
           },
         ),
@@ -77,7 +79,8 @@ export class GameDiagnostics {
           this.player.object.position,
           18,
           (q, r) => {
-            const cell = this.gridWorld.getCell(q, r);
+            const cell = this.gridWorld.readCommittedCell(q, r);
+            if (!cell) return false;
             return cell.surface === "cursed" && this.groundEffects.getCellVisualState(cell).phase === "cursed" && this.isVisibleWalkableCell(q, r);
           },
         ),
@@ -163,8 +166,8 @@ export class GameDiagnostics {
 
     for (let radius = 1; radius <= maxRadius; radius += 1) {
       for (const cell of this.gridWorld.ring(center, radius)) {
-        const terrainCell = this.gridWorld.getCell(cell.q, cell.r);
-        if (!terrainCell.blocked || !this.visibility.isVisibleCell(cell.q, cell.r)) {
+        const terrainCell = this.gridWorld.readCommittedCell(cell.q, cell.r);
+        if (!terrainCell?.blocked || !this.visibility.isVisibleCell(cell.q, cell.r)) {
           continue;
         }
 
@@ -186,7 +189,10 @@ export class GameDiagnostics {
   }
 
   private hasSingleBlockedCellApproach(cell: { q: number; r: number }) {
-    const openNeighbors = this.gridWorld.ring(cell, 1).filter((neighbor) => !this.gridWorld.getCell(neighbor.q, neighbor.r).blocked);
+    const openNeighbors = this.gridWorld.ring(cell, 1).filter((neighbor) => {
+      const terrain = this.gridWorld.readCommittedCell(neighbor.q, neighbor.r);
+      return Boolean(terrain && !terrain.blocked);
+    });
     if (openNeighbors.length === 0) {
       return false;
     }
@@ -268,7 +274,7 @@ export class GameDiagnostics {
   }
 
   private isVisibleWalkableCell(q: number, r: number) {
-    if (!this.visibility.isVisibleCell(q, r) || this.gridWorld.getCell(q, r).blocked) {
+    if (!this.visibility.isVisibleCell(q, r) || (this.gridWorld.readCommittedCell(q, r)?.blocked ?? true)) {
       return false;
     }
 

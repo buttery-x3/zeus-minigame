@@ -48,9 +48,11 @@ describe("terrain composition reporting", () => {
 
   test("does not generate terrain while capturing or inspecting committed state", () => {
     const provider = new WfcTerrainProvider(20260517);
+    provider.requestGenerationAround(0, 0, 3);
+    provider.stepGeneration(Number.POSITIVE_INFINITY);
     const before = provider.getDiagnostics().wfc;
 
-    const snapshot = provider.getGeneratedTerrainSnapshot();
+    const snapshot = provider.captureGeneratedTerrainSnapshot({ q: 0, r: 0 }, 3);
     const first = createTerrainCompositionReport(snapshot, { localPatchRadius: 3 });
     const second = createTerrainCompositionReport(snapshot, { localPatchRadius: 3 });
     const diagnostics = formatTerrainCompositionFailure(analyzeTerrainComposition([snapshot], 3), 12.5);
@@ -58,13 +60,30 @@ describe("terrain composition reporting", () => {
 
     expect(first).toEqual(second);
     expect(first.windows).toHaveLength(1);
-    expect(after.generationEnsureCount).toBe(before.generationEnsureCount);
+    expect(after.generationStepCount).toBe(before.generationStepCount);
     expect(after.generatedPatchCount).toBe(before.generatedPatchCount);
     expect(after.resolvedCells).toBe(before.resolvedCells);
     expect(provider.getGenerationVersion()).toBe(snapshot.generationVersion);
     expect(diagnostics).toContain("per-seed families.cliff");
     expect(diagnostics).toContain("worst local windows:");
     expect(diagnostics).toContain("percentages=");
+  });
+
+  test("separates committed reads, requests, bounded steps, and detached diagnostics", () => {
+    const provider = new WfcTerrainProvider(20260517);
+
+    expect(provider.readCommittedCell(0, 0)).toBeNull();
+    expect(provider.getGenerationVersion()).toBe(0);
+    provider.requestGenerationAround(0, 0, 3);
+    expect(provider.getGenerationVersion()).toBe(0);
+    expect(provider.captureGeneratedTerrainSnapshot({ q: 0, r: 0 }, 3).patches).toHaveLength(0);
+
+    expect(provider.stepGeneration(1)).toMatchObject({ generatedPatches: 1, generationVersion: 1, complete: false });
+    const diagnostics = provider.getDiagnostics();
+    diagnostics.wfc.patchVariantCounts.tampered = 99;
+    expect(provider.getDiagnostics().wfc.patchVariantCounts.tampered).toBeUndefined();
+    expect(() => provider.requestGenerationAround(0, 0, 17)).toThrow(RangeError);
+    expect(() => provider.captureGeneratedTerrainSnapshot({ q: 0, r: 0 }, 17)).toThrow(RangeError);
   });
 });
 

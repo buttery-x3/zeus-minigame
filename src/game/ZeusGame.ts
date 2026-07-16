@@ -30,6 +30,7 @@ import { createGameMaterialPalettes } from "../render/materials";
 import { GameUi } from "../ui/GameUi";
 import type { TerrainGenerationDiagnostics } from "../ui/DiagnosticsPanel";
 import { GridWorld } from "../world/GridWorld";
+import { WfcTerrainProvider } from "../world/WfcTerrainProvider";
 import { UpgradeSystem } from "./upgrades/UpgradeSystem";
 import type { UpgradeId } from "./upgrades/upgradeTypes";
 import { GamePreferencesStore, type RenderMode } from "./preferences/GamePreferences";
@@ -40,7 +41,7 @@ export class ZeusGame {
   private readonly profiler = new Profiler();
   private readonly simulationStepper = new SimulationStepper();
   private readonly navigationScheduler = new NavigationScheduler();
-  private readonly gridWorld = new GridWorld(undefined, (sample) => this.profiler.recordTerrainGeneration(sample));
+  private readonly gridWorld = new GridWorld(new WfcTerrainProvider());
   private readonly collision = new CollisionSystem(this.gridWorld, this.profiler);
   private readonly visibility = new VisibilitySystem(this.gridWorld);
   private readonly groups = {
@@ -209,14 +210,16 @@ export class ZeusGame {
     this.stormLight.position.set(0, 9, 0);
     this.stormLight.visible = this.renderMode === "normal";
     this.player.object.add(this.stormLight);
+    this.profiler.measure("terrainBootstrap", () => {
+      this.gridWorld.requestTerrainGenerationAroundWorld(this.player.object.position);
+      this.gridWorld.stepTerrainGeneration(Number.POSITIVE_INFINITY);
+    });
     this.visibility.update(this.player.object.position, 0);
 
     window.addEventListener("resize", this.cameraRig.resize);
     document.addEventListener("visibilitychange", this.handleVisibilityChange);
     this.cameraRig.resize();
     this.enemies.spawnInitial(this.state, this.player.object.position);
-    this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
-
     this.animationId = window.requestAnimationFrame(this.tick);
   }
 
@@ -358,7 +361,7 @@ export class ZeusGame {
       const resources = this.scene.getResourceDiagnostics();
       this.profiler.recordRuntimeResources({
         ...resources,
-        terrainCells: this.gridWorld.getCachedCellCount(),
+        terrainCells: this.gridWorld.getCommittedCellCount(),
         enemies: this.enemies.getVisibilityDiagnostics().total,
         effects: this.effects.getActiveCount(),
       });
@@ -387,8 +390,8 @@ export class ZeusGame {
       this.state.health = runStats.maxHealth;
     }
 
-    this.gridWorld.ensureTerrainGeneratedAroundWorld(playerPosition);
-    this.profiler.measure("terrainPreparation", () => this.terrain.prepare(playerPosition, this.terrainDebugMode));
+    this.gridWorld.requestTerrainGenerationAroundWorld(playerPosition);
+    this.profiler.measureTerrainGeneration(() => this.gridWorld.stepTerrainGeneration());
     const frameDt = getBoundedFrameDelta(rawDt, discardForVisibility);
     this.profiler.measure("camera", () => this.cameraRig.update(frameDt, playerPosition));
     this.profiler.measure("input", () => this.input.update(frameDt));
@@ -421,7 +424,6 @@ export class ZeusGame {
           this.requestMoveTarget(this.input.pointerWorld.x, this.input.pointerWorld.z, false);
         }
         this.player.update(dt);
-        this.terrain.prepare(playerPosition, this.terrainDebugMode);
       });
       ground = this.profiler.measure("groundEffects", () => this.groundEffects.update(dt, this.player.getGroundCell()));
       if (this.state.paused) {
@@ -569,7 +571,6 @@ export class ZeusGame {
     this.audio.reset();
     this.player.reset();
     this.applyDerivedStats();
-    this.gridWorld.ensureTerrainGeneratedAroundWorld(this.player.object.position);
     this.visibility.reset();
     this.visibility.update(this.player.object.position);
     this.enemies.reset(this.state, this.player.object.position);

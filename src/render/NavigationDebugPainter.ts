@@ -89,7 +89,7 @@ export class NavigationDebugPainter {
 
     const cell = this.gridWorld.worldToCell(position.x, position.z);
     this.gridWorld.forEachCellInRange(cell, 1, (q, r) => {
-      if (this.gridWorld.getCell(q, r).blocked) {
+      if (this.gridWorld.readCommittedCell(q, r)?.blocked) {
         this.addHexOutline(q, r, COLORS.blocked);
       }
     });

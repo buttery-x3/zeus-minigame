@@ -3,21 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { EnemyState } from "../../../types";
 import { NavigationDebugRenderer } from "../../../render/NavigationDebugRenderer";
 import { GridWorld } from "../../../world/GridWorld";
-import { createTerrainCell, type TerrainProvider } from "../../../world/TerrainProvider";
-
-class OpenTerrainProvider implements TerrainProvider {
-  getCell(q: number, r: number) {
-    return createTerrainCell(q, r, "open", "grass");
-  }
-
-  getDiagnostics(): unknown {
-    return {};
-  }
-}
+import { createStaticTerrainProvider } from "../../../world/StaticTerrainProvider.test-support";
+import { createTerrainCell } from "../../../world/TerrainProvider";
 
 describe("navigation debug renderer", () => {
   it("latches sideways movement without target progress and clears all state when disabled", () => {
-    const renderer = new NavigationDebugRenderer(new GridWorld(new OpenTerrainProvider()));
+    const provider = createStaticTerrainProvider((q, r) => createTerrainCell(q, r, "open", "grass"));
+    const renderer = new NavigationDebugRenderer(new GridWorld(provider));
     const enemy = createEnemy();
     const target = new THREE.Vector3(4, 0, 0);
     const velocity = new THREE.Vector3(6, 0, 0);

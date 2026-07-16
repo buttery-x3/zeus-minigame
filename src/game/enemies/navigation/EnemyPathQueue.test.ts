@@ -2,27 +2,16 @@ import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import type { EnemyState } from "../../../types";
 import { GridWorld } from "../../../world/GridWorld";
-import { createTerrainCell, type TerrainProvider } from "../../../world/TerrainProvider";
+import { createStaticTerrainProvider } from "../../../world/StaticTerrainProvider.test-support";
+import { createTerrainCell } from "../../../world/TerrainProvider";
 import { CollisionSystem } from "../../collision/CollisionSystem";
 import { EnemyPathQueue } from "./EnemyPathQueue";
 
-class OpenTerrainProvider implements TerrainProvider {
-  getCell(q: number, r: number) {
-    return createTerrainCell(q, r, "open", "grass");
-  }
-
-  getGeneratedCell(q: number, r: number) {
-    return this.getCell(q, r);
-  }
-
-  getDiagnostics() {
-    return {};
-  }
-}
+const openTerrainProvider = () => createStaticTerrainProvider((q, r) => createTerrainCell(q, r, "open", "grass"));
 
 describe("EnemyPathQueue", () => {
   it("keeps simultaneous results with their owning enemies", () => {
-    const world = new GridWorld(new OpenTerrainProvider());
+    const world = new GridWorld(openTerrainProvider());
     const queue = new EnemyPathQueue(new CollisionSystem(world));
     const first = createEnemy(21, world.cellToWorldPoint({ q: 0, r: 0 }));
     const second = createEnemy(22, world.cellToWorldPoint({ q: 10, r: 0 }));
@@ -38,7 +27,7 @@ describe("EnemyPathQueue", () => {
   });
 
   it("restarts an active request when that enemy receives a newer goal", () => {
-    const world = new GridWorld(new OpenTerrainProvider());
+    const world = new GridWorld(openTerrainProvider());
     const queue = new EnemyPathQueue(new CollisionSystem(world));
     const enemy = createEnemy(23, world.cellToWorldPoint({ q: 0, r: 0 }));
     const oldGoal = world.cellToWorldPoint({ q: 20, r: 0 });

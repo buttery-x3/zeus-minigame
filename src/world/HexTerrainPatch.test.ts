@@ -383,13 +383,16 @@ describe("procedural patch closure", () => {
 describe("rolling authored-first generation", () => {
   test("respects a per-frame generation budget", () => {
     const provider = new WfcTerrainProvider(20260517);
+    provider.requestGenerationAround(0, 0, 3);
+    provider.stepGeneration(Number.POSITIVE_INFINITY);
     const before = provider.getDiagnostics().wfc.committedPatchCount;
     const center = patchCoordToWorld({ q: 2, r: 0 });
-    provider.ensureGeneratedAround(center.q, center.r, 3, 3);
+    provider.requestGenerationAround(center.q, center.r, 3);
+    provider.stepGeneration(3);
     const diagnostics = provider.getDiagnostics().wfc;
 
     expect(diagnostics.committedPatchCount - before).toBe(3);
-    expect(diagnostics.generatedLastEnsure).toBe(3);
+    expect(diagnostics.generatedLastStep).toBe(3);
     expect(diagnostics.generationPatchBudget).toBe(3);
   });
 
@@ -401,8 +404,9 @@ describe("rolling authored-first generation", () => {
     let riverCliffCandidatesRejected = 0;
     for (const seed of [20260517, 20260518, 20260519, 20260520]) {
       const provider = new WfcTerrainProvider(seed);
-      provider.ensureGeneratedAround(0, 0, 5);
-      snapshots.push(provider.getGeneratedTerrainSnapshot());
+      provider.requestGenerationAround(0, 0, 5);
+      provider.stepGeneration(Number.POSITIVE_INFINITY);
+      snapshots.push(provider.captureGeneratedTerrainSnapshot({ q: 0, r: 0 }, 5));
       const diagnostics = provider.getDiagnostics().wfc;
       expect(diagnostics.emergencyPatchCount, `seed ${seed}`).toBe(0);
       expect(diagnostics.contradictionCount, `seed ${seed}`).toBe(0);

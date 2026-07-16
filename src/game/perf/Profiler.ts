@@ -32,8 +32,6 @@ export type ProfilerSnapshot = {
 
 type TerrainGenerationFrame = {
   totalMs: number;
-  ensureMs: number;
-  demandMs: number;
   calls: number;
   generatedPatches: number;
   maxCallMs: number;
@@ -121,12 +119,15 @@ export class Profiler {
     this.runtimePerformance.recordResources(resources);
   }
 
-  recordTerrainGeneration(sample: { source: "ensure" | "demand"; durationMs: number; generatedPatches: number }) {
-    this.terrainGenerationFrame.totalMs += sample.durationMs;
-    this.terrainGenerationFrame[sample.source === "ensure" ? "ensureMs" : "demandMs"] += sample.durationMs;
+  measureTerrainGeneration<T extends { generatedPatches: number }>(work: () => T): T {
+    const startedAt = performance.now();
+    const result = work();
+    const durationMs = performance.now() - startedAt;
+    this.terrainGenerationFrame.totalMs += durationMs;
     this.terrainGenerationFrame.calls += 1;
-    this.terrainGenerationFrame.generatedPatches += sample.generatedPatches;
-    this.terrainGenerationFrame.maxCallMs = Math.max(this.terrainGenerationFrame.maxCallMs, sample.durationMs);
+    this.terrainGenerationFrame.generatedPatches += result.generatedPatches;
+    this.terrainGenerationFrame.maxCallMs = Math.max(this.terrainGenerationFrame.maxCallMs, durationMs);
+    return result;
   }
 
   recordPathfinding(ms: number, iterations: number, success: boolean) {
@@ -226,8 +227,6 @@ export class Profiler {
 function createTerrainGenerationFrame(): TerrainGenerationFrame {
   return {
     totalMs: 0,
-    ensureMs: 0,
-    demandMs: 0,
     calls: 0,
     generatedPatches: 0,
     maxCallMs: 0,
