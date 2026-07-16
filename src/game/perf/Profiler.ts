@@ -27,6 +27,16 @@ export type ProfilerSnapshot = {
   navigationScheduler: NavigationSchedulerDiagnostics;
   framePacing: ReturnType<RuntimePerformanceMonitor["framePacingDiagnostics"]>;
   memory: ReturnType<RuntimePerformanceMonitor["memoryDiagnostics"]>;
+  terrainGeneration: TerrainGenerationFrame;
+};
+
+type TerrainGenerationFrame = {
+  totalMs: number;
+  ensureMs: number;
+  demandMs: number;
+  calls: number;
+  generatedPatches: number;
+  maxCallMs: number;
 };
 
 type PathFrame = ProfilerSnapshot["pathfinding"];
@@ -77,6 +87,7 @@ export class Profiler {
     flowWalkableCacheSize: 0,
   };
   private navigationSchedulerFrame = createNavigationSchedulerFrame();
+  private terrainGenerationFrame = createTerrainGenerationFrame();
 
   beginFrame(now = performance.now()) {
     const frameDelta = Math.max(0.001, now - this.lastFrameTime);
@@ -87,6 +98,7 @@ export class Profiler {
     this.pathFrame = createPathFrame();
     this.enemyNavigationFrame = createEnemyNavigationFrame(this.lastFlow);
     this.navigationSchedulerFrame = createNavigationSchedulerFrame();
+    this.terrainGenerationFrame = createTerrainGenerationFrame();
   }
 
   measure<T>(name: string, callback: () => T): T {
@@ -100,12 +112,21 @@ export class Profiler {
 
   endFrame(now = performance.now()) {
     const frameTotal = now - this.frameStart;
+    this.record("terrainGeneration", this.terrainGenerationFrame.totalMs);
     this.record("frameTotal", frameTotal);
     this.runtimePerformance.recordFrameEnd(frameTotal);
   }
 
   recordRuntimeResources(resources: RuntimeResourceCounters) {
     this.runtimePerformance.recordResources(resources);
+  }
+
+  recordTerrainGeneration(sample: { source: "ensure" | "demand"; durationMs: number; generatedPatches: number }) {
+    this.terrainGenerationFrame.totalMs += sample.durationMs;
+    this.terrainGenerationFrame[sample.source === "ensure" ? "ensureMs" : "demandMs"] += sample.durationMs;
+    this.terrainGenerationFrame.calls += 1;
+    this.terrainGenerationFrame.generatedPatches += sample.generatedPatches;
+    this.terrainGenerationFrame.maxCallMs = Math.max(this.terrainGenerationFrame.maxCallMs, sample.durationMs);
   }
 
   recordPathfinding(ms: number, iterations: number, success: boolean) {
@@ -185,6 +206,7 @@ export class Profiler {
       },
       framePacing: this.runtimePerformance.framePacingDiagnostics(),
       memory: this.runtimePerformance.memoryDiagnostics(),
+      terrainGeneration: { ...this.terrainGenerationFrame },
     };
   }
 
@@ -199,6 +221,17 @@ export class Profiler {
     existing.avg = existing.avg * 0.92 + ms * 0.08;
     existing.max = Math.max(ms, existing.max * 0.985);
   }
+}
+
+function createTerrainGenerationFrame(): TerrainGenerationFrame {
+  return {
+    totalMs: 0,
+    ensureMs: 0,
+    demandMs: 0,
+    calls: 0,
+    generatedPatches: 0,
+    maxCallMs: 0,
+  };
 }
 
 function createEnemyNavigationFrame(lastFlow = {

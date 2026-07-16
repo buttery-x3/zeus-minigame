@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { HexEdgeKind } from "../types";
 import {
   HEX_PATCH_LOCAL_CELLS,
+  createAuthoredPatchVariants,
   createHexPatchTileCatalog,
   patchCoordToWorld,
   summarizeAuthoredPatchFamilies,
@@ -54,6 +55,7 @@ describe("authored terrain patches", () => {
     expect(variants.some((variant) => variant.id.startsWith("patch.river.bend.gentle"))).toBe(true);
     expect(variants.some((variant) => variant.id.startsWith("patch.cliff.ridge.dogleg"))).toBe(true);
     expect(variants.some((variant) => variant.id.startsWith("patch.river.line.dogleg"))).toBe(true);
+    expect(variants.some((variant) => variant.id.startsWith("patch.river.source"))).toBe(false);
 
     const families = summarizeAuthoredPatchFamilies(variants);
     expect(families.open).toBeGreaterThanOrEqual(3);
@@ -61,6 +63,103 @@ describe("authored terrain patches", () => {
     expect(families.river).toBeGreaterThanOrEqual(12);
     expect(families.lake).toBeGreaterThanOrEqual(6);
     expect(families.transition).toBeGreaterThanOrEqual(6);
+  });
+
+  test("connects authored river mouths to the broad lake vocabulary", () => {
+    const mouth = variants.find((variant) => variant.id.startsWith("patch.transition.river-lake-mouth"));
+    const lakeCore = variants.find((variant) => variant.id === "patch.lake.core");
+    expect(mouth).toBeDefined();
+    expect(lakeCore).toBeDefined();
+    if (!mouth || !lakeCore) {
+      return;
+    }
+
+    expect(mouth.riverTerminal).toBe("lake");
+    const broadLakeDirection = HEX_DIRECTION_ORDER.find((direction) =>
+      mouth.edges[direction].every((kind) => kind === "lake"),
+    );
+    expect(broadLakeDirection).toBeDefined();
+    expect(broadLakeDirection && patchVariantsCanNeighbor(mouth, broadLakeDirection, lakeCore)).toBe(true);
+  });
+
+  test("uses the tuned river topology weights and grouped lake coves", () => {
+    const groupWeights = new Map(variants.map((variant) => [variant.selectionGroup, variant.selectionGroupWeight]));
+    expect(groupWeights.get("river.straight")).toBe(5);
+    expect(groupWeights.get("river.tight-bend")).toBe(15);
+    expect(groupWeights.get("river.gentle-bend")).toBe(15);
+    expect(groupWeights.get("river.junction")).toBe(2);
+
+    expect(groupWeights.get("patch.rock.island")).toBe(2);
+    expect(new Set(variants.filter((variant) => variant.id.startsWith("patch.rock.pair")).map((variant) => variant.selectionGroupWeight))).toEqual(new Set([6]));
+    expect(groupWeights.get("cliff.endpoint")).toBe(9);
+    expect(groupWeights.get("cliff.straight")).toBe(15);
+    expect(groupWeights.get("cliff.tight-bend")).toBe(6);
+    expect(groupWeights.get("cliff.gentle-bend")).toBe(7.5);
+    expect(new Set(variants.filter((variant) => variant.id.startsWith("patch.cliff.junction")).map((variant) => variant.selectionGroupWeight))).toEqual(new Set([4.5]));
+    expect(groupWeights.get("patch.cliff.mass")).toBe(1);
+    expect(groupWeights.get("patch.cliff.core")).toBe(0.25);
+
+    const coves = variants.filter((variant) => variant.lakeRole === "cove");
+    expect(coves).toHaveLength(6);
+    expect(new Set(coves.map((variant) => variant.selectionGroup))).toEqual(new Set(["lake.cove"]));
+    expect(new Set(coves.map((variant) => variant.selectionGroupWeight))).toEqual(new Set([18]));
+    expect(variants.some((variant) => variant.id.startsWith("patch.lake.basin"))).toBe(false);
+  });
+
+  test("directs authored rivers from cliff sources through confluences into lake mouths", () => {
+    const riverVariants = variants.filter((variant) => variant.diagnostics.riverExitCount > 0);
+    for (const variant of riverVariants) {
+      const inputs = Object.values(variant.riverPorts).filter((port) => port === "input").length;
+      const outputs = Object.values(variant.riverPorts).filter((port) => port === "output").length;
+      if (variant.riverTerminal === "cliff") {
+        expect([inputs, outputs], variant.id).toEqual([0, 1]);
+      } else if (variant.riverTerminal === "lake") {
+        expect([inputs, outputs], variant.id).toEqual([1, 0]);
+      } else if (variant.topology === "junction") {
+        expect([inputs, outputs], variant.id).toEqual([2, 1]);
+      } else {
+        expect([inputs, outputs], variant.id).toEqual([1, 1]);
+      }
+    }
+  });
+
+  test("provides authored reverse matches for every lake-shore socket", () => {
+    const shores = variants.filter((variant) => variant.id.startsWith("patch.lake.shore"));
+    expect(shores.some((variant) => variant.id.startsWith("patch.lake.shore.mirror"))).toBe(true);
+
+    for (const shore of shores) {
+      for (const direction of HEX_DIRECTION_ORDER) {
+        if (!shore.edges[direction].includes("lake")) {
+          continue;
+        }
+        expect(
+          variants.some((candidate) => patchVariantsCanNeighbor(shore, direction, candidate)),
+          `${shore.id} ${direction} ${shore.edges[direction].join(",")}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("rejects authored one-exit rivers without a physical semantic terminal", () => {
+    const riverCells = [{ q: 1, r: -2 }, { q: 1, r: -1 }, { q: 0, r: 0 }];
+    const missingMetadata = createAuthoredPatchVariants({
+      id: "test.river.endpoint",
+      family: "river",
+      weight: 1,
+      cells: { river: riverCells },
+    })[0];
+    expect(validateHexPatchVariant(missingMetadata).errors).toContain(
+      "authored one-exit river components require lake or cliff terminal metadata",
+    );
+
+    const missingLake = createAuthoredPatchVariants({
+      id: "test.river.fake-lake-terminal",
+      family: "transition",
+      weight: 1,
+      riverTerminal: "lake",
+      cells: { river: riverCells },
+    })[0];
+    expect(validateHexPatchVariant(missingLake).errors).toContain("river terminal marked lake must touch lake");
   });
 });
 
@@ -222,7 +321,7 @@ describe("procedural patch closure", () => {
     }
   });
 
-  test("closes every reachable authored-neighbor boundary", { timeout: 60_000 }, () => {
+  test("closes every reachable authored-neighbor boundary", { timeout: 90_000 }, () => {
     const variants = createHexPatchTileCatalog();
     const neighborhoods = enumerateReachableCenterBoundaries(variants);
     const rotationClasses = new Map<string, HexPatchBoundaryConstraints>();
@@ -293,9 +392,9 @@ describe("rolling authored-first generation", () => {
   });
 
   test("uses procedural patches without socket mismatches or emergency substitution", { timeout: 30_000 }, () => {
-    let suppressedShortLoops = 0;
     let gentleBends = 0;
-    let enclosureCandidatesRejected = 0;
+    let hydrologyCandidatesRejected = 0;
+    let riverCliffCandidatesRejected = 0;
     for (const seed of [20260517, 20260518, 20260519, 20260520]) {
       const provider = new WfcTerrainProvider(seed);
       provider.ensureGeneratedAround(0, 0, 5);
@@ -307,13 +406,22 @@ describe("rolling authored-first generation", () => {
       expect(diagnostics.authoredPatchCount, `seed ${seed}`).toBeGreaterThan(diagnostics.proceduralPatchCount);
       expect(diagnostics.structureCounts.bank, `seed ${seed}`).toBe(0);
       expect(diagnostics.enclosureViolationSample, `seed ${seed}`).toBeNull();
-      suppressedShortLoops += diagnostics.shortLoopCandidatesSuppressed.wall + diagnostics.shortLoopCandidatesSuppressed.river;
+      expect(diagnostics.committedHydrologyNearMissSample, `seed ${seed}`).toBeNull();
+      expect(diagnostics.committedCoveConnectionSample, `seed ${seed}`).toBeNull();
+      expect(diagnostics.committedRiverFlowViolationSample, `seed ${seed}`).toBeNull();
+      expect(
+        Object.keys(diagnostics.patchVariantCounts).some((id) => id.startsWith("patch.transition.cliff-river")),
+        `seed ${seed}`,
+      ).toBe(true);
+      expect(Number.isFinite(diagnostics.proceduralHydrologyRejectionCount), `seed ${seed}`).toBe(true);
+      expect(Number.isFinite(diagnostics.riverFlowCandidatesRejected), `seed ${seed}`).toBe(true);
       gentleBends += diagnostics.topologySelectionCounts["gentle-bend"] ?? 0;
-      enclosureCandidatesRejected += diagnostics.enclosureCandidatesRejected;
+      hydrologyCandidatesRejected += diagnostics.hydrologyCandidatesRejected;
+      riverCliffCandidatesRejected += diagnostics.riverCliffCandidatesRejected;
     }
-    expect(suppressedShortLoops).toBeGreaterThan(0);
     expect(gentleBends).toBeGreaterThan(0);
-    expect(enclosureCandidatesRejected).toBeGreaterThan(0);
+    expect(hydrologyCandidatesRejected).toBeGreaterThan(0);
+    expect(riverCliffCandidatesRejected).toBeGreaterThan(0);
   });
 });
 

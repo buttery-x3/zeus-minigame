@@ -78,7 +78,7 @@ export class GameDiagnostics {
           18,
           (q, r) => {
             const cell = this.gridWorld.getCell(q, r);
-            return cell.surface === "cursed" && this.groundEffects.getCellVisualState(cell).phase === "cursed" && this.isDirectVisibleMoveCell(q, r);
+            return cell.surface === "cursed" && this.groundEffects.getCellVisualState(cell).phase === "cursed" && this.isVisibleWalkableCell(q, r);
           },
         ),
       },
@@ -159,10 +159,12 @@ export class GameDiagnostics {
 
   private findNearestBlockedCell(position: THREE.Vector3, maxRadius: number) {
     const center = this.gridWorld.worldToCell(position.x, position.z);
+    let nearestFallback: ReturnType<typeof this.blockedCellSample> | null = null;
 
     for (let radius = 1; radius <= maxRadius; radius += 1) {
       for (const cell of this.gridWorld.ring(center, radius)) {
-        if (!this.gridWorld.getCell(cell.q, cell.r).blocked || !this.visibility.isVisibleCell(cell.q, cell.r)) {
+        const terrainCell = this.gridWorld.getCell(cell.q, cell.r);
+        if (!terrainCell.blocked || !this.visibility.isVisibleCell(cell.q, cell.r)) {
           continue;
         }
 
@@ -172,16 +174,54 @@ export class GameDiagnostics {
           continue;
         }
 
-        return {
-          cell,
-          world: [world.x, 0, world.z],
-          screen,
-          visibility: this.visibility.getCell(cell.q, cell.r),
-        };
+        const sample = this.blockedCellSample(cell, terrainCell.structure, world, screen);
+        if (this.hasSingleBlockedCellApproach(cell)) {
+          return sample;
+        }
+        nearestFallback ??= sample;
       }
     }
 
-    return null;
+    return nearestFallback;
+  }
+
+  private hasSingleBlockedCellApproach(cell: { q: number; r: number }) {
+    const openNeighbors = this.gridWorld.ring(cell, 1).filter((neighbor) => !this.gridWorld.getCell(neighbor.q, neighbor.r).blocked);
+    if (openNeighbors.length === 0) {
+      return false;
+    }
+
+    const connected = new Set<string>([this.gridWorld.cellKey(openNeighbors[0].q, openNeighbors[0].r)]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const candidate of openNeighbors) {
+        const key = this.gridWorld.cellKey(candidate.q, candidate.r);
+        if (connected.has(key)) {
+          continue;
+        }
+        if (openNeighbors.some((neighbor) => connected.has(this.gridWorld.cellKey(neighbor.q, neighbor.r)) && this.gridWorld.hexDistance(neighbor, candidate) === 1)) {
+          connected.add(key);
+          changed = true;
+        }
+      }
+    }
+    return connected.size === openNeighbors.length;
+  }
+
+  private blockedCellSample(
+    cell: { q: number; r: number },
+    structure: "wall" | "lake" | "river" | "open" | "bank",
+    world: { x: number; z: number },
+    screen: ReturnType<GameDiagnostics["projectGroundToScreen"]>,
+  ) {
+    return {
+      cell,
+      structure,
+      world: [world.x, 0, world.z] as [number, number, number],
+      screen,
+      visibility: this.visibility.getCell(cell.q, cell.r),
+    };
   }
 
   private findDirectionalVisibilityCell(position: THREE.Vector3, dirX: number, dirZ: number) {
@@ -219,15 +259,21 @@ export class GameDiagnostics {
   }
 
   private isDirectVisibleMoveCell(q: number, r: number) {
+    if (!this.isVisibleWalkableCell(q, r)) {
+      return false;
+    }
+
+    const world = this.gridWorld.cellToWorld(q, r);
+    return this.collision.hasLineOfSight(this.player.object.position, new THREE.Vector3(world.x, 0, world.z), PLAYER_COLLISION_RADIUS);
+  }
+
+  private isVisibleWalkableCell(q: number, r: number) {
     if (!this.visibility.isVisibleCell(q, r) || this.gridWorld.getCell(q, r).blocked) {
       return false;
     }
 
     const world = this.gridWorld.cellToWorld(q, r);
-    return (
-      this.collision.canOccupy(world.x, world.z, PLAYER_COLLISION_RADIUS) &&
-      this.collision.hasLineOfSight(this.player.object.position, new THREE.Vector3(world.x, 0, world.z), PLAYER_COLLISION_RADIUS)
-    );
+    return this.collision.canOccupy(world.x, world.z, PLAYER_COLLISION_RADIUS);
   }
 
   private visibilitySampleToScreen(cell: { q: number; r: number }) {

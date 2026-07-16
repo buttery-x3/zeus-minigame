@@ -8,6 +8,7 @@ const METRICS = [
   ["frameTotal", "Frame"],
   ["gameLogic", "Game"],
   ["render", "Render"],
+  ["diagnostics", "Diagnostics"],
   ["camera", "Camera"],
   ["lighting", "Lighting"],
   ["terrainGeneration", "Terrain Gen"],
@@ -162,9 +163,13 @@ export class DiagnosticsPanel {
     const resources = memory.resources;
     this.resourcesValue.textContent = `Resources geo ${resources.geometries}, tex ${resources.textures}, prog ${resources.programs}, objects ${resources.sceneObjects}, cells ${resources.terrainCells}, enemies ${resources.enemies}, FX ${resources.effects}`;
     const terrainGeneration = getTerrainGeneration().wfc;
+    const terrainFrame = snapshot.terrainGeneration;
     this.terrainGenerationValue.textContent = terrainGeneration
       ? `Terrain gen patch ${terrainGeneration.patchGenerationLastDurationMs.toFixed(2)} ms, max ${terrainGeneration.patchGenerationMaxDurationMs.toFixed(2)}, ensure ${terrainGeneration.generationLastDurationMs.toFixed(2)} ms/${terrainGeneration.generatedLastEnsure} patches, budget ${terrainGeneration.generationPatchBudget ?? "∞"}, topo ${terrainGeneration.topologyEvaluationCount}, synth ${terrainGeneration.synthesisDurationMs.toFixed(2)} ms`
       : "Terrain generation unavailable";
+    if (terrainGeneration) {
+      this.terrainGenerationValue.textContent = `Terrain gen frame ${terrainFrame.totalMs.toFixed(2)} ms (ensure ${terrainFrame.ensureMs.toFixed(2)}, demand ${terrainFrame.demandMs.toFixed(2)}), ${terrainFrame.generatedPatches} patches/${terrainFrame.calls} calls, max call ${terrainFrame.maxCallMs.toFixed(2)}; ${this.terrainGenerationValue.textContent}`;
+    }
     const debug = getNavigationDebug();
     const stalled = debug.stalled
       .map((enemy) => `#${enemy.id} ${enemy.mode} ${enemy.collision} ${enemy.stationaryMs.toFixed(0)}ms p${enemy.pathLength}${enemy.pathQueued ? "q" : ""}`)

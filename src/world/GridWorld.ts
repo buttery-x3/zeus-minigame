@@ -14,6 +14,12 @@ import { WfcTerrainProvider } from "./WfcTerrainProvider";
 
 export type { HexCoord };
 
+export type TerrainGenerationSample = {
+  source: "ensure" | "demand";
+  durationMs: number;
+  generatedPatches: number;
+};
+
 export class GridWorld {
   readonly tileSize = TILE_SIZE;
   readonly hexSize = TILE_SIZE / Math.sqrt(3);
@@ -22,7 +28,10 @@ export class GridWorld {
 
   private cells = new Map<string, TerrainCell>();
 
-  constructor(private readonly terrainProvider: TerrainProvider = new WfcTerrainProvider()) {}
+  constructor(
+    private readonly terrainProvider: TerrainProvider = new WfcTerrainProvider(),
+    private readonly onTerrainGeneration?: (sample: TerrainGenerationSample) => void,
+  ) {}
 
   worldToCell(worldX: number, worldZ: number): HexCoord {
     const r = worldZ / this.hexVerticalSpacing;
@@ -44,7 +53,7 @@ export class GridWorld {
       return existing;
     }
 
-    const cell = this.terrainProvider.getCell(q, r);
+    const cell = this.measureTerrainGeneration("demand", () => this.terrainProvider.getCell(q, r));
     this.cells.set(key, cell);
     return cell;
   }
@@ -81,12 +90,21 @@ export class GridWorld {
     return this.terrainProvider.getGenerationVersion?.() ?? this.cells.size;
   }
 
+  hasBudgetedTerrainGeneration() {
+    return Boolean(this.terrainProvider.ensureGeneratedAround);
+  }
+
   getCachedCellCount() {
     return this.cells.size;
   }
 
   ensureTerrainGeneratedAroundCell(q: number, r: number) {
-    this.terrainProvider.ensureGeneratedAround?.(q, r, undefined, ROLLING_TERRAIN_PATCHES_PER_FRAME);
+    if (!this.terrainProvider.ensureGeneratedAround) {
+      return;
+    }
+    this.measureTerrainGeneration("ensure", () =>
+      this.terrainProvider.ensureGeneratedAround?.(q, r, undefined, ROLLING_TERRAIN_PATCHES_PER_FRAME),
+    );
   }
 
   ensureTerrainGeneratedAroundWorld(point: THREE.Vector3) {
@@ -196,6 +214,21 @@ export class GridWorld {
     }
 
     return corners;
+  }
+
+  private measureTerrainGeneration<T>(source: TerrainGenerationSample["source"], work: () => T) {
+    const beforeVersion = this.terrainProvider.getGenerationVersion?.();
+    const startedAt = performance.now();
+    const result = work();
+    const durationMs = performance.now() - startedAt;
+    const afterVersion = this.terrainProvider.getGenerationVersion?.();
+    const generatedPatches = beforeVersion === undefined || afterVersion === undefined
+      ? 0
+      : Math.max(0, afterVersion - beforeVersion);
+    if (source === "ensure" || generatedPatches > 0) {
+      this.onTerrainGeneration?.({ source, durationMs, generatedPatches });
+    }
+    return result;
   }
 
   cellsOnLine(from: HexCoord, to: HexCoord) {

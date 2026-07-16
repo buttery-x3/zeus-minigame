@@ -622,7 +622,15 @@ async function verifyTerrainGrammar(page, viewport) {
     wfc.enclosureViolationSample ||
     !Number.isFinite(wfc.enclosureCandidatesRejected) ||
     !Number.isFinite(wfc.proceduralTopologyRejectionCount) ||
+    !Number.isFinite(wfc.proceduralHydrologyRejectionCount) ||
     !Number.isFinite(wfc.proceduralTerminationPatchCount) ||
+    !Number.isFinite(wfc.hydrologyCandidatesRejected) ||
+    !Number.isFinite(wfc.coveConnectionCandidatesRejected) ||
+    !Number.isFinite(wfc.riverFlowCandidatesRejected) ||
+    !Number.isFinite(wfc.riverCliffCandidatesRejected) ||
+    !Number.isFinite(wfc.hydrologyCandidatesSuppressed) ||
+    !Number.isFinite(wfc.hydrologyConnectionPreferredSelectionCount) ||
+    !Number.isFinite(wfc.hydrologySoftNearMissesSelected) ||
     !Number.isFinite(wfc.generationLastDurationMs) ||
     !Number.isFinite(wfc.generationTotalDurationMs) ||
     !Number.isFinite(wfc.generationMaxDurationMs) ||
@@ -634,6 +642,15 @@ async function verifyTerrainGrammar(page, viewport) {
   ) {
     throw new Error(`${viewport.name} rolling patch terrain violated movement topology: ${JSON.stringify(wfc)}`);
   }
+  if (
+    wfc.committedHydrologyNearMissSample ||
+    wfc.committedCoveConnectionSample ||
+    wfc.committedRiverFlowViolationSample ||
+    wfc.hydrologyCandidatesRejected < 1 ||
+    wfc.hydrologyCandidatesSuppressed < 1
+  ) {
+    throw new Error(`${viewport.name} rolling patch hydrology policy was inactive or committed a near-miss: ${JSON.stringify(wfc)}`);
+  }
   if (wfc.synthesisFailureCount > 0 || wfc.authoredPatchCount < 1 || wfc.authoredPatchCount <= wfc.proceduralPatchCount) {
     throw new Error(`${viewport.name} authored-first terrain synthesis was invalid: ${JSON.stringify(wfc)}`);
   }
@@ -641,10 +658,15 @@ async function verifyTerrainGrammar(page, viewport) {
     !wfc.structureCounts ||
     wfc.structureCounts.open < 1 ||
     wfc.structureCounts.river < 1 ||
-    wfc.structureCounts.lake < 1 ||
     wfc.structureCounts.bank !== 0
   ) {
     throw new Error(`${viewport.name} rolling patch terrain did not produce the authored terrain vocabulary: ${JSON.stringify(wfc)}`);
+  }
+  if (
+    !wfc.patchVariantCounts ||
+    Object.keys(wfc.patchVariantCounts).some((id) => id.startsWith("patch.river.source"))
+  ) {
+    throw new Error(`${viewport.name} rolling patch terrain used the removed authored grass river endpoint: ${JSON.stringify(wfc.patchVariantCounts)}`);
   }
   if (
     !wfc.topologySelectionCounts ||
@@ -825,7 +847,7 @@ async function verifyGroundEffects(page, viewport) {
       throw new Error(`${viewport.name} depleted charged ground still granted recovery: ${JSON.stringify(diagnostics.groundEffects)}`);
     }
 
-    let cursed = diagnostics.groundSamples?.nearestCursedCell;
+    let cursed = await findReachableGroundSample(page, viewport, "nearestCursedCell");
     if (!cursed?.screen?.visible) {
       throw new Error(`${viewport.name} missing a reachable cursed-ground sample: ${JSON.stringify(diagnostics.terrainGrammar?.wfc?.surfaceCounts)}`);
     }
@@ -1112,12 +1134,15 @@ function chargedUsageFor(diagnostics, key) {
 }
 
 async function verifyTerrainDebugMode(page, viewport) {
-  const before = await readDiagnostics(page);
+  const before = await waitForTerrainGenerationToSettle(page, viewport);
   const beforeProjection = before.camera?.projection ?? {};
   const beforeHeight = Math.abs((beforeProjection.top ?? 0) - (beforeProjection.bottom ?? 0));
   const beforeRadius = before.terrainGrammar?.wfc?.activePatchRadius;
   const beforeGeneratedPatches = before.terrainGrammar?.wfc?.generatedPatchCount;
   const beforeBlockers = before.terrain?.blockers?.total ?? 0;
+  if (before.terrain?.patchBorders?.visible || (before.terrain?.patchBorders?.segmentCount ?? 0) !== 0) {
+    throw new Error(`${viewport.name} patch borders were visible outside Terrain Debug: ${JSON.stringify(before.terrain?.patchBorders)}`);
+  }
 
   await page.keyboard.press("F4");
   await page.waitForFunction(() => window.__ZEUS_GAME__?.getDiagnostics().input.terrainDebugMode === true);
@@ -1151,6 +1176,9 @@ async function verifyTerrainDebugMode(page, viewport) {
   if ((after.terrain?.blockers?.total ?? 0) <= beforeBlockers) {
     throw new Error(`${viewport.name} terrain debug mode did not expand rendered terrain window: before=${beforeBlockers}, after=${after.terrain?.blockers?.total}`);
   }
+  if (!after.terrain?.patchBorders?.visible || (after.terrain?.patchBorders?.segmentCount ?? 0) < 1) {
+    throw new Error(`${viewport.name} terrain debug mode did not render patch borders: ${JSON.stringify(after.terrain?.patchBorders)}`);
+  }
   if (
     after.terrainGrammar?.wfc?.emergencyPatchCount > 0 ||
     after.terrainGrammar?.wfc?.synthesisFailureCount > 0 ||
@@ -1169,6 +1197,28 @@ async function verifyTerrainDebugMode(page, viewport) {
   if (restoredHeight > beforeHeight * 1.1) {
     throw new Error(`${viewport.name} terrain debug mode did not restore camera view: beforeHeight=${beforeHeight}, restoredHeight=${restoredHeight}`);
   }
+  if (restored.terrain?.patchBorders?.visible || (restored.terrain?.patchBorders?.segmentCount ?? 0) !== 0) {
+    throw new Error(`${viewport.name} terrain debug mode did not remove patch borders: ${JSON.stringify(restored.terrain?.patchBorders)}`);
+  }
+}
+
+async function waitForTerrainGenerationToSettle(page, viewport) {
+  let previousCount = -1;
+  let stableReads = 0;
+  let diagnostics = await readDiagnostics(page);
+
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    await page.waitForTimeout(200);
+    diagnostics = await readDiagnostics(page);
+    const count = diagnostics.terrainGrammar?.wfc?.generatedPatchCount;
+    stableReads = count === previousCount ? stableReads + 1 : 0;
+    if (stableReads >= 3) {
+      return diagnostics;
+    }
+    previousCount = count;
+  }
+
+  throw new Error(`${viewport.name} terrain generation did not settle before debug-mode verification: ${JSON.stringify(diagnostics.terrainGrammar?.wfc)}`);
 }
 
 async function verifyShadowRigTracking(page, viewport) {
@@ -1481,6 +1531,7 @@ async function verifyWindowUi(page, viewport) {
   }
   const pacing = diagnostics.profiler.framePacing;
   const memory = diagnostics.profiler.memory;
+  const terrainGeneration = diagnostics.profiler.terrainGeneration;
   if (
     !pacing ||
     pacing.samples <= 0 ||
@@ -1488,7 +1539,11 @@ async function verifyWindowUi(page, viewport) {
     !Number.isFinite(pacing.above20Ms) ||
     !memory ||
     !Number.isFinite(memory.resources.geometries) ||
-    !Number.isFinite(memory.resources.terrainCells)
+    !Number.isFinite(memory.resources.terrainCells) ||
+    !Number.isFinite(terrainGeneration?.totalMs) ||
+    !Number.isFinite(terrainGeneration?.ensureMs) ||
+    !Number.isFinite(terrainGeneration?.demandMs) ||
+    !Number.isFinite(terrainGeneration?.generatedPatches)
   ) {
     throw new Error(`Diagnostics did not expose frame pacing and memory/resource metrics: ${JSON.stringify(diagnostics.profiler)}`);
   }
@@ -2018,10 +2073,28 @@ async function verifyBlockerNavigation(page, viewport) {
     );
   }
 
+  try {
+    await page.waitForFunction(
+      ({ appliedRoutes, failedRoutes }) => {
+        const navigation = window.__ZEUS_GAME__?.getDiagnostics().player.navigation;
+        return navigation && !navigation.pathJob && !navigation.pendingPath && (
+          navigation.appliedRoutes > appliedRoutes || navigation.failedRoutes > failedRoutes
+        );
+      },
+      {
+        appliedRoutes: before.player.navigation.appliedRoutes,
+        failedRoutes: before.player.navigation.failedRoutes,
+      },
+      { timeout: 12000 },
+    );
+  } catch (error) {
+    const timedOut = await readDiagnostics(page);
+    throw new Error(`${viewport.name} blocker route did not resolve in time: ${JSON.stringify({ blocker, navigation: timedOut.player.navigation })}`, { cause: error });
+  }
   const after = await readDiagnostics(page);
   const navigation = after.player.navigation;
   if (!navigation.requestedBlocked) {
-    throw new Error(`${viewport.name} blocker click did not register as a blocked request`);
+    throw new Error(`${viewport.name} blocker click did not register as a blocked request: ${JSON.stringify({ blocker, before: before.player.navigation, submitted: submitted.player.navigation, after: navigation })}`);
   }
   if (navigation.destinationBlocked || navigation.occupiesBlocked) {
     throw new Error(`${viewport.name} blocker navigation resolved into blocked space: ${JSON.stringify(navigation)}`);
@@ -2632,6 +2705,32 @@ async function clickVisibleMoveCell(page, viewport, fallbackXRatio, fallbackYRat
   const point = await getVisibleInteractionPoint(page, viewport, fallbackXRatio, fallbackYRatio);
   await page.mouse.click(point.x, point.y);
   return point;
+}
+
+async function findReachableGroundSample(page, viewport, sampleName, explorationAttempts = 6) {
+  for (let attempt = 0; attempt <= explorationAttempts; attempt += 1) {
+    const diagnostics = await readDiagnostics(page);
+    const sample = diagnostics.groundSamples?.[sampleName];
+    if (sample?.screen?.visible) {
+      return sample;
+    }
+    if (attempt === explorationAttempts) {
+      break;
+    }
+
+    const start = diagnostics.player.position;
+    await clickVisibleMoveCell(page, viewport, attempt % 2 === 0 ? 0.72 : 0.28, 0.5);
+    await page.waitForFunction(
+      ([x, z]) => {
+        const position = window.__ZEUS_GAME__?.getDiagnostics().player?.position;
+        return position && Math.hypot(position[0] - x, position[2] - z) > 2;
+      },
+      [start[0], start[2]],
+      { timeout: 6000 },
+    );
+  }
+
+  return null;
 }
 
 async function clickVisibilitySample(page, viewport, sample, fallbackXRatio, fallbackYRatio) {

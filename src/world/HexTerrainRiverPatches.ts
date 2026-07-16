@@ -10,20 +10,9 @@ import {
   LINE_SWAY_MIRROR,
   TIGHT_BEND,
   TIGHT_BEND_ALTERNATE,
-  patchCell as c,
 } from "./HexTerrainLinearShapes";
 
 export const RIVER_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
-  {
-    id: "patch.river.source",
-    family: "river",
-    weight: 4,
-    selectionGroup: "river.endpoint",
-    selectionGroupWeight: 24,
-    topology: "endpoint",
-    rotations: 6,
-    cells: { river: [c(1, -2), c(1, -1), c(0, 0)] },
-  },
   ...straightRiverPatches(),
   ...bendRiverPatches(),
   {
@@ -31,8 +20,9 @@ export const RIVER_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
     family: "river",
     weight: 2,
     selectionGroup: "river.junction",
-    selectionGroupWeight: 12,
+    selectionGroupWeight: 2,
     topology: "junction",
+    riverFlow: { inputs: ["ne", "e"], outputs: ["sw"] },
     rotations: 6,
     cells: { river: LINE_FORK },
   },
@@ -51,8 +41,9 @@ function straightRiverPatches(): AuthoredPatchDefinition[] {
     family: "river",
     weight,
     selectionGroup: "river.straight",
-    selectionGroupWeight: 54,
+    selectionGroupWeight: 5,
     topology: "straight",
+    riverFlow: { inputs: ["ne"], outputs: ["sw"], reversible: true },
     rotations: 6,
     cells: { river },
   }));
@@ -69,8 +60,13 @@ function bendRiverPatches(): AuthoredPatchDefinition[] {
     family: "river",
     weight: 8,
     selectionGroup,
-    selectionGroupWeight: 30,
+    selectionGroupWeight: 15,
     topology,
+    riverFlow: {
+      inputs: ["ne"],
+      outputs: [topology === "tight-bend" ? "e" : "se"],
+      reversible: true,
+    },
     rotations: 6,
     cells: { river },
   })) as AuthoredPatchDefinition[];
