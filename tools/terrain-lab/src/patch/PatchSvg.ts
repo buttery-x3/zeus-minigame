@@ -7,7 +7,7 @@ const COMPONENT_COLORS = ["#f7c948", "#e66f51", "#aa7ee8", "#58d6c7", "#ff8fcf",
 
 export function createPatchSvg(inspection: TerrainVariantInspection, options: { labels?: boolean; components?: boolean } = {}) {
   const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", "-118 -102 236 204");
+  svg.setAttribute("viewBox", "-136 -124 272 248");
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", `Patch ${inspection.id}`);
   svg.classList.add("patch-svg");

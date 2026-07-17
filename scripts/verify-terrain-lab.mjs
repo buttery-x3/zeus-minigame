@@ -51,12 +51,37 @@ async function verifyViewport(browser, viewport) {
   await page.locator(".comparison-toggle").click();
   await page.waitForSelector(".comparison-patch .patch-svg");
   if (await page.locator(".comparison-patch .patch-svg").count() !== 2) throw new Error(`${viewport.name} fallback preview did not render both interiors`);
-  const comparisonSpacing = await page.evaluate(() => [...document.querySelectorAll(".comparison-patch")].map((card) => ({
-    headingBottom: card.querySelector("h4")?.getBoundingClientRect().bottom ?? 0,
-    patchTop: card.querySelector(".patch-svg")?.getBoundingClientRect().top ?? 0,
-  })));
-  if (comparisonSpacing.some(({ headingBottom, patchTop }) => patchTop < headingBottom + 6)) {
-    throw new Error(`${viewport.name} comparison patch overlapped its title: ${JSON.stringify(comparisonSpacing)}`);
+  const comparisonBounds = await page.evaluate(() => [...document.querySelectorAll(".comparison-patch")].map((card) => {
+    const bounds = (selector) => {
+      const rect = card.querySelector(selector)?.getBoundingClientRect();
+      return rect ? { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left } : null;
+    };
+    const cardRect = card.getBoundingClientRect();
+    const frame = card.querySelector(".comparison-preview-frame");
+    const preview = card.querySelector(".patch-svg");
+    const previewRect = preview?.getBoundingClientRect();
+    const contentsContained = previewRect ? [...preview.querySelectorAll("polygon")].every((polygon) => {
+      const rect = polygon.getBoundingClientRect();
+      return rect.top >= previewRect.top - 1 && rect.right <= previewRect.right + 1
+        && rect.bottom <= previewRect.bottom + 1 && rect.left >= previewRect.left - 1;
+    }) : false;
+    return {
+      card: { top: cardRect.top, right: cardRect.right, bottom: cardRect.bottom, left: cardRect.left },
+      header: bounds(".comparison-patch-header"),
+      frame: bounds(".comparison-preview-frame"),
+      preview: bounds(".patch-svg"),
+      frameOverflow: frame ? getComputedStyle(frame).overflow : null,
+      contentsContained,
+    };
+  }));
+  const comparisonEscaped = comparisonBounds.some(({ card, header, frame, preview, frameOverflow, contentsContained }) => {
+    if (!card || !header || !frame || !preview || frameOverflow !== "hidden" || !contentsContained) return true;
+    const inside = (inner, outer) => inner.top >= outer.top - 1 && inner.right <= outer.right + 1
+      && inner.bottom <= outer.bottom + 1 && inner.left >= outer.left - 1;
+    return frame.top < header.bottom + 8 || !inside(frame, card) || !inside(preview, frame);
+  });
+  if (comparisonEscaped) {
+    throw new Error(`${viewport.name} comparison preview escaped its dedicated frame: ${JSON.stringify(comparisonBounds)}`);
   }
   if (!(await page.locator(".details-stack").textContent()).includes("river-1")) throw new Error(`${viewport.name} derived river component was not displayed`);
 

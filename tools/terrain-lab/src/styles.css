@@ -97,10 +97,12 @@ h4 { margin-bottom: .4rem; }
 .comparison-advanced { margin: 10px 0; color: #90a6b1; font-size: .75rem; }
 .comparison-advanced summary { margin-bottom: 8px; cursor: pointer; }
 .comparison-advanced input { width: 145px; margin-right: 7px; }
-.comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.comparison-patch { display: grid; grid-template-rows: auto minmax(0, 1fr); align-content: start; justify-items: center; gap: 14px; padding: 12px; border-radius: 8px; background: #121a20; }
-.comparison-patch h4 { position: relative; z-index: 1; margin: 0; line-height: 1.25; }
-.comparison-patch .patch-svg { max-height: 225px; }
+.comparison-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; gap: 14px; }
+.comparison-patch { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 12px; overflow: hidden; border-radius: 8px; background: #121a20; }
+.comparison-patch-header { display: flex; min-height: 20px; flex: none; align-items: center; justify-content: center; padding: 0 6px; text-align: center; }
+.comparison-patch h4 { margin: 0; line-height: 1.25; }
+.comparison-preview-frame { display: grid; width: 100%; height: clamp(220px, 24vw, 320px); min-width: 0; place-items: center; padding: 16px; overflow: hidden; border: 1px solid #25343e; border-radius: 7px; background: #0e161c; }
+.comparison-preview-frame .patch-svg { width: 100%; height: 100%; max-width: 100%; max-height: 100%; overflow: hidden; }
 .comparison-summary { margin: 12px 0 0; color: #adbdc5; font-size: .78rem; }
 
 .world-view { display: grid; grid-template-columns: minmax(620px, 1fr) 380px; min-height: 0; }

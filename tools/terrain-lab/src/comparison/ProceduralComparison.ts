@@ -64,7 +64,11 @@ function renderResult(authored: HexPatchTileVariant, seed: number, host: HTMLEle
 
 function comparisonPatch(title: string, inspection: ReturnType<typeof inspectTerrainVariant>) {
   const article = element("article", "comparison-patch");
-  article.append(element("h4", undefined, title), createPatchSvg(inspection, { labels: false, components: true }));
+  const header = element("header", "comparison-patch-header");
+  const preview = element("div", "comparison-preview-frame");
+  header.append(element("h4", undefined, title));
+  preview.append(createPatchSvg(inspection, { labels: false, components: true }));
+  article.append(header, preview);
   return article;
 }
 
