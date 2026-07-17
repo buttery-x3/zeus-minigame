@@ -25,6 +25,7 @@ export type { AuthoredPatchRiverFlow, HexPatchRiverPort, HexPatchRiverPorts } fr
 
 export type HexPatchEdgeSignature = HexEdgeKind[];
 export type HexPatchFamily = "open" | "cliff" | "river" | "lake" | "transition";
+export type HexPatchAuthorCategory = HexPatchFamily;
 export type HexPatchProvenance = "authored" | "procedural";
 export type HexPatchTopology = "open" | "isolated" | "endpoint" | "straight" | "tight-bend" | "gentle-bend" | "junction" | "mixed";
 export type HexPatchRiverTerminal = "lake" | "cliff";
@@ -69,6 +70,8 @@ export type HexPatchTileVariant = {
 
 export type AuthoredPatchDefinition = {
   id: string;
+  displayName?: string;
+  category?: HexPatchAuthorCategory;
   family: HexPatchFamily;
   weight: number;
   selectionGroup?: string;

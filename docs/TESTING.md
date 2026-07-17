@@ -9,6 +9,12 @@ npm run test:game
 npm run verify:render
 ```
 
+The local terrain workbench has an additional isolated build and browser check:
+
+```bash
+npm run verify:terrain-lab
+```
+
 An extensive terrain-only characterization run is available separately through `npm run test:terrain:soak`.
 
 Use the combined command when you want the normal full check:
@@ -16,6 +22,14 @@ Use the combined command when you want the normal full check:
 ```bash
 npm run verify
 ```
+
+The combined command includes the terrain-workbench check after the production game checks.
+
+## Terrain Workbench Verification
+
+`npm run verify:terrain-lab` builds the separate `tools/terrain-lab` Vite entry and opens it at 1280×720 and 3440×1440 viewports. It verifies viewport containment, the dirt/meadow/rock-free authored vocabulary, exact cliff-river filtering, derived component display, and the collapsed and explicitly boundary-only procedural comparison. Patch Author coverage checks catalog edit and clone semantics, the complete 19-cell editor, brush and bucket paint, undo/redo, local draft saving, and canvas containment. Connection Lab coverage additionally opens a boundary-locked authoring draft and promotes a candidate realization. The verifier also resolves a complete ring, checks authored/procedural topology results and preview containment, persists a draft decision, generates canonical coverage, and reopens a witness. The witness path runs, saves, and batch-checks a topology recipe experiment. World checks cover one-patch and complete bounded generation, fit/zoom controls, Canvas patch selection, the authored catalog link, and the committed-neighbor handoff back to Connection Lab. It also scans the generated region's feature-component graph, verifies the network rollup and issue queue, and follows an available issue back to World Explorer. Browser console and page errors fail the check.
+
+The production build does not include the workbench. The workbench smoke test uses port `5176`, separate from the normal game and game-verification ports.
 
 ## Build Check
 
@@ -72,7 +86,7 @@ Mobile layouts and controls are not currently supported or included in render ve
 
 ## Terrain Function Verification
 
-`npm run test:terrain` runs deterministic TypeScript function tests through Vitest. It validates every authored patch and rotation, confirms the `5/15/15/2` river topology budgets, directly halved cliff definition weights, and grouped cove budget, excludes the isolated all-open lake basin, and checks that generated banks remain absent. It rejects authored one-exit rivers without a physically adjacent lake or cliff terminal, requires cliff-output/continuation/lake-input flow roles, rejects output-to-output joins and directed river cycles, verifies the required river-mouth profile/angle matrix, and requires an authored reverse match for every lake-shore and mouth socket. Targeted clearance tests reject distance-three river/lake and river/cliff arrangements hidden behind `open/open/open` sockets, retain and score legal distance-four arrangements, reject meeting cove ports while allowing cove-to-shore/mouth connections, and prove that semantic connection preference wins before selection weights. `GridWorld` tests require committed reads and generation requests to leave terrain unchanged until the explicit bounded step runs. Patch-boundary tests require only inter-patch shared edges and deduplicate every rendered segment. The suite also exercises open-core and homogeneous/mixed procedural fills, checks deterministic output, and enumerates every center boundary reachable from six mutually compatible authored neighbors. Rotationally equivalent neighborhoods are solved as canonical classes and rotation behavior is verified separately. Exact movement-topology tests distinguish an allowed U-shaped mixed barrier and solid obstacle mass from a wall/river/lake ring around walkable terrain. Feature-graph tests continue to distinguish short cliff extensions and near-closures, while a forced closure is now rejected by the hard topology rule. Runtime repair coverage requires the constant-work termination path and the three-patch frame budget. Multi-seed rolling stress requires active hydrology, cove, river/cliff-clearance, and river-flow diagnostics, enclosure rejection, gentle-bend vocabulary, and broad terrain-composition catastrophe guards while committed cove/hydrology/river-flow/enclosure samples, synthesis failures, emergency substitutions, contradictions, and socket mismatches remain at zero.
+`npm run test:terrain` runs deterministic TypeScript function tests through Vitest. It validates every authored patch and rotation, including Patch Author document round-tripping, compilation, paint/flood-fill boundary locks, transforms, bounded history, and versioned pack parsing. It confirms the `5/15/15/2` river topology budgets, directly halved cliff definition weights, and grouped cove budget, excludes the isolated all-open lake basin, and checks that generated banks remain absent. It rejects authored one-exit rivers without a physically adjacent lake or cliff terminal, requires cliff-output/continuation/lake-input flow roles, rejects output-to-output joins and directed river cycles, verifies the required river-mouth profile/angle matrix, and requires an authored reverse match for every lake-shore and mouth socket. Targeted clearance tests reject distance-three river/lake and river/cliff arrangements hidden behind `open/open/open` sockets, retain and score legal distance-four arrangements, reject meeting cove ports while allowing cove-to-shore/mouth connections, and prove that semantic connection preference wins before selection weights. `GridWorld` tests require committed reads and generation requests to leave terrain unchanged until the explicit bounded step runs. Patch-boundary tests require only inter-patch shared edges and deduplicate every rendered segment. The suite also exercises open-core and homogeneous/mixed procedural fills, checks deterministic output, exhaustively enumerates bounded Connection Lab interiors, groups topology alternatives, verifies rotation/mirror canonical boundary keys, evaluates and canonicalizes topology recipes, and builds feature networks across committed patch seams and river-lake contacts. Exact movement-topology tests distinguish an allowed U-shaped mixed barrier and solid obstacle mass from a wall/river/lake ring around walkable terrain. Feature-graph tests continue to distinguish short cliff extensions and near-closures, while a forced closure is now rejected by the hard topology rule. Runtime repair coverage requires the constant-work termination path and the three-patch frame budget. Multi-seed rolling stress requires active hydrology, cove, river/cliff-clearance, and river-flow diagnostics, enclosure rejection, gentle-bend vocabulary, and broad terrain-composition catastrophe guards while committed cove/hydrology/river-flow/enclosure samples, synthesis failures, emergency substitutions, contradictions, and socket mismatches remain at zero.
 
 ### Terrain Composition Characterization
 

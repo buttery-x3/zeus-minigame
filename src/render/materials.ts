@@ -17,11 +17,6 @@ export function createGameMaterials(unlit = false) {
       roughness: 0.92,
       metalness: 0.02,
     }),
-    dirt: createMaterial(unlit, {
-      color: 0x242019,
-      roughness: 0.94,
-      metalness: 0.02,
-    }),
     sand: createMaterial(unlit, {
       color: 0x343125,
       roughness: 0.9,

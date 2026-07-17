@@ -16,14 +16,14 @@ import {
 
 export const CLIFF_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
   {
-    id: "patch.rock.island",
+    id: "patch.cliff.island",
     family: "cliff",
     weight: 2,
     topology: "isolated",
     cells: { wall: [c(0, 0)] },
   },
   {
-    id: "patch.rock.pair",
+    id: "patch.cliff.pair",
     family: "cliff",
     weight: 1,
     topology: "isolated",

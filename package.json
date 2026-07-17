@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc && vite build",
+    "terrain:lab": "vite --config vite.terrain-lab.config.ts --host 127.0.0.1",
+    "terrain:lab:build": "vite build --config vite.terrain-lab.config.ts",
+    "terrain:patches:install": "tsx scripts/install-terrain-patches.ts",
     "test:terrain": "vitest run src/world --exclude **/*.soak.test.ts",
     "test:terrain:soak": "vitest run src/world/TerrainComposition.soak.test.ts",
     "test:game": "vitest run src/game/collision src/game/enemies src/game/navigation src/game/perf",
@@ -16,7 +19,8 @@
     "pm2:stop": "pm2 delete zeus-minigame",
     "deploy:production": "bash scripts/deploy-production.sh",
     "verify:render": "node scripts/verify-render.mjs",
-    "verify": "npm run build && npm run test:terrain && npm run test:game && npm run verify:render"
+    "verify:terrain-lab": "npm run terrain:lab:build && node scripts/verify-terrain-lab.mjs",
+    "verify": "npm run build && npm run test:terrain && npm run test:game && npm run verify:render && npm run verify:terrain-lab"
   },
   "dependencies": {
     "three": "^0.184.0"
@@ -24,6 +28,7 @@
   "devDependencies": {
     "@types/three": "^0.184.1",
     "playwright-core": "^1.60.0",
+    "tsx": "^4.23.1",
     "typescript": "^5.9.3",
     "vite": "^7.2.4",
     "vitest": "^4.1.10"

@@ -36,6 +36,10 @@ import {
 import type { CoveConnection } from "./TerrainLakePolicy";
 import { authoredRiverFlowsCanNeighbor, type RiverFlowViolation } from "./TerrainRiverFlowPolicy";
 import type { GeneratedTerrainSnapshot } from "./TerrainCompositionReport";
+import {
+  inspectTerrainVariant,
+  type GeneratedTerrainInspectionSnapshot,
+} from "./TerrainInspectionSnapshot";
 
 type CommittedPatch = HexCoord & {
   variant: HexPatchTileVariant;
@@ -198,6 +202,23 @@ export class WfcTerrainProvider implements TerrainProvider {
       cells: patches.flatMap((patch) => [...patch.variant.cells.values()].map((local) => {
         const cell = patchLocalToWorld(patch, local);
         return { q: cell.q, r: cell.r, structure: local.structure };
+      })),
+    };
+  }
+
+  captureTerrainInspectionSnapshot(center: HexCoord, patchRadius: number): GeneratedTerrainInspectionSnapshot {
+    requireBoundedPatchRadius(patchRadius);
+    const patches = createHexPatchRegion(patchRadius)
+      .map((offset) => this.committedPatches.get(hexCellKey(center.q + offset.q, center.r + offset.r)))
+      .filter((patch): patch is CommittedPatch => Boolean(patch));
+    return {
+      seed: this.seed,
+      generationVersion: this.generatedPatchCount,
+      patches: patches.map((patch) => ({
+        q: patch.q,
+        r: patch.r,
+        emergency: patch.emergency,
+        variant: inspectTerrainVariant(patch.variant),
       })),
     };
   }
