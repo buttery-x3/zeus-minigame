@@ -150,6 +150,20 @@ h4 { margin-bottom: .4rem; }
 .candidate-preview { display: grid; height: 150px; place-items: center; padding: 7px; overflow: hidden; border-radius: 7px; background: #0d151a; }
 .candidate-preview .patch-svg { width: 100%; height: 100%; max-height: 100%; overflow: hidden; }
 .candidate-count { position: absolute; z-index: 1; top: 7px; right: 7px; padding: 3px 6px; border-radius: 999px; color: #d9e7ed; background: #28414d; font-size: .62rem; }
+.recipe-experiment { margin: 12px 0 15px; padding: 0; }
+.recipe-experiment > summary { padding: 12px 14px; color: #dce7ec; cursor: pointer; font-weight: 750; }
+.recipe-experiment-content { padding: 0 14px 14px; }
+.recipe-explainer, .recipe-hint { margin-bottom: 9px; color: #9db0ba; font-size: .75rem; }
+.saved-recipe-row, .recipe-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 7px; }
+.saved-recipe-row { margin-bottom: 9px; }
+.saved-recipe-row select { min-width: 210px; }
+.recipe-controls { padding: 9px; border: 1px solid #293a45; border-radius: 8px; background: #111920; }
+.recipe-controls .field { display: grid; gap: 4px; }
+.recipe-controls .field:first-child { min-width: 210px; flex: 1; }
+.recipe-controls .field:first-child input { width: 100%; }
+.recipe-check { align-self: center; max-width: 160px; }
+.recipe-reasons { margin: 8px 0 0; color: #d1ad98; font-size: .74rem; }
+.recipe-batch-result p { margin: 9px 0 0; }
 
 .coverage-view { overflow-y: auto; padding: 18px; }
 .coverage-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
@@ -166,6 +180,36 @@ h4 { margin-bottom: .4rem; }
 .coverage-table td { max-width: 420px; padding: 9px 10px; border-top: 1px solid #24343e; }
 .coverage-table tr.unresolved { background: rgba(106, 52, 43, .2); }
 .coverage-table tr.conflicting td:nth-child(4) { color: #efbe68; font-weight: 800; }
+
+.network-view { overflow-y: auto; padding: 18px; }
+.network-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.network-actions, .network-filters, .network-issue-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.network-empty { margin-top: 30px; padding: 32px; border: 1px dashed #334751; border-radius: 10px; text-align: center; }
+.network-summary { display: grid; grid-template-columns: repeat(6, minmax(100px, 1fr)); gap: 8px; margin: 14px 0; }
+.network-stat { display: grid; padding: 10px; border-radius: 8px; background: #111a21; }
+.network-stat strong { font-size: 1.2rem; }
+.network-stat span { color: #8398a3; font-size: .66rem; text-transform: uppercase; }
+.network-rollup { margin-bottom: 12px; }
+.network-rollup-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 6px 16px; }
+.network-rollup-rows p { margin: 0; color: #9eb0b9; font: .7rem ui-monospace, monospace; }
+.network-filters { margin: 12px 0; }
+.network-filters input { min-width: 300px; }
+.network-issue-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.network-issue { display: grid; gap: 8px; padding: 12px; border: 1px solid #30434e; border-left-width: 4px; border-radius: 9px; background: #121b21; }
+.network-issue.error { border-left-color: #e7685f; }
+.network-issue.warning { border-left-color: #d6a547; }
+.network-issue.info { border-left-color: #5aa7c5; }
+.network-issue p { margin: 0; color: #c5d1d6; font-size: .78rem; }
+.network-issue-header { display: flex; align-items: center; gap: 7px; text-transform: capitalize; }
+.severity-badge { padding: 3px 6px; border-radius: 999px; font-size: .6rem; font-weight: 800; text-transform: uppercase; }
+.severity-badge.error { color: #ffc3be; background: #532c2a; }
+.severity-badge.warning { color: #f4d69d; background: #4b3b20; }
+.severity-badge.info { color: #b9e0ef; background: #203d49; }
+.issue-patches { display: flex; flex-wrap: wrap; gap: 5px; }
+.issue-patches code { padding: 3px 6px; border-radius: 5px; color: #b8cad2; background: #0d151a; }
+.network-issue details { color: #8298a3; font-size: .68rem; }
+.network-issue details summary { cursor: pointer; }
+.network-node-list { display: block; margin-top: 6px; overflow-wrap: anywhere; }
 
 .world-view { display: grid; grid-template-columns: minmax(620px, 1fr) 380px; min-height: 0; }
 .world-stage { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); padding: 10px; }

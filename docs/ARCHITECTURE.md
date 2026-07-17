@@ -49,6 +49,8 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/world/HexTerrainPatchValidation.ts`: authored and procedural patch structural validation.
 - `src/world/HexTerrainPatchAnalysis.ts`: read-only cell-derived components, boundary ports, feature contacts, and clear metadata contradictions for terrain tooling.
 - `src/world/TerrainInspectionSnapshot.ts`: detached serializable views of authored and dynamically generated procedural patch interiors.
+- `src/world/TerrainTopologyRecipe.ts`: rotation/mirror-canonical internal-topology contracts and read-only experiments over exhaustive Connection Lab procedural candidates.
+- `src/world/TerrainFeatureNetwork.ts`: committed-world river, lake, and cliff component graphs plus frontier-aware network issue detection.
 - `src/world/ProceduralTerrainPatch.ts`: deterministic seven-cell interior solver used only when no safe authored patch fits accumulated boundary constraints.
 - `src/world/ProceduralTerrainPatchScoring.ts`: procedural fill connectivity constraints and coherence scoring.
 - `src/world/TerrainPatchLoopPolicy.ts`: patch-feature connectivity graphs and bounded river/cliff short-loop detection.
@@ -82,7 +84,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/lib/math.ts`: numeric helpers.
 - `src/lib/dom.ts`: DOM query helper.
 - `scripts/verify-render.mjs`: headless browser smoke test for rendering, HUD, and core interactions.
-- `tools/terrain-lab`: separate local plain-TypeScript terrain catalog, Connection Lab, decision/coverage matrix, and bounded world explorer, importing the real `src/world` engine without entering the production build.
+- `tools/terrain-lab`: separate local plain-TypeScript terrain catalog, Connection Lab with topology recipe experiments, decision/coverage matrix, bounded world explorer, and feature-network analysis workspace, importing the real `src/world` engine without entering the production build.
 - `scripts/verify-terrain-lab.mjs`: headless browser smoke test for the local terrain workbench.
 
 ## Boundaries

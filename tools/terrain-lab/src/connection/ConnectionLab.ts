@@ -11,9 +11,11 @@ import {
 } from "../../../../src/world/TerrainConnectionScenario";
 import { inspectTerrainVariant } from "../../../../src/world/TerrainInspectionSnapshot";
 import { createTerrainTopologySignature } from "../../../../src/world/TerrainTopologySignature";
+import type { TerrainRecipeExperiment } from "../../../../src/world/TerrainTopologyRecipe";
 import { clear, element, labeledControl } from "../dom";
 import { createPatchSvg } from "../patch/PatchSvg";
 import type { ScenarioStore } from "../scenarios/ScenarioStore";
+import { RecipeExperimentPanel } from "./RecipeExperimentPanel";
 
 export class ConnectionLab {
   readonly root = element("div", "connection-view workspace-view");
@@ -22,10 +24,14 @@ export class ConnectionLab {
   private readonly dynamicVariants = new Map<string, HexPatchTileVariant>();
   private readonly editor = element("section", "connection-editor");
   private readonly results = element("main", "connection-results");
+  private readonly recipePanel: RecipeExperimentPanel;
   private scenario = createTerrainConnectionScenario();
   private resolution: TerrainConnectionResolution | null = null;
+  private recipeExperiment: TerrainRecipeExperiment | null = null;
 
-  constructor(private readonly store: ScenarioStore) {}
+  constructor(private readonly store: ScenarioStore) {
+    this.recipePanel = new RecipeExperimentPanel(store);
+  }
 
   mount() {
     this.root.append(this.editor, this.results);
@@ -36,6 +42,7 @@ export class ConnectionLab {
   loadScenario(scenario: TerrainConnectionScenario) {
     this.scenario = structuredClone(scenario);
     this.resolution = null;
+    this.recipeExperiment = null;
     this.render();
   }
 
@@ -69,7 +76,11 @@ export class ConnectionLab {
     seed.value = String(this.scenario.seed);
     seed.setAttribute("aria-label", "Connection seed");
     seed.addEventListener("change", () => { this.scenario.seed = Number(seed.value) || 0; this.resolution = null; });
-    const resolve = button("Resolve", () => { this.resolution = resolveTerrainConnectionScenario(this.scenario, this.allVariants()); this.render(); }, "primary");
+    const resolve = button("Resolve", () => {
+      this.resolution = resolveTerrainConnectionScenario(this.scenario, this.allVariants());
+      this.recipeExperiment = null;
+      this.render();
+    }, "primary");
     resolve.dataset.action = "resolve-connection";
     const save = button("Save draft", () => {
       this.scenario = this.store.saveScenario(this.scenario);
@@ -183,7 +194,13 @@ export class ConnectionLab {
       element("code", "boundary-key", resolution.canonicalBoundaryKey),
       this.createMetricRow("Seam problems", seamProblems, "Policy-safe authored", resolution.authored.filter((candidate) => candidate.policySafe).length, "Assignments searched", resolution.attemptedAssignments),
     );
-    this.results.append(summary, this.createDecisionPanel());
+    this.results.append(summary, this.createDecisionPanel(), this.recipePanel.render(
+      resolution,
+      this.scenario,
+      this.allVariants(),
+      (experiment) => { this.recipeExperiment = experiment; this.renderResults(); },
+    ));
+    if (this.recipeExperiment) this.results.append(this.createRecipeResults(this.recipeExperiment));
     if (resolution.generatorFallback) {
       this.results.append(this.createCandidateSection("Current procedural fallback", [{
         variant: resolution.generatorFallback,
@@ -229,6 +246,25 @@ export class ConnectionLab {
     }, "primary");
     panel.append(classification, policy, notes, save);
     return panel;
+  }
+
+  private createRecipeResults(experiment: TerrainRecipeExperiment) {
+    const section = element("section", "recipe-results candidate-section");
+    section.append(element("h3", undefined, "Experimental recipe result"));
+    section.append(element("p", experiment.accepted.length > 0 ? "good" : "warning", experiment.summary));
+    if (experiment.accepted.length > 0) {
+      const grid = element("div", "candidate-grid");
+      experiment.accepted.slice(0, 24).forEach((candidate) => grid.append(this.createCandidateCard(candidate)));
+      section.append(grid);
+    } else {
+      const reasons = element("ul", "recipe-reasons");
+      Object.entries(experiment.rejectionReasonCounts)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, 8)
+        .forEach(([reason, count]) => reasons.append(element("li", undefined, `${reason}: ${count}`)));
+      section.append(reasons);
+    }
+    return section;
   }
 
   private createCandidateSection(title: string, candidates: readonly TerrainResolutionCandidate[]) {

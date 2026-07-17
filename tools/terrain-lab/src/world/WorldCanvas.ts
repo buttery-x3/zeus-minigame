@@ -1,6 +1,7 @@
 import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, hexCellKey } from "../../../../src/world/hexCoordinates";
 import { HEX_PATCH_LOCAL_CELL_KEYS, patchLocalToWorld } from "../../../../src/world/HexTerrainPatch";
 import type { GeneratedTerrainInspectionSnapshot, GeneratedTerrainPatchInspection } from "../../../../src/world/TerrainInspectionSnapshot";
+import type { TerrainNetworkIssue } from "../../../../src/world/TerrainFeatureNetwork";
 import { axialPoint } from "../patch/PatchSvg";
 import { terrainCellColor } from "../terrainColors";
 
@@ -12,7 +13,8 @@ export class WorldCanvas {
   private snapshot: GeneratedTerrainInspectionSnapshot | null = null;
   private selected: GeneratedTerrainPatchInspection | null = null;
   private hitCenters: HitCenter[] = [];
-  private options = { boundaries: true, ids: false, provenance: true };
+  private options = { boundaries: true, ids: false, provenance: true, network: true };
+  private networkIssues: readonly TerrainNetworkIssue[] = [];
   private zoom = 1;
   private pan = { x: 0, y: 0 };
   private lastProject: ((q: number, r: number) => { x: number; y: number }) | null = null;
@@ -46,6 +48,11 @@ export class WorldCanvas {
 
   setOptions(options: Partial<typeof this.options>) {
     Object.assign(this.options, options);
+    this.draw();
+  }
+
+  setNetworkIssues(issues: readonly TerrainNetworkIssue[]) {
+    this.networkIssues = issues;
     this.draw();
   }
 
@@ -130,6 +137,7 @@ export class WorldCanvas {
     }
     if (this.options.ids) drawPatchIds(context, this.hitCenters, size);
     if (this.options.provenance) drawProvenance(context, this.hitCenters, size);
+    if (this.options.network) drawNetworkIssues(context, this.hitCenters, this.networkIssues, size);
   }
 
   private handleWheel(event: WheelEvent) {
@@ -231,6 +239,27 @@ function drawProvenance(context: CanvasRenderingContext2D, hits: readonly HitCen
     context.beginPath();
     context.arc(hit.x, hit.y, Math.max(2.5, size * .24), 0, Math.PI * 2);
     context.fill();
+  }
+}
+
+function drawNetworkIssues(context: CanvasRenderingContext2D, hits: readonly HitCenter[], issues: readonly TerrainNetworkIssue[], size: number) {
+  const severityByPatch = new Map<string, TerrainNetworkIssue["severity"]>();
+  const rank = { error: 3, warning: 2, info: 1 };
+  for (const issue of issues) {
+    for (const patch of issue.patches) {
+      const key = hexCellKey(patch.q, patch.r);
+      const existing = severityByPatch.get(key);
+      if (!existing || rank[issue.severity] > rank[existing]) severityByPatch.set(key, issue.severity);
+    }
+  }
+  for (const hit of hits) {
+    const severity = severityByPatch.get(hexCellKey(hit.patch.q, hit.patch.r));
+    if (!severity) continue;
+    context.beginPath();
+    context.arc(hit.x, hit.y, Math.max(7, size * 2.35), 0, Math.PI * 2);
+    context.strokeStyle = severity === "error" ? "#ff665a" : severity === "warning" ? "#f2b84b" : "#66b9d8";
+    context.lineWidth = Math.max(2, size * .16);
+    context.stroke();
   }
 }
 

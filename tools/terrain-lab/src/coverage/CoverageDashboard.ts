@@ -182,7 +182,7 @@ export class CoverageDashboard {
   }
 
   private exportDecisions() {
-    const fixture = createDecisionFixture(this.store.getScenarios(), this.store.getDecisions(), this.variants);
+    const fixture = createDecisionFixture(this.store.getScenarios(), this.store.getDecisions(), this.variants, this.store.getRecipes());
     const blob = new Blob([`${JSON.stringify(fixture, null, 2)}\n`], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -205,7 +205,7 @@ export class CoverageDashboard {
         if (!terrainDecisionFixtureIsValid(fixture)) throw new Error("Unsupported fixture schema");
         const audit = auditTerrainDecisionFixture(fixture, this.variants);
         if (!audit.valid) throw new Error(audit.errors.slice(0, 4).join("; "));
-        this.store.replaceFromFixture(fixture.decisions);
+        this.store.replaceFromFixture(fixture.decisions, fixture.recipes ?? []);
       } catch (error) {
         alert(`Could not import terrain decisions: ${error instanceof Error ? error.message : String(error)}`);
       }

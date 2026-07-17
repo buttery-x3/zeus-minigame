@@ -116,6 +116,16 @@ async function verifyViewport(browser, viewport) {
   await page.getByRole("button", { name: "Open in lab" }).first().click();
   const placedWitnessNeighbors = await page.locator(".neighbor-slot select").evaluateAll((selects) => selects.filter((select) => select.value).length);
   if (placedWitnessNeighbors !== 6) throw new Error(`${viewport.name} coverage witness did not restore a full neighbor ring`);
+  await page.getByRole("button", { name: "Resolve", exact: true }).click();
+  await page.waitForSelector(".recipe-controls");
+  await page.getByLabel("Recipe action").selectOption("terminate");
+  await page.getByRole("button", { name: "Run experiment" }).click();
+  await page.waitForSelector(".recipe-results");
+  const recipeCopy = await page.locator(".recipe-results").textContent();
+  if (!recipeCopy.includes("Experimental recipe result")) throw new Error(`${viewport.name} recipe experiment did not report a comparison`);
+  await page.getByRole("button", { name: "Save recipe" }).click();
+  await page.getByRole("button", { name: "Run saved scenarios" }).click();
+  if (!(await page.locator(".recipe-batch-result").textContent()).includes("saved scenarios checked")) throw new Error(`${viewport.name} recipe batch did not run saved scenarios`);
 
   await page.getByRole("button", { name: "World Explorer" }).click();
   await page.getByLabel("Patch radius").fill("3");
@@ -127,6 +137,18 @@ async function verifyViewport(browser, viewport) {
   const status = await page.locator(".world-status").textContent();
   if (!status.includes("37 / 37 patches") || !status.includes("authored") || !status.includes("procedural")) throw new Error(`${viewport.name} world status was incomplete: ${status}`);
   await assertViewportContained(page, viewport, "world");
+  await page.getByRole("button", { name: "Network Analysis" }).click();
+  await page.getByRole("button", { name: "Scan current region" }).click();
+  await page.waitForSelector(".network-summary");
+  if (await page.locator(".network-stat").count() !== 6) throw new Error(`${viewport.name} network summary was incomplete`);
+  if (await page.locator(".network-rollup").count() !== 1 || await page.locator(".network-issues").count() !== 1) throw new Error(`${viewport.name} network analysis omitted its rollup or issue queue`);
+  await page.getByLabel("Network issue severity").selectOption("all");
+  if (await page.locator(".network-issue").count() > 0) {
+    await page.getByRole("button", { name: "Focus in World Explorer" }).first().click();
+    if (await page.locator(".world-view").count() !== 1) throw new Error(`${viewport.name} network issue did not focus World Explorer`);
+  } else {
+    await page.getByRole("button", { name: "World Explorer" }).click();
+  }
   await page.getByRole("button", { name: "Zoom in" }).click();
   if (await page.locator(".zoom-output").textContent() !== "125%") throw new Error(`${viewport.name} zoom-in control did not update the camera`);
   await page.getByRole("button", { name: "Fit world" }).click();

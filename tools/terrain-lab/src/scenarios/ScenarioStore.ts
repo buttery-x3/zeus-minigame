@@ -2,13 +2,16 @@ import type {
   TerrainConnectionScenario,
   TerrainResolutionDecision,
 } from "../../../../src/world/TerrainConnectionScenario";
+import type { TerrainTopologyRecipe } from "../../../../src/world/TerrainTopologyRecipe";
 
 const SCENARIO_KEY = "zeus.terrain-lab.scenarios.v1";
 const DECISION_KEY = "zeus.terrain-lab.decisions.v1";
+const RECIPE_KEY = "zeus.terrain-lab.recipes.v1";
 
 export class ScenarioStore {
   private scenarios = readArray<TerrainConnectionScenario>(SCENARIO_KEY);
   private decisions = readArray<TerrainResolutionDecision>(DECISION_KEY);
+  private recipes = readArray<TerrainTopologyRecipe>(RECIPE_KEY);
   private readonly listeners = new Set<() => void>();
 
   getScenarios() {
@@ -17,6 +20,10 @@ export class ScenarioStore {
 
   getDecisions() {
     return structuredClone(this.decisions);
+  }
+
+  getRecipes() {
+    return structuredClone(this.recipes).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   saveScenario(scenario: TerrainConnectionScenario) {
@@ -43,7 +50,24 @@ export class ScenarioStore {
     return structuredClone(saved);
   }
 
-  replaceFromFixture(entries: readonly { scenario: TerrainConnectionScenario; decision: TerrainResolutionDecision }[]) {
+  saveRecipe(recipe: TerrainTopologyRecipe) {
+    const saved = structuredClone(recipe);
+    const index = this.recipes.findIndex((candidate) => candidate.id === saved.id);
+    if (index >= 0) this.recipes[index] = saved;
+    else this.recipes.push(saved);
+    this.persist();
+    return structuredClone(saved);
+  }
+
+  deleteRecipe(id: string) {
+    this.recipes = this.recipes.filter((recipe) => recipe.id !== id);
+    this.persist();
+  }
+
+  replaceFromFixture(
+    entries: readonly { scenario: TerrainConnectionScenario; decision: TerrainResolutionDecision }[],
+    recipes: readonly TerrainTopologyRecipe[] = [],
+  ) {
     for (const entry of entries) {
       if (entry.scenario.schemaVersion !== 1 || !entry.scenario.id || !entry.decision?.classification) continue;
       const scenarioIndex = this.scenarios.findIndex((candidate) => candidate.id === entry.scenario.id);
@@ -52,6 +76,11 @@ export class ScenarioStore {
       const decisionIndex = this.decisions.findIndex((candidate) => candidate.scenarioId === entry.scenario.id);
       if (decisionIndex >= 0) this.decisions[decisionIndex] = structuredClone(entry.decision);
       else this.decisions.push(structuredClone(entry.decision));
+    }
+    for (const recipe of recipes) {
+      const index = this.recipes.findIndex((candidate) => candidate.id === recipe.id);
+      if (index >= 0) this.recipes[index] = structuredClone(recipe);
+      else this.recipes.push(structuredClone(recipe));
     }
     this.persist();
   }
@@ -64,6 +93,7 @@ export class ScenarioStore {
   private persist() {
     localStorage.setItem(SCENARIO_KEY, JSON.stringify(this.scenarios));
     localStorage.setItem(DECISION_KEY, JSON.stringify(this.decisions));
+    localStorage.setItem(RECIPE_KEY, JSON.stringify(this.recipes));
     this.listeners.forEach((listener) => listener());
   }
 }

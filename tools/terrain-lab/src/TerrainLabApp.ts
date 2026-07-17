@@ -2,29 +2,45 @@ import { CatalogView } from "./catalog/CatalogView";
 import { ConnectionLab } from "./connection/ConnectionLab";
 import { CoverageDashboard } from "./coverage/CoverageDashboard";
 import { clear, element } from "./dom";
+import { NetworkAnalysisView } from "./network/NetworkAnalysisView";
 import { ScenarioStore } from "./scenarios/ScenarioStore";
 import { WorldExplorer } from "./world/WorldExplorer";
 
-type ViewName = "catalog" | "connection" | "coverage" | "world";
+type ViewName = "catalog" | "connection" | "coverage" | "network" | "world";
 
 export class TerrainLabApp {
   private readonly content = element("div", "app-content");
   private readonly catalog = new CatalogView();
   private readonly store = new ScenarioStore();
   private readonly connection = new ConnectionLab(this.store);
-  private readonly coverage = new CoverageDashboard(this.store, (scenario) => {
-    this.connection.loadScenario(scenario);
-    this.show("connection");
-  });
-  private readonly world = new WorldExplorer(
-    (id) => { if (this.catalog.selectVariantById(id)) this.show("catalog"); },
-    (neighbors, name, seed) => { this.connection.loadNeighborRing(neighbors, name, seed); this.show("connection"); },
-  );
+  private readonly coverage: CoverageDashboard;
+  private readonly world: WorldExplorer;
+  private readonly network: NetworkAnalysisView;
   private readonly views: Record<ViewName, HTMLElement>;
   private readonly tabs = new Map<ViewName, HTMLButtonElement>();
 
   constructor(private readonly root: HTMLElement) {
-    this.views = { catalog: this.catalog.mount(), connection: this.connection.mount(), coverage: this.coverage.mount(), world: this.world.mount() };
+    this.coverage = new CoverageDashboard(this.store, (scenario) => {
+      this.connection.loadScenario(scenario);
+      this.show("connection");
+    });
+    this.world = new WorldExplorer(
+      (id) => { if (this.catalog.selectVariantById(id)) this.show("catalog"); },
+      (neighbors, name, seed) => { this.connection.loadNeighborRing(neighbors, name, seed); this.show("connection"); },
+      (snapshot) => this.network.setSnapshot(snapshot),
+    );
+    this.network = new NetworkAnalysisView(
+      (issue) => { if (this.world.focusPatch(issue.patches[0])) this.show("world"); },
+      (issue) => this.world.openConnectionAt(issue.patches[0]),
+      (issues) => this.world.setNetworkIssues(issues),
+    );
+    this.views = {
+      catalog: this.catalog.mount(),
+      connection: this.connection.mount(),
+      coverage: this.coverage.mount(),
+      network: this.network.mount(),
+      world: this.world.mount(),
+    };
   }
 
   mount() {
@@ -37,6 +53,7 @@ export class TerrainLabApp {
       this.tab("catalog", "Patch Catalog"),
       this.tab("connection", "Connection Lab"),
       this.tab("coverage", "Decisions & Coverage"),
+      this.tab("network", "Network Analysis"),
       this.tab("world", "World Explorer"),
     );
     header.append(identity, nav);

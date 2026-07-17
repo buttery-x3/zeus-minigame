@@ -35,13 +35,27 @@ Resolve reports exact ring seams, every physically compatible authored orientati
 
 Scenarios can be saved as local drafts. A generated World Explorer patch can send its currently committed neighbor ring into the lab, including procedural variants that do not exist in the authored catalog.
 
+### Topology recipe experiments
+
+After resolving a ring that exposes wall, river, or lake ports, the recipe panel can describe a small internal-topology contract without editing JSON. A recipe can connect two ports, keep them separate, require an exact terminal, require or forbid a cross-feature contact, allow otherwise disconnected boundary structures, or require an open center.
+
+Running an experiment filters the already-enumerated procedural layouts against that contract and compares the surviving topology with the current procedural fallback. Rejection reason counts explain why candidates failed. Recipes are browser-local, can be reused on another scenario, and can be run across every saved scenario as a regression batch. They do not modify the production solver or authored catalog.
+
 ## Decisions and Coverage
 
 A resolved scenario can be classified as `accepted`, `rejected`, `needs-recipe`, or `intentionally-impossible`, with a separate authored/procedural resolution policy. Saving a decision also saves its scenario draft.
 
 The coverage matrix enumerates a deterministic sample of mutually compatible authored neighbor rings. It collapses equivalent center boundaries across all six rotations and their mirrored forms, retains one witness ring per canonical class, and reports authored coverage, procedural fallback coverage, internal-topology multiplicity, and any matching saved decision. Rows reopen their witness directly in the Connection Lab.
 
-Decision export produces stable, versioned JSON containing the scenario, exact and canonical boundary keys, decision, allowed authored IDs, and procedural topology keys. Import validates the schema before adding scenarios and decisions to local storage. Export and import are explicit file operations; neither operation edits `src/world`.
+Decision export produces stable, versioned JSON containing the scenario, exact and canonical boundary keys, decision, allowed authored IDs, procedural topology keys, and saved topology recipes with canonical rotation/mirror keys. Import validates the schema before adding scenarios, decisions, and recipes to local storage. Export and import are explicit file operations; neither operation edits `src/world`.
+
+## Network Analysis
+
+Generate a bounded region in World Explorer, then use **Scan current region** to construct read-only river, lake, and cliff component graphs from the exact committed patch interiors. Seam continuations and cell-derived contacts form graph edges; incomplete ports on the requested region's frontier are counted separately so a bounded sample is not mistaken for a complete world.
+
+The rollup reports connected river and lake networks, sources, sinks, terminals, junctions, river mouths, and frontier exposure. The issue queue detects flow-role mismatches and unknown flow, missing source/sink obligations, cycles, unsupported junctions, unusual lake-mouth counts, disconnected boundary structures, and nearby cliff components that could plausibly have connected. Severity and issue-type filters keep the default queue focused on actionable review items.
+
+Each issue lists its involved patch coordinates. **Focus in World Explorer** centers that patch and retains issue overlays; **Open local scenario** sends its committed neighbor ring to Connection Lab for candidate and recipe investigation. Analysis and overlays never change generated terrain.
 
 ## World Explorer
 

@@ -1,8 +1,9 @@
 import { MAX_TERRAIN_PATCH_REQUEST_RADIUS } from "../../../../src/world/TerrainProvider";
-import type { GeneratedTerrainPatchInspection } from "../../../../src/world/TerrainInspectionSnapshot";
+import type { GeneratedTerrainInspectionSnapshot, GeneratedTerrainPatchInspection } from "../../../../src/world/TerrainInspectionSnapshot";
 import { WFC_TERRAIN_SEED, WfcTerrainProvider } from "../../../../src/world/WfcTerrainProvider";
-import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, type HexDirection } from "../../../../src/world/hexCoordinates";
+import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, type HexCoord, type HexDirection } from "../../../../src/world/hexCoordinates";
 import { createPatchVariant, edgeForStructure, type HexPatchTileVariant } from "../../../../src/world/HexTerrainPatch";
+import type { TerrainNetworkIssue } from "../../../../src/world/TerrainFeatureNetwork";
 import { clear, element, labeledControl } from "../dom";
 import { createPatchDetails } from "../patch/PatchDetails";
 import { createPatchSvg } from "../patch/PatchSvg";
@@ -22,6 +23,7 @@ export class WorldExplorer {
   private radius = 5;
   private generationToken = 0;
   private generating = false;
+  private latestSnapshot: GeneratedTerrainInspectionSnapshot | null = null;
   private advanceButton!: HTMLButtonElement;
   private generateButton!: HTMLButtonElement;
   private centerButton!: HTMLButtonElement;
@@ -29,6 +31,7 @@ export class WorldExplorer {
   constructor(
     private readonly openInCatalog: (id: string) => void,
     private readonly openInConnection: (neighbors: Partial<Record<HexDirection, HexPatchTileVariant>>, name: string, seed: number) => void,
+    private readonly onSnapshot: (snapshot: GeneratedTerrainInspectionSnapshot | null) => void = () => undefined,
   ) {}
 
   mount() {
@@ -37,6 +40,25 @@ export class WorldExplorer {
     this.root.append(this.stage, this.details);
     this.renderDetails();
     return this.root;
+  }
+
+  focusPatch(coord: HexCoord) {
+    const patch = this.latestSnapshot?.patches.find((candidate) => candidate.q === coord.q && candidate.r === coord.r);
+    if (!patch) return false;
+    this.selectPatch(patch);
+    requestAnimationFrame(() => this.canvas.centerSelected());
+    return true;
+  }
+
+  openConnectionAt(coord: HexCoord) {
+    const patch = this.latestSnapshot?.patches.find((candidate) => candidate.q === coord.q && candidate.r === coord.r);
+    if (!patch) return false;
+    this.openPatchConnection(patch);
+    return true;
+  }
+
+  setNetworkIssues(issues: readonly TerrainNetworkIssue[]) {
+    this.canvas.setNetworkIssues(issues);
   }
 
   private createControls() {
@@ -69,6 +91,7 @@ export class WorldExplorer {
     controls.append(this.toggle("Boundaries", true, (value) => this.canvas.setOptions({ boundaries: value })));
     controls.append(this.toggle("Patch IDs", false, (value) => this.canvas.setOptions({ ids: value })));
     controls.append(this.toggle("Provenance", true, (value) => this.canvas.setOptions({ provenance: value })));
+    controls.append(this.toggle("Network issues", true, (value) => this.canvas.setOptions({ network: value })));
     const camera = element("div", "camera-controls");
     camera.append(
       iconButton("−", "Zoom out", () => this.canvas.zoomOut()),
@@ -132,12 +155,16 @@ export class WorldExplorer {
     this.canvas.fit();
     this.status.textContent = "Settings changed. Generate or advance to create a fresh deterministic world.";
     this.canvas.setSnapshot(null, null);
+    this.latestSnapshot = null;
+    this.onSnapshot(null);
     this.renderDetails();
   }
 
   private refresh() {
     if (!this.provider) return;
     const snapshot = this.provider.captureTerrainInspectionSnapshot({ q: 0, r: 0 }, this.radius);
+    this.latestSnapshot = snapshot;
+    this.onSnapshot(snapshot);
     if (this.selected) this.selected = snapshot.patches.find((patch) => patch.q === this.selected?.q && patch.r === this.selected.r) ?? null;
     const diagnostics = this.provider.getDiagnostics().wfc;
     const total = 1 + 3 * this.radius * (this.radius + 1);
@@ -173,15 +200,20 @@ export class WorldExplorer {
   }
 
   private openSelectedConnection() {
-    if (!this.provider || !this.selected) return;
-    const snapshot = this.provider.captureTerrainInspectionSnapshot({ q: 0, r: 0 }, this.radius);
+    if (!this.selected) return;
+    this.openPatchConnection(this.selected);
+  }
+
+  private openPatchConnection(selected: GeneratedTerrainPatchInspection) {
+    const snapshot = this.latestSnapshot;
+    if (!snapshot) return;
     const neighbors: Partial<Record<HexDirection, HexPatchTileVariant>> = {};
     for (const direction of HEX_DIRECTION_ORDER) {
       const offset = HEX_DIRECTIONS[direction];
-      const neighbor = snapshot.patches.find((patch) => patch.q === this.selected!.q + offset.q && patch.r === this.selected!.r + offset.r);
+      const neighbor = snapshot.patches.find((patch) => patch.q === selected.q + offset.q && patch.r === selected.r + offset.r);
       if (neighbor) neighbors[direction] = inspectionToVariant(neighbor.variant);
     }
-    this.openInConnection(neighbors, `World ${this.seed}: patch ${this.selected.q},${this.selected.r}`, this.seed);
+    this.openInConnection(neighbors, `World ${this.seed}: patch ${selected.q},${selected.r}`, this.seed);
   }
 
   private updateGenerationControls() {
