@@ -51,6 +51,13 @@ async function verifyViewport(browser, viewport) {
   await page.locator(".comparison-toggle").click();
   await page.waitForSelector(".comparison-patch .patch-svg");
   if (await page.locator(".comparison-patch .patch-svg").count() !== 2) throw new Error(`${viewport.name} fallback preview did not render both interiors`);
+  const comparisonSpacing = await page.evaluate(() => [...document.querySelectorAll(".comparison-patch")].map((card) => ({
+    headingBottom: card.querySelector("h4")?.getBoundingClientRect().bottom ?? 0,
+    patchTop: card.querySelector(".patch-svg")?.getBoundingClientRect().top ?? 0,
+  })));
+  if (comparisonSpacing.some(({ headingBottom, patchTop }) => patchTop < headingBottom + 6)) {
+    throw new Error(`${viewport.name} comparison patch overlapped its title: ${JSON.stringify(comparisonSpacing)}`);
+  }
   if (!(await page.locator(".details-stack").textContent()).includes("river-1")) throw new Error(`${viewport.name} derived river component was not displayed`);
 
   await page.getByRole("button", { name: "World Explorer" }).click();

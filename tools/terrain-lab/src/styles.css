@@ -98,8 +98,9 @@ h4 { margin-bottom: .4rem; }
 .comparison-advanced summary { margin-bottom: 8px; cursor: pointer; }
 .comparison-advanced input { width: 145px; margin-right: 7px; }
 .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.comparison-patch { display: grid; justify-items: center; padding: 9px; border-radius: 8px; background: #121a20; }
-.comparison-patch .patch-svg { max-height: 245px; }
+.comparison-patch { display: grid; grid-template-rows: auto minmax(0, 1fr); align-content: start; justify-items: center; gap: 14px; padding: 12px; border-radius: 8px; background: #121a20; }
+.comparison-patch h4 { position: relative; z-index: 1; margin: 0; line-height: 1.25; }
+.comparison-patch .patch-svg { max-height: 225px; }
 .comparison-summary { margin: 12px 0 0; color: #adbdc5; font-size: .78rem; }
 
 .world-view { display: grid; grid-template-columns: minmax(620px, 1fr) 380px; min-height: 0; }
