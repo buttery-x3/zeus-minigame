@@ -82,7 +82,7 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/lib/math.ts`: numeric helpers.
 - `src/lib/dom.ts`: DOM query helper.
 - `scripts/verify-render.mjs`: headless browser smoke test for rendering, HUD, and core interactions.
-- `tools/terrain-lab`: separate local plain-TypeScript terrain catalog and bounded world explorer, importing the real `src/world` engine without entering the production build.
+- `tools/terrain-lab`: separate local plain-TypeScript terrain catalog, Connection Lab, decision/coverage matrix, and bounded world explorer, importing the real `src/world` engine without entering the production build.
 - `scripts/verify-terrain-lab.mjs`: headless browser smoke test for the local terrain workbench.
 
 ## Boundaries

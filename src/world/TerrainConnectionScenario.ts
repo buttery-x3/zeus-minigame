@@ -146,34 +146,6 @@ export function canonicalizeBoundaryConstraints(constraints: HexPatchBoundaryCon
   return candidates.sort()[0] ?? "";
 }
 
-export function createDecisionFixture(
-  scenarios: readonly TerrainConnectionScenario[],
-  decisions: readonly TerrainResolutionDecision[],
-  variants: readonly HexPatchTileVariant[],
-) {
-  const decisionsByScenario = new Map(decisions.map((decision) => [decision.scenarioId, decision]));
-  return {
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
-    decisions: scenarios
-      .filter((scenario) => decisionsByScenario.has(scenario.id))
-      .map((scenario) => {
-        const resolution = resolveTerrainConnectionScenario(scenario, variants);
-        return {
-          scenario: { ...scenario, neighbors: orderedNeighbors(scenario.neighbors) },
-          canonicalBoundaryKey: resolution.canonicalBoundaryKey,
-          boundaryKey: resolution.boundaryKey,
-          decision: decisionsByScenario.get(scenario.id),
-          expectations: {
-            authoredVariantIds: resolution.authored.filter((candidate) => candidate.policySafe).map((candidate) => candidate.variant.id).sort(),
-            proceduralTopologyKeys: resolution.proceduralGroups.map((group) => group.key).sort(),
-          },
-        };
-      })
-      .sort((a, b) => a.canonicalBoundaryKey.localeCompare(b.canonicalBoundaryKey) || a.scenario.id.localeCompare(b.scenario.id)),
-  };
-}
-
 function evaluateCandidate(
   patch: HexCoord,
   variant: HexPatchTileVariant,
@@ -249,10 +221,6 @@ function serializeTransformedBoundary(source: ReadonlyMap<string, string>, rotat
     transformed.set(hexCellKey(q, r), kind);
   }
   return [...transformed].sort(([a], [b]) => a.localeCompare(b)).map(([key, kind]) => `${key}:${kind}`).join("|");
-}
-
-function orderedNeighbors(neighbors: TerrainConnectionScenario["neighbors"]) {
-  return Object.fromEntries(HEX_DIRECTION_ORDER.flatMap((direction) => neighbors[direction] ? [[direction, neighbors[direction]]] : []));
 }
 
 function cryptoId() {

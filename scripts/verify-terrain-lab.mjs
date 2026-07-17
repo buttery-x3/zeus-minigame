@@ -85,6 +85,38 @@ async function verifyViewport(browser, viewport) {
   }
   if (!(await page.locator(".details-stack").textContent()).includes("river-1")) throw new Error(`${viewport.name} derived river component was not displayed`);
 
+  await page.getByRole("button", { name: "Connection Lab" }).click();
+  for (const direction of ["NE", "E", "SE", "SW", "W", "NW"]) {
+    await page.getByLabel(`${direction} neighbor`, { exact: true }).selectOption("patch.open.grass");
+  }
+  await page.getByLabel("Scenario name").fill(`Verified ${viewport.name} ring`);
+  await page.getByRole("button", { name: "Resolve", exact: true }).click();
+  await page.waitForSelector(".resolution-summary");
+  const resolutionCopy = await page.locator(".resolution-summary").textContent();
+  if (!resolutionCopy.includes("authored candidates") || !resolutionCopy.includes("procedural layouts") || !resolutionCopy.includes("topology groups")) {
+    throw new Error(`${viewport.name} connection resolution summary was incomplete: ${resolutionCopy}`);
+  }
+  if (await page.locator(".candidate-card").count() < 2) throw new Error(`${viewport.name} connection lab did not render candidate comparisons`);
+  const escapedCandidate = await page.evaluate(() => [...document.querySelectorAll(".candidate-preview")].some((frame) => {
+    const frameRect = frame.getBoundingClientRect();
+    const svgRect = frame.querySelector("svg")?.getBoundingClientRect();
+    return !svgRect || svgRect.top < frameRect.top - 1 || svgRect.right > frameRect.right + 1
+      || svgRect.bottom > frameRect.bottom + 1 || svgRect.left < frameRect.left - 1;
+  }));
+  if (escapedCandidate) throw new Error(`${viewport.name} connection candidate escaped its preview frame`);
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await page.getByRole("button", { name: "Save decision" }).click();
+  await assertViewportContained(page, viewport, "connection");
+
+  await page.getByRole("button", { name: "Decisions & Coverage" }).click();
+  await page.getByRole("button", { name: "Generate coverage" }).click();
+  await page.waitForSelector(".coverage-table tbody tr");
+  if (await page.locator(".coverage-table tbody tr").count() < 20) throw new Error(`${viewport.name} coverage matrix was unexpectedly empty`);
+  if (!(await page.locator(".coverage-summary").textContent()).includes("classified")) throw new Error(`${viewport.name} coverage summary omitted decisions`);
+  await page.getByRole("button", { name: "Open in lab" }).first().click();
+  const placedWitnessNeighbors = await page.locator(".neighbor-slot select").evaluateAll((selects) => selects.filter((select) => select.value).length);
+  if (placedWitnessNeighbors !== 6) throw new Error(`${viewport.name} coverage witness did not restore a full neighbor ring`);
+
   await page.getByRole("button", { name: "World Explorer" }).click();
   await page.getByLabel("Patch radius").fill("3");
   await page.getByLabel("Patch radius").press("Enter");
@@ -107,6 +139,11 @@ async function verifyViewport(browser, viewport) {
   if (await page.locator(".world-details .patch-svg").count() !== 1) throw new Error(`${viewport.name} selected patch did not render its interior`);
   await page.getByRole("button", { name: "Open in catalog" }).click();
   if (await page.locator(".catalog-view").count() !== 1) throw new Error(`${viewport.name} generated patch did not link to the catalog`);
+  await page.getByRole("button", { name: "World Explorer" }).click();
+  await page.getByRole("button", { name: "Open surrounding connection" }).click();
+  if (await page.locator(".connection-view").count() !== 1) throw new Error(`${viewport.name} generated patch did not open in the Connection Lab`);
+  const worldNeighborCount = await page.locator(".neighbor-slot select").evaluateAll((selects) => selects.filter((select) => select.value).length);
+  if (worldNeighborCount === 0) throw new Error(`${viewport.name} World Explorer handoff did not include committed neighbors`);
   if (errors.length) throw new Error(`${viewport.name} browser errors: ${errors.join(" | ")}`);
   await page.close();
 }

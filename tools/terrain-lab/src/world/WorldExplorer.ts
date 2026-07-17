@@ -1,6 +1,8 @@
 import { MAX_TERRAIN_PATCH_REQUEST_RADIUS } from "../../../../src/world/TerrainProvider";
 import type { GeneratedTerrainPatchInspection } from "../../../../src/world/TerrainInspectionSnapshot";
 import { WFC_TERRAIN_SEED, WfcTerrainProvider } from "../../../../src/world/WfcTerrainProvider";
+import { HEX_DIRECTIONS, HEX_DIRECTION_ORDER, type HexDirection } from "../../../../src/world/hexCoordinates";
+import { createPatchVariant, edgeForStructure, type HexPatchTileVariant } from "../../../../src/world/HexTerrainPatch";
 import { clear, element, labeledControl } from "../dom";
 import { createPatchDetails } from "../patch/PatchDetails";
 import { createPatchSvg } from "../patch/PatchSvg";
@@ -24,7 +26,10 @@ export class WorldExplorer {
   private generateButton!: HTMLButtonElement;
   private centerButton!: HTMLButtonElement;
 
-  constructor(private readonly openInCatalog: (id: string) => void) {}
+  constructor(
+    private readonly openInCatalog: (id: string) => void,
+    private readonly openInConnection: (neighbors: Partial<Record<HexDirection, HexPatchTileVariant>>, name: string, seed: number) => void,
+  ) {}
 
   mount() {
     this.status.setAttribute("aria-live", "polite");
@@ -162,8 +167,21 @@ export class WorldExplorer {
     header.append(element("div", undefined, `Patch ${this.selected.q},${this.selected.r}`));
     const catalog = button("Open in catalog", () => this.openInCatalog(this.selected!.variant.id));
     catalog.disabled = this.selected.variant.provenance !== "authored";
-    header.append(catalog);
+    const connection = button("Open surrounding connection", () => this.openSelectedConnection());
+    header.append(catalog, connection);
     this.details.append(header, createPatchSvg(this.selected.variant, { components: true }), createPatchDetails(this.selected.variant));
+  }
+
+  private openSelectedConnection() {
+    if (!this.provider || !this.selected) return;
+    const snapshot = this.provider.captureTerrainInspectionSnapshot({ q: 0, r: 0 }, this.radius);
+    const neighbors: Partial<Record<HexDirection, HexPatchTileVariant>> = {};
+    for (const direction of HEX_DIRECTION_ORDER) {
+      const offset = HEX_DIRECTIONS[direction];
+      const neighbor = snapshot.patches.find((patch) => patch.q === this.selected!.q + offset.q && patch.r === this.selected!.r + offset.r);
+      if (neighbor) neighbors[direction] = inspectionToVariant(neighbor.variant);
+    }
+    this.openInConnection(neighbors, `World ${this.seed}: patch ${this.selected.q},${this.selected.r}`, this.seed);
   }
 
   private updateGenerationControls() {
@@ -196,4 +214,29 @@ function iconButton(label: string, accessibleName: string, onClick: () => void) 
   control.setAttribute("aria-label", accessibleName);
   control.title = accessibleName;
   return control;
+}
+
+function inspectionToVariant(inspection: GeneratedTerrainPatchInspection["variant"]): HexPatchTileVariant {
+  const cells = new Map(inspection.cells.map((cell) => {
+    const edge = edgeForStructure(cell.structure);
+    return [`${cell.q},${cell.r}`, { ...cell, edges: { ne: edge, e: edge, se: edge, sw: edge, w: edge, nw: edge } }];
+  }));
+  const variant = createPatchVariant(
+    inspection.id,
+    inspection.family,
+    inspection.provenance,
+    inspection.weight,
+    cells,
+    inspection.procedural ? { ...inspection.procedural } : undefined,
+    {
+      selectionGroup: inspection.selectionGroup,
+      selectionGroupWeight: inspection.selectionGroupWeight,
+      topology: inspection.topology,
+      riverTerminal: inspection.riverTerminal,
+      lakeRole: inspection.lakeRole,
+    },
+    { ...inspection.riverPorts },
+  );
+  variant.selectionGroupWeight = inspection.selectionGroupWeight;
+  return variant;
 }
