@@ -7,6 +7,7 @@ import {
   terrainPatchDocumentFromDefinition,
   validateTerrainPatchDocument,
 } from "./TerrainPatchDocument";
+import { migrateTerrainPatchDocument } from "./TerrainPatchDocumentMigration";
 import {
   TerrainPatchHistory,
   floodFillTerrainPatch,
@@ -86,6 +87,24 @@ describe("terrain patch documents", () => {
   it("rejects malformed imported documents without throwing", () => {
     expect(() => terrainPatchDocumentIsValid({ id: 42, displayName: 7, cells: {} })).not.toThrow();
     expect(terrainPatchDocumentIsValid({ id: 42, displayName: 7, cells: {} })).toBe(false);
+  });
+
+  it("migrates retired meadow and rock authoring vocabulary", () => {
+    const legacy = structuredClone(createBlankTerrainPatchDocument("cliff")) as unknown as {
+      category: string;
+      id: string;
+      selectionGroup: string;
+      cells: Array<{ surface: string }>;
+    };
+    legacy.category = "rock";
+    legacy.id = "patch.rock.island-copy";
+    legacy.selectionGroup = legacy.id;
+    legacy.cells[0].surface = "meadow";
+    const migrated = migrateTerrainPatchDocument(legacy)!;
+    expect(migrated.category).toBe("cliff");
+    expect(migrated.id).toBe("patch.cliff.island-copy");
+    expect(migrated.selectionGroup).toBe(migrated.id);
+    expect(migrated.cells[0].surface).toBe("grass");
   });
 });
 

@@ -1,10 +1,10 @@
 import type { AuthoredPatchDefinition } from "./HexTerrainPatch";
 import {
   compileTerrainPatchDocument,
-  terrainPatchDocumentIsValid,
   validateTerrainPatchDocument,
   type TerrainPatchDocument,
 } from "./TerrainPatchDocument";
+import { migrateTerrainPatchDocument } from "./TerrainPatchDocumentMigration";
 
 export type TerrainPatchPack = {
   schemaVersion: 1;
@@ -18,14 +18,15 @@ export function parseTerrainPatchPack(value: unknown): TerrainPatchPack {
   if (candidate.schemaVersion !== 1 || candidate.kind !== "zeus-terrain-patch-drafts" || !Array.isArray(candidate.patches)) {
     throw new Error("Unsupported terrain patch pack schema");
   }
-  if (!candidate.patches.every(terrainPatchDocumentIsValid)) throw new Error("Patch pack contains an invalid document");
-  const patches = candidate.patches as TerrainPatchDocument[];
+  const patches = candidate.patches.map(migrateTerrainPatchDocument);
+  if (patches.some((patch) => !patch)) throw new Error("Patch pack contains an invalid document");
+  const migratedPatches = patches as TerrainPatchDocument[];
   const ids = new Set<string>();
-  for (const patch of patches) {
+  for (const patch of migratedPatches) {
     if (ids.has(patch.id)) throw new Error(`Patch pack contains duplicate catalog ID ${patch.id}`);
     ids.add(patch.id);
   }
-  return { schemaVersion: 1, kind: "zeus-terrain-patch-drafts", patches: structuredClone(patches) };
+  return { schemaVersion: 1, kind: "zeus-terrain-patch-drafts", patches: structuredClone(migratedPatches) };
 }
 
 export function compileTerrainPatchPack(value: unknown): AuthoredPatchDefinition[] {

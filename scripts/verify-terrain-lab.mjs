@@ -37,7 +37,9 @@ async function verifyViewport(browser, viewport) {
   await page.waitForSelector(".catalog-view");
   if (await page.locator(".catalog-entry").count() < 40) throw new Error(`${viewport.name} catalog did not expose the complete inventory`);
   const catalogIds = await page.locator(".catalog-entry strong").allTextContents();
-  if (catalogIds.some((id) => id === "patch.open.dirt" || id === "patch.open.basin")) throw new Error(`${viewport.name} catalog retained a dirt definition`);
+  if (catalogIds.some((id) => id === "patch.open.dirt" || id === "patch.open.basin" || id.startsWith("patch.open.meadow") || id.startsWith("patch.open.clearing") || id.startsWith("patch.rock."))) {
+    throw new Error(`${viewport.name} catalog retained retired dirt, meadow, clearing, or rock vocabulary`);
+  }
   await assertViewportContained(page, viewport, "catalog");
 
   await page.getByLabel("Search patch catalog").fill("cliff-river");
@@ -85,15 +87,24 @@ async function verifyViewport(browser, viewport) {
   }
   if (!(await page.locator(".details-stack").textContent()).includes("river-1")) throw new Error(`${viewport.name} derived river component was not displayed`);
 
-  await page.getByRole("button", { name: "Patch Author", exact: true }).click();
+  await page.getByRole("button", { name: "Edit in Patch Author", exact: true }).click();
+  if (await page.getByLabel("Patch catalog ID").inputValue() !== "patch.transition.cliff-river") throw new Error(`${viewport.name} catalog edit did not retain the installed ID`);
+  if (!(await page.locator(".patch-author-validation > p").textContent()).includes("No changes")) throw new Error(`${viewport.name} unchanged catalog edit was not identified`);
+  await page.getByLabel("Patch weight").fill("2");
+  await page.getByLabel("Patch weight").press("Tab");
+  if (!(await page.locator(".patch-author-validation > p").textContent()).includes("Ready as catalog override")) throw new Error(`${viewport.name} edited catalog definition was not ready as an override`);
+  await page.getByRole("button", { name: "Patch Catalog", exact: true }).click();
+  await page.getByRole("button", { name: "Clone in Patch Author", exact: true }).click();
+  if (await page.getByLabel("Patch catalog ID").inputValue() === "patch.transition.cliff-river") throw new Error(`${viewport.name} catalog clone did not receive a new ID`);
+  await page.getByRole("button", { name: "New", exact: true }).click();
   if (await page.locator(".patch-author-canvas [data-cell]").count() !== 19) throw new Error(`${viewport.name} patch author did not render exactly 19 editable cells`);
-  await page.getByRole("button", { name: "Cliff", exact: true }).click();
+  if (await page.locator(".author-paint-buttons button").count() !== 4) throw new Error(`${viewport.name} patch author retained redundant cell paints`);
+  await page.getByRole("button", { name: "Wall / cliff", exact: true }).click();
   await page.locator('.patch-author-canvas [data-cell="0,0"]').click();
   if (!(await page.locator('.patch-author-canvas [data-cell="0,0"]').getAttribute("aria-label")).includes("wall")) throw new Error(`${viewport.name} patch brush did not paint the selected cell`);
-  await page.getByRole("button", { name: "Open meadow", exact: true }).click();
   await page.getByRole("button", { name: "Bucket G", exact: true }).click();
   await page.locator('.patch-author-canvas [data-cell="-2,0"]').click();
-  if (!(await page.locator('.patch-author-canvas [data-cell="-2,0"]').getAttribute("aria-label")).includes("meadow")) throw new Error(`${viewport.name} patch bucket did not fill the contiguous open region`);
+  if (!(await page.locator('.patch-author-canvas [data-cell="-2,0"]').getAttribute("aria-label")).includes("wall")) throw new Error(`${viewport.name} patch bucket did not fill the contiguous open region`);
   await page.getByRole("button", { name: "Undo", exact: true }).click();
   if (!(await page.locator('.patch-author-canvas [data-cell="-2,0"]').getAttribute("aria-label")).includes("grass")) throw new Error(`${viewport.name} patch author undo did not restore the previous paint`);
   await page.getByRole("button", { name: "Redo", exact: true }).click();

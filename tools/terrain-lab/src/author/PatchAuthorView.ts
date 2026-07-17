@@ -2,6 +2,7 @@ import { createHexPatchCatalogEntries } from "../../../../src/world/HexTerrainCa
 import { hexCellKey } from "../../../../src/world/hexCoordinates";
 import {
   createBlankTerrainPatchDocument,
+  terrainPatchDocumentFromDefinition,
   validateTerrainPatchDocument,
   type TerrainPatchDocument,
 } from "../../../../src/world/TerrainPatchDocument";
@@ -18,7 +19,7 @@ import {
 } from "../../../../src/world/TerrainPatchEditing";
 import { clear, element } from "../dom";
 import { PatchDraftStore } from "./PatchDraftStore";
-import { downloadJson, terrainVariantShapeKey, uniqueCopyId } from "./PatchAuthorFiles";
+import { downloadJson, terrainPatchEditableContentKey, terrainVariantShapeKey, uniqueCopyId } from "./PatchAuthorFiles";
 import { createPatchEditorCanvas, type PatchEditorTool } from "./PatchEditorCanvas";
 import { createPatchMetadataPanel } from "./PatchMetadataPanel";
 import { createPatchVariantPreviews } from "./PatchVariantPreviews";
@@ -28,7 +29,6 @@ export class PatchAuthorView {
   private readonly store = new PatchDraftStore();
   private readonly catalogEntries = createHexPatchCatalogEntries();
   private readonly installedIds = new Set(this.catalogEntries.map((entry) => entry.definition.id));
-  private readonly installedVariants = this.catalogEntries.flatMap((entry) => entry.variants);
   private history = new TerrainPatchHistory(createBlankTerrainPatchDocument());
   private tool: PatchEditorTool = "brush";
   private paint: TerrainPatchPaint = TERRAIN_PATCH_PAINTS[0];
@@ -50,6 +50,8 @@ export class PatchAuthorView {
     this.saveMessage = save ? "Draft created" : "Unsaved draft";
     this.render();
   }
+
+  cloneDocument(document: TerrainPatchDocument) { this.cloneDraft(document); }
 
   private render() {
     clear(this.root);
@@ -159,19 +161,25 @@ export class PatchAuthorView {
     panel.append(element("h3", undefined, "WFC readiness"));
     const duplicate = this.installedIds.has(draft.id);
     const localDuplicates = this.store.getAll().filter((candidate) => candidate.id === draft.id && candidate.draftId !== draft.draftId).length;
-    const installedShapes = new Map(this.installedVariants.map((variant) => [terrainVariantShapeKey(variant), variant.id]));
+    const installedShapes = new Map(this.catalogEntries.flatMap((entry) => entry.variants.map((variant) => [terrainVariantShapeKey(variant), entry.definition.id])));
     const shapeDuplicates = [...new Set(validation.variants.map((variant) => installedShapes.get(terrainVariantShapeKey(variant))).filter((id): id is string => Boolean(id)))];
-    const ready = validation.valid && !duplicate && localDuplicates === 0 && shapeDuplicates.length === 0;
+    const editingInstalled = draft.source?.kind === "catalog" && draft.source.reference === draft.id;
+    const originalDefinition = editingInstalled ? this.catalogEntries.find((entry) => entry.definition.id === draft.id)?.definition : undefined;
+    const unchanged = Boolean(originalDefinition && terrainPatchEditableContentKey(draft) === terrainPatchEditableContentKey(terrainPatchDocumentFromDefinition(originalDefinition)));
+    const shapeConflicts = shapeDuplicates.filter((id) => id !== draft.id);
+    const ready = validation.valid && (!duplicate || editingInstalled) && localDuplicates === 0 && !unchanged && shapeConflicts.length === 0;
     const status = element("p", ready ? "good" : "warning",
-      ready ? `Ready · ${validation.variants.length} generated variant${validation.variants.length === 1 ? "" : "s"}`
+      ready ? `${editingInstalled ? "Ready as catalog override" : "Ready"} · ${validation.variants.length} generated variant${validation.variants.length === 1 ? "" : "s"}`
+        : unchanged ? "No changes from the installed definition."
         : duplicate ? "Catalog ID already exists; rename it or install with explicit replacement."
           : localDuplicates > 0 ? `${localDuplicates} other saved draft${localDuplicates === 1 ? "" : "s"} use this catalog ID.`
-            : shapeDuplicates.length > 0 ? "This exact authored shape is already installed." : "Draft is not ready to install.");
+            : shapeConflicts.length > 0 ? "This exact authored shape is already installed." : "Draft is not ready to install.");
     panel.append(status);
     const messages = [
       ...validation.errors,
       ...validation.warnings,
-      ...(shapeDuplicates.length > 0 ? [`Exact authored shape already exists as ${shapeDuplicates.join(", ")}. Change its cells or metadata before installing.`] : []),
+      ...(unchanged ? ["Edit at least one cell or metadata field before exporting this override."] : []),
+      ...(shapeConflicts.length > 0 ? [`Exact authored shape already exists as ${shapeConflicts.join(", ")}. Change its cells or metadata before installing.`] : []),
     ];
     if (messages.length > 0) {
       const list = element("ul", "patch-author-messages");

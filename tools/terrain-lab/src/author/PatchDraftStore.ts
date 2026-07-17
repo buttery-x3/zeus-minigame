@@ -1,7 +1,5 @@
-import {
-  terrainPatchDocumentIsValid,
-  type TerrainPatchDocument,
-} from "../../../../src/world/TerrainPatchDocument";
+import type { TerrainPatchDocument } from "../../../../src/world/TerrainPatchDocument";
+import { migrateTerrainPatchDocument } from "../../../../src/world/TerrainPatchDocumentMigration";
 
 const PATCH_DRAFT_KEY = "zeus.terrain-lab.patch-drafts.v1";
 
@@ -61,14 +59,16 @@ function parseBundle(value: unknown) {
   const candidates = value && typeof value === "object" && "patches" in value
     ? (value as { patches?: unknown }).patches
     : [value];
-  if (!Array.isArray(candidates) || !candidates.every(terrainPatchDocumentIsValid)) throw new Error("Unsupported or invalid terrain patch draft file");
-  return candidates as TerrainPatchDocument[];
+  if (!Array.isArray(candidates)) throw new Error("Unsupported or invalid terrain patch draft file");
+  const patches = candidates.map(migrateTerrainPatchDocument);
+  if (patches.some((patch) => !patch)) throw new Error("Unsupported or invalid terrain patch draft file");
+  return patches as TerrainPatchDocument[];
 }
 
 function readDrafts() {
   try {
     const parsed = JSON.parse(localStorage.getItem(PATCH_DRAFT_KEY) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter(terrainPatchDocumentIsValid) : [];
+    return Array.isArray(parsed) ? parsed.map(migrateTerrainPatchDocument).filter((patch): patch is TerrainPatchDocument => Boolean(patch)) : [];
   } catch {
     return [];
   }

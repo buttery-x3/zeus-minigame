@@ -22,7 +22,7 @@ export class CatalogView {
   private showLabels = true;
   private showComponents = true;
 
-  constructor(private readonly openAuthor: (document: TerrainPatchDocument) => void = () => undefined) {}
+  constructor(private readonly openAuthor: (document: TerrainPatchDocument, mode: "new" | "clone" | "edit") => void = () => undefined) {}
 
   mount() {
     this.root.append(this.createSidebar(), this.inspector);
@@ -50,7 +50,7 @@ export class CatalogView {
     search.setAttribute("aria-label", "Search patch catalog");
     search.addEventListener("input", () => { this.query = search.value.toLowerCase(); this.renderList(); });
     const family = document.createElement("select");
-    for (const value of ["all", "open", "cliff", "rock", "river", "lake", "transition"]) {
+    for (const value of ["all", "open", "cliff", "river", "lake", "transition"]) {
       const option = document.createElement("option");
       option.value = value;
       option.textContent = value === "all" ? "All categories" : value;
@@ -105,8 +105,9 @@ export class CatalogView {
     title.append(element("p", "eyebrow", "Authored definition"), element("h2", undefined, this.selectedEntry.definition.displayName ?? this.selectedEntry.definition.id));
     const actions = element("div", "catalog-author-actions");
     actions.append(
-      button("New patch", () => this.openAuthor(createBlankTerrainPatchDocument()), "primary"),
-      button("Clone in Patch Author", () => this.openAuthor(terrainPatchDocumentFromDefinition(this.selectedEntry.definition))),
+      button("New patch", () => this.openAuthor(createBlankTerrainPatchDocument(), "new"), "primary"),
+      button("Clone in Patch Author", () => this.openAuthor(terrainPatchDocumentFromDefinition(this.selectedEntry.definition), "clone")),
+      button("Edit in Patch Author", () => this.openAuthor(terrainPatchDocumentFromDefinition(this.selectedEntry.definition), "edit")),
       this.createOrientationSelect(),
     );
     header.append(title, actions);
@@ -149,9 +150,7 @@ export class CatalogView {
   }
 }
 
-function entryCategory(entry: HexPatchCatalogEntry) {
-  return entry.definition.category ?? (entry.definition.id.startsWith("patch.rock.") ? "rock" : entry.definition.family);
-}
+function entryCategory(entry: HexPatchCatalogEntry) { return entry.definition.category ?? entry.definition.family; }
 
 function button(label: string, onClick: () => void, className?: string) {
   const control = element("button", className, label);

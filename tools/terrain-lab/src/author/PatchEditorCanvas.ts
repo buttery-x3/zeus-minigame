@@ -76,7 +76,7 @@ export function createPatchEditorCanvas(
     dragging = false;
     if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
     const strokePaint: TerrainPatchPaint = tool === "eraser"
-      ? { id: "open-grass", label: "Open grass", structure: "open", surface: "grass" }
+      ? { id: "open-ground", label: "Open ground", structure: "open", surface: "grass" }
       : paint;
     onStroke([...selected], strokePaint);
   });

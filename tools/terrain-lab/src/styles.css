@@ -232,8 +232,7 @@ h4 { margin-bottom: .4rem; }
 .author-tool-buttons button.active, .author-paint-buttons button.active { border-color: #e0b553; background: #323126; box-shadow: inset 3px 0 #e0b553; }
 .author-paint-buttons button { position: relative; padding-left: 25px; text-align: left; }
 .author-paint-buttons button::before { position: absolute; top: 50%; left: 7px; width: 11px; height: 11px; transform: translateY(-50%); border: 1px solid rgba(255,255,255,.3); border-radius: 50%; content: ""; background: #789b68; }
-.author-paint-buttons button[data-paint="open-meadow"]::before { background: #8cab74; }
-.author-paint-buttons button[data-paint="cliff"]::before, .author-paint-buttons button[data-paint="rock"]::before { background: #5c6070; }
+.author-paint-buttons button[data-paint="wall"]::before { background: #5c6070; }
 .author-paint-buttons button[data-paint="river"]::before { background: #58a9ca; }
 .author-paint-buttons button[data-paint="lake"]::before { background: #397f9e; }
 .author-zoom-buttons { grid-template-columns: repeat(3, 1fr); margin-top: 10px; }

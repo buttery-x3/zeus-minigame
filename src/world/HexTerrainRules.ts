@@ -34,7 +34,6 @@ export function createTerrainStructureCounts(): Record<TerrainStructure, number>
 export function createTerrainSurfaceCounts(): Record<TerrainSurface, number> {
   return {
     grass: 0,
-    meadow: 0,
     sand: 0,
     mud: 0,
     stone: 0,

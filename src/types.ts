@@ -7,7 +7,7 @@ export type EnemyHealthBarVisibilityMode = "always" | "smart";
 
 export type TerrainStructure = "open" | "wall" | "bank" | "lake" | "river";
 
-export type TerrainSurface = "grass" | "meadow" | "sand" | "mud" | "stone" | "scarred" | "charged" | "cursed";
+export type TerrainSurface = "grass" | "sand" | "mud" | "stone" | "scarred" | "charged" | "cursed";
 
 export type HexEdgeKind = "open" | "closed" | "river" | "lake";
 

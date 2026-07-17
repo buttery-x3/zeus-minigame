@@ -15,7 +15,7 @@ import {
 import { validateHexPatchVariant } from "./HexTerrainPatchValidation";
 
 export const TERRAIN_PATCH_DOCUMENT_SCHEMA_VERSION = 1;
-export const TERRAIN_PATCH_DOCUMENT_CATEGORIES: readonly HexPatchAuthorCategory[] = ["open", "cliff", "rock", "river", "lake", "transition"];
+export const TERRAIN_PATCH_DOCUMENT_CATEGORIES: readonly HexPatchAuthorCategory[] = ["open", "cliff", "river", "lake", "transition"];
 export const TERRAIN_PATCH_DOCUMENT_TOPOLOGIES: readonly HexPatchTopology[] = ["open", "isolated", "endpoint", "straight", "tight-bend", "gentle-bend", "junction", "mixed"];
 export const TERRAIN_PATCH_DOCUMENT_ROTATIONS = [1, 3, 6] as const;
 
@@ -138,7 +138,7 @@ export function compileTerrainPatchDocument(document: TerrainPatchDocument): Aut
     id: document.id.trim(),
     displayName: document.displayName.trim(),
     category: document.category,
-    family: document.category === "rock" ? "cliff" : document.category,
+    family: document.category,
     weight: document.weight,
     selectionGroup: document.selectionGroup.trim() || document.id.trim(),
     selectionGroupWeight: document.selectionGroupWeight,
@@ -168,7 +168,6 @@ export function validateTerrainPatchDocument(document: TerrainPatchDocument): Te
     result.errors.forEach((error) => errors.push(`${variant.id}: ${error}`));
   }
   if (variants.length < document.rotations) warnings.push(`Only ${variants.length} unique variants result from ${document.rotations} requested rotations.`);
-  if (document.category === "rock" && document.cells.every((cell) => cell.structure !== "wall")) warnings.push("Rock category contains no rock/wall cells.");
   if (document.category === "transition" && new Set(document.cells.map((cell) => cell.structure)).size < 2) warnings.push("Transition category contains only one structure type.");
   return { valid: errors.length === 0, errors, warnings, definition, variants };
 }
@@ -183,7 +182,7 @@ function validateDocumentShape(document: TerrainPatchDocument) {
   const cells = Array.isArray(document.cells) ? document.cells : [];
   if (document.schemaVersion !== 1) errors.push("unsupported patch document schema");
   if (!document.draftId || typeof document.draftId !== "string") errors.push("missing draft id");
-  if (!/^patch\.(open|cliff|rock|river|lake|transition)\.[a-z0-9][a-z0-9.-]*$/.test(id)) errors.push("catalog id must use patch.<category>.<slug>");
+  if (!/^patch\.(open|cliff|river|lake|transition)\.[a-z0-9][a-z0-9.-]*$/.test(id)) errors.push("catalog id must use patch.<category>.<slug>");
   if (typeof document.displayName !== "string" || !document.displayName.trim()) errors.push("display name is required");
   if (!TERRAIN_PATCH_DOCUMENT_CATEGORIES.includes(document.category)) errors.push("unsupported patch category");
   if (id.split(".")[1] !== document.category) errors.push("catalog ID category must match the selected category");
@@ -206,7 +205,7 @@ function validateDocumentShape(document: TerrainPatchDocument) {
     if (actual.has(key)) errors.push(`duplicate cell ${key}`);
     actual.add(key);
     if (!["open", "wall", "river", "lake"].includes(cell.structure)) errors.push(`unsupported structure at ${key}`);
-    if (cell.structure === "open" ? !["grass", "meadow"].includes(cell.surface) : cell.surface !== expectedEditableSurface(cell.structure)) {
+    if (cell.structure === "open" ? cell.surface !== "grass" : cell.surface !== expectedEditableSurface(cell.structure)) {
       errors.push(`unsupported ${cell.structure}/${cell.surface} paint at ${key}`);
     }
   }

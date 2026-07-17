@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHexPatchCatalogEntries } from "../src/world/HexTerrainCatalog.ts";
+import { createBuiltInHexPatchDefinitions } from "../src/world/HexTerrainCatalog.ts";
 import { parseTerrainPatchPack } from "../src/world/TerrainPatchPack.ts";
 import { validateTerrainPatchDocument } from "../src/world/TerrainPatchDocument.ts";
 
@@ -17,13 +17,14 @@ const [incomingRaw, existingRaw] = await Promise.all([readFile(sourcePath, "utf8
 const incoming = parseTerrainPatchPack(JSON.parse(incomingRaw));
 const existing = parseTerrainPatchPack(JSON.parse(existingRaw));
 const existingCustomIds = new Set(existing.patches.map((patch) => patch.id));
-const builtInIds = new Set(createHexPatchCatalogEntries().map((entry) => entry.definition.id).filter((id) => !existingCustomIds.has(id)));
+const builtInIds = new Set(createBuiltInHexPatchDefinitions().map((definition) => definition.id));
 
 for (const patch of incoming.patches) {
   const validation = validateTerrainPatchDocument(patch);
   if (!validation.valid) throw new Error(`${patch.id} is invalid: ${validation.errors.join("; ")}`);
-  if (builtInIds.has(patch.id)) throw new Error(`${patch.id} is a built-in definition and cannot be replaced by the custom pack`);
-  if (existingCustomIds.has(patch.id) && !replace) throw new Error(`${patch.id} already exists; pass --replace to update it`);
+  if ((builtInIds.has(patch.id) || existingCustomIds.has(patch.id)) && !replace) {
+    throw new Error(`${patch.id} already exists; pass --replace to install it as an explicit catalog override`);
+  }
 }
 
 const merged = new Map(existing.patches.map((patch) => [patch.id, patch]));

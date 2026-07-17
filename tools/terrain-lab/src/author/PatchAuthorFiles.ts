@@ -1,5 +1,6 @@
 import { HEX_DIRECTION_ORDER, hexCellKey } from "../../../../src/world/hexCoordinates";
 import { HEX_PATCH_LOCAL_CELLS, type HexPatchTileVariant } from "../../../../src/world/HexTerrainPatch";
+import type { TerrainPatchDocument } from "../../../../src/world/TerrainPatchDocument";
 
 export function uniqueCopyId(source: string, ...collections: readonly string[][]) {
   const ids = new Set(collections.flat());
@@ -29,4 +30,21 @@ export function terrainVariantShapeKey(variant: HexPatchTileVariant) {
     return `${direction}:${port ?? "-"}`;
   }).join("|");
   return `${cells}|${ports}`;
+}
+
+export function terrainPatchEditableContentKey(document: TerrainPatchDocument) {
+  return JSON.stringify({
+    id: document.id,
+    displayName: document.displayName,
+    category: document.category,
+    cells: [...document.cells].sort((a, b) => a.q - b.q || a.r - b.r),
+    weight: document.weight,
+    selectionGroup: document.selectionGroup,
+    selectionGroupWeight: document.selectionGroupWeight,
+    topology: document.topology,
+    rotations: document.rotations,
+    riverFlow: document.riverFlow,
+    riverTerminal: document.riverTerminal,
+    lakeRole: document.lakeRole,
+  });
 }

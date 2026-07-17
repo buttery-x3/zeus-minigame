@@ -10,7 +10,6 @@ const STRUCTURE_COLORS: Record<TerrainStructure, string> = {
 
 const OPEN_SURFACE_COLORS: Partial<Record<TerrainSurface, string>> = {
   grass: "#789b68",
-  meadow: "#8cab74",
   sand: "#b9a16c",
   mud: "#65705a",
   stone: "#6d7280",

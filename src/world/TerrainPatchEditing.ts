@@ -4,17 +4,15 @@ import { HEX_PATCH_EDGE_CELLS, HEX_PATCH_LOCAL_CELL_KEYS } from "./HexTerrainPat
 import type { TerrainPatchDocument, TerrainPatchDocumentCell } from "./TerrainPatchDocument";
 
 export type TerrainPatchPaint = {
-  id: "open-grass" | "open-meadow" | "cliff" | "rock" | "river" | "lake";
+  id: "open-ground" | "wall" | "river" | "lake";
   label: string;
   structure: TerrainPatchDocumentCell["structure"];
   surface: TerrainSurface;
 };
 
 export const TERRAIN_PATCH_PAINTS: readonly TerrainPatchPaint[] = [
-  { id: "open-grass", label: "Open grass", structure: "open", surface: "grass" },
-  { id: "open-meadow", label: "Open meadow", structure: "open", surface: "meadow" },
-  { id: "cliff", label: "Cliff", structure: "wall", surface: "stone" },
-  { id: "rock", label: "Rock", structure: "wall", surface: "stone" },
+  { id: "open-ground", label: "Open ground", structure: "open", surface: "grass" },
+  { id: "wall", label: "Wall / cliff", structure: "wall", surface: "stone" },
   { id: "river", label: "River", structure: "river", surface: "mud" },
   { id: "lake", label: "Lake", structure: "lake", surface: "sand" },
 ];

@@ -60,7 +60,7 @@ describe("authored terrain patches", () => {
     expect(variants.some((variant) => variant.id.startsWith("patch.river.source"))).toBe(false);
 
     const families = summarizeAuthoredPatchFamilies(variants);
-    expect(families.open).toBeGreaterThanOrEqual(3);
+    expect(families.open).toBe(1);
     expect(families.cliff).toBeGreaterThanOrEqual(12);
     expect(families.river).toBeGreaterThanOrEqual(12);
     expect(families.lake).toBeGreaterThanOrEqual(6);
@@ -91,8 +91,8 @@ describe("authored terrain patches", () => {
     expect(groupWeights.get("river.gentle-bend")).toBe(15);
     expect(groupWeights.get("river.junction")).toBe(2);
 
-    expect(groupWeights.get("patch.rock.island")).toBe(2);
-    expect(new Set(variants.filter((variant) => variant.id.startsWith("patch.rock.pair")).map((variant) => variant.selectionGroupWeight))).toEqual(new Set([6]));
+    expect(groupWeights.get("patch.cliff.island")).toBe(2);
+    expect(new Set(variants.filter((variant) => variant.id.startsWith("patch.cliff.pair")).map((variant) => variant.selectionGroupWeight))).toEqual(new Set([6]));
     expect(groupWeights.get("cliff.endpoint")).toBe(9);
     expect(groupWeights.get("cliff.straight")).toBe(15);
     expect(groupWeights.get("cliff.tight-bend")).toBe(6);

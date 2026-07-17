@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { createHexPatchCatalogEntries, createHexPatchTileCatalog } from "./HexTerrainCatalog";
+import { createHexPatchCatalogEntries, createHexPatchTileCatalog, mergeAuthoredPatchDefinitions } from "./HexTerrainCatalog";
 import { analyzeHexPatchVariant } from "./HexTerrainPatchAnalysis";
 import { SeedTerrainProvider } from "./SeedTerrainProvider";
 import { WfcTerrainProvider } from "./WfcTerrainProvider";
@@ -14,9 +14,15 @@ describe("terrain patch inspection", () => {
     expect(new Set(flat.map((variant) => variant.id)).size).toBe(flat.length);
     expect(entries.every((entry) => entry.variants.length > 0)).toBe(true);
     expect(flat.some((variant) => variant.id.startsWith("patch.open.dirt") || variant.id.startsWith("patch.open.basin"))).toBe(false);
-    expect(flat.find((variant) => variant.id === "patch.open.grass")?.selectionGroupWeight).toBe(28);
-    expect(flat.some((variant) => variant.id.startsWith("patch.open.meadow"))).toBe(true);
-    expect(flat.some((variant) => variant.id.startsWith("patch.open.clearing"))).toBe(true);
+    expect(flat.find((variant) => variant.id === "patch.open.grass")?.selectionGroupWeight).toBe(469);
+    expect(flat.some((variant) => variant.id.startsWith("patch.open.meadow") || variant.id.startsWith("patch.open.clearing"))).toBe(false);
+    expect(new Set(flat.flatMap((variant) => [...variant.cells.values()].map((cell) => cell.surface)))).not.toContain("meadow");
+  });
+
+  test("uses custom definitions as catalog overrides without duplicate IDs", () => {
+    const builtIn = [{ id: "patch.open.test", family: "open", weight: 10 }] as const;
+    const custom = [{ id: "patch.open.test", family: "open", weight: 3, displayName: "Edited test" }] as const;
+    expect(mergeAuthoredPatchDefinitions(builtIn, custom)).toEqual(custom);
   });
 
   test("derives components, boundary ports, and mixed feature contacts from cells", () => {

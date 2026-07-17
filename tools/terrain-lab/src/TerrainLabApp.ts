@@ -23,7 +23,11 @@ export class TerrainLabApp {
 
   constructor(private readonly root: HTMLElement) {
     this.author = new PatchAuthorView(() => this.show("connection"));
-    this.catalog = new CatalogView((document) => { this.author.loadDocument(document); this.show("author"); });
+    this.catalog = new CatalogView((document, mode) => {
+      if (mode === "clone") this.author.cloneDocument(document);
+      else this.author.loadDocument(document, mode === "edit");
+      this.show("author");
+    });
     this.connection = new ConnectionLab(this.store, (document) => { this.author.loadDocument(document); this.show("author"); });
     this.coverage = new CoverageDashboard(this.store, (scenario) => {
       this.connection.loadScenario(scenario);

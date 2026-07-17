@@ -23,17 +23,17 @@ The catalog groups generated rotations and reversible river-flow orientations un
 
 Selecting an orientation shows its exact 19 cells, ordered six-edge sockets, river flow, metadata, derived connected components, boundary ports, internal contacts, and structural warnings. Component and contact facts are derived from cells rather than copied from declared topology metadata.
 
-Open cells are colored by their actual surface. The green `meadow` and `clearing` definitions preserve the former open-vocabulary weights and rotations without retaining the retired dirt surface or `patch.open.dirt` ID.
+Open cells use one ordinary grass surface. The retired dirt, meadow, and clearing definitions are not part of the grammar; visual ground decoration should not masquerade as WFC topology vocabulary.
 
 The collapsed **Compare procedural fallback for these edges** section sends the authored orientation's complete six-edge boundary through the real procedural solver. It is a boundary-only comparison: neighboring patches, rolling-world topology, hydrology acceptance, and normal candidate selection are deliberately not simulated. It is useful for comparing interiors, not predicting World Explorer output.
 
 ## Patch Author
 
-Patch Author edits one complete radius-two, 19-cell authored definition. Brush painting supports click-and-drag, while Bucket fills a contiguous matching region, Eyedropper selects an existing cell's paint, and Reset returns cells to open grass. The paint palette distinguishes open grass, open meadow, cliff, rock, river, and lake. Cliff and rock are separate authoring categories but both compile to blocking wall cells using the current runtime terrain vocabulary.
+Patch Author edits one complete radius-two, 19-cell authored definition. Brush painting supports click-and-drag, while Bucket fills a contiguous matching region, Eyedropper selects an existing cell's paint, and Reset returns cells to open ground. The paint palette contains only runtime structures: open ground, wall/cliff, river, and lake. Transition remains a patch-level category for deliberately mixed structures rather than a cell paint.
 
 Undo and redo retain the latest 100 document states. Rotate and Mirror transform the cells, locked boundary, and river-flow metadata together. Boundary locking protects the outer socket cells supplied by a Connection Lab scenario, while **Unlock boundary** deliberately makes them editable. Cell coordinates, zoom, generated rotations, live structural validation, river-flow roles, WFC selection weights, topology metadata, and exact installed-shape duplicate warnings are visible in the workspace.
 
-Drafts autosave in browser storage and can be named, cloned, deleted, imported, and exported. **New patch** in the catalog starts empty, **Clone in Patch Author** promotes an existing authored definition, **Author resolution** starts from a Connection Lab boundary, and **Promote to draft** starts from any candidate realization. These paths all create the same versioned editable document; none silently changes the game catalog.
+Drafts autosave in browser storage and can be named, cloned, deleted, imported, and exported. **New patch** in the catalog starts empty, **Clone in Patch Author** creates a new definition and catalog ID, **Edit in Patch Author** preserves an installed definition's ID for an explicit override, **Author resolution** starts from a Connection Lab boundary, and **Promote to draft** starts from any candidate realization. These paths all create the same versioned editable document; none silently changes the game catalog. Imports automatically migrate retired meadow cells to open grass and legacy rock-category drafts to cliff.
 
 To install reviewed exported definitions into the game, run:
 
@@ -41,7 +41,7 @@ To install reviewed exported definitions into the game, run:
 npm run terrain:patches:install -- path/to/exported-patches.json
 ```
 
-The installer validates every document, compiles it to the existing authored definition format, refuses duplicate built-in or custom IDs by default, and writes the dedicated `src/world/authored-patches/custom-patches.json` pack. Use `--replace` only when intentionally replacing an existing custom definition. The custom pack is imported by the normal catalog, so installed patches receive the same generated rotations, validation, weighting, and WFC selection path as hand-written definitions.
+The installer validates every document, compiles it to the existing authored definition format, refuses duplicate built-in or custom IDs by default, and writes the dedicated `src/world/authored-patches/custom-patches.json` pack. Use `--replace` only when intentionally installing an edited definition as a catalog override. Custom definitions replace matching built-in IDs without creating duplicate WFC candidates, and otherwise join the normal catalog with the same generated rotations, validation, weighting, and selection path as hand-written definitions.
 
 ## Connection Lab
 

@@ -17,11 +17,6 @@ export function createGameMaterials(unlit = false) {
       roughness: 0.92,
       metalness: 0.02,
     }),
-    meadow: createMaterial(unlit, {
-      color: 0x1b2d24,
-      roughness: 0.92,
-      metalness: 0.02,
-    }),
     sand: createMaterial(unlit, {
       color: 0x343125,
       roughness: 0.9,
