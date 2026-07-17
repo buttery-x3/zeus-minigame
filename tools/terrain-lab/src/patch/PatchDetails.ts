@@ -37,7 +37,7 @@ function edges(variant: TerrainVariantInspection) {
 }
 
 function components(variant: TerrainVariantInspection) {
-  const section = panel(`Components (${variant.analysis.components.length})`);
+  const section = disclosure(`Components (${variant.analysis.components.length})`);
   for (const component of variant.analysis.components) {
     const row = element("div", "fact-row");
     row.append(element("strong", undefined, component.id));
@@ -53,7 +53,7 @@ function components(variant: TerrainVariantInspection) {
 }
 
 function contacts(variant: TerrainVariantInspection) {
-  const section = panel(`Internal contacts (${variant.analysis.contacts.length})`);
+  const section = disclosure(`Internal contacts (${variant.analysis.contacts.length})`);
   const featureContacts = variant.analysis.contacts.filter((contact) => contact.structureA !== "open" && contact.structureB !== "open");
   section.append(element("p", featureContacts.length ? undefined : "muted", featureContacts.length
     ? featureContacts.map((contact) => `${contact.componentA} ↔ ${contact.componentB} (${contact.edges.length})`).join("; ")
@@ -62,7 +62,7 @@ function contacts(variant: TerrainVariantInspection) {
 }
 
 function warnings(variant: TerrainVariantInspection) {
-  const section = panel(`Warnings (${variant.analysis.warnings.length})`);
+  const section = disclosure(`Warnings (${variant.analysis.warnings.length})`, variant.analysis.warnings.length > 0);
   if (!variant.analysis.warnings.length) section.append(element("p", "good", "Metadata agrees with current structural checks."));
   for (const warning of variant.analysis.warnings) section.append(element("p", "warning", warning));
   return section;
@@ -71,5 +71,12 @@ function warnings(variant: TerrainVariantInspection) {
 function panel(title: string) {
   const section = element("section", "detail-panel");
   section.append(element("h3", undefined, title));
+  return section;
+}
+
+function disclosure(title: string, open = false) {
+  const section = element("details", "detail-panel detail-disclosure");
+  section.open = open;
+  section.append(element("summary", undefined, title));
   return section;
 }

@@ -15,19 +15,19 @@ const REGION_AUTHORED_PATCHES: readonly AuthoredPatchDefinition[] = [
     topology: "open",
   },
   {
-    id: "patch.open.dirt",
+    id: "patch.open.meadow",
     family: "open",
     weight: 9,
     topology: "open",
-    baseSurface: "dirt",
+    baseSurface: "meadow",
   },
   {
-    id: "patch.open.basin",
+    id: "patch.open.clearing",
     family: "open",
     weight: 12,
     topology: "open",
     openSurfaceCells: {
-      dirt: [c(-1, 0), c(0, 0), c(1, 0), c(-1, 1), c(0, 1)],
+      meadow: [c(-1, 0), c(0, 0), c(1, 0), c(-1, 1), c(0, 1)],
     },
     rotations: 6,
   },

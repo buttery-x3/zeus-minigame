@@ -11,17 +11,23 @@ export class WorldExplorer {
   private readonly stage = element("div", "world-stage");
   private readonly details = element("aside", "world-details");
   private readonly status = element("p", "world-status", "No world generated.");
-  private readonly canvas = new WorldCanvas((patch) => this.selectPatch(patch));
+  private readonly zoomOutput = element("output", "zoom-output", "100%");
+  private readonly canvas = new WorldCanvas((patch) => this.selectPatch(patch), (zoom) => { this.zoomOutput.textContent = `${zoom}%`; });
   private provider: WfcTerrainProvider | null = null;
   private providerKey = "";
   private selected: GeneratedTerrainPatchInspection | null = null;
   private seed = WFC_TERRAIN_SEED;
   private radius = 5;
   private generationToken = 0;
+  private generating = false;
+  private advanceButton!: HTMLButtonElement;
+  private generateButton!: HTMLButtonElement;
+  private centerButton!: HTMLButtonElement;
 
   constructor(private readonly openInCatalog: (id: string) => void) {}
 
   mount() {
+    this.status.setAttribute("aria-live", "polite");
     this.stage.append(this.createControls(), this.status, this.canvas.canvas);
     this.root.append(this.stage, this.details);
     this.renderDetails();
@@ -49,15 +55,26 @@ export class WorldExplorer {
       seed.value = String(this.seed);
       this.invalidate();
     });
-    const advance = button("Advance one patch", () => this.advanceOne());
-    advance.dataset.action = "step";
-    const generate = button("Generate all", () => this.generateAll());
-    generate.classList.add("primary");
-    generate.dataset.action = "generate";
-    controls.append(labeledControl("Seed", seed), random, labeledControl("Patch radius", radius), advance, generate);
+    this.advanceButton = button("Advance one patch", () => this.advanceOne());
+    this.advanceButton.dataset.action = "step";
+    this.generateButton = button("Generate all", () => this.generateAll());
+    this.generateButton.classList.add("primary");
+    this.generateButton.dataset.action = "generate";
+    controls.append(labeledControl("Seed", seed), random, labeledControl("Patch radius", radius), this.advanceButton, this.generateButton);
     controls.append(this.toggle("Boundaries", true, (value) => this.canvas.setOptions({ boundaries: value })));
     controls.append(this.toggle("Patch IDs", false, (value) => this.canvas.setOptions({ ids: value })));
     controls.append(this.toggle("Provenance", true, (value) => this.canvas.setOptions({ provenance: value })));
+    const camera = element("div", "camera-controls");
+    camera.append(
+      iconButton("−", "Zoom out", () => this.canvas.zoomOut()),
+      iconButton("Fit", "Fit world", () => this.canvas.fit()),
+      this.zoomOutput,
+      iconButton("+", "Zoom in", () => this.canvas.zoomIn()),
+    );
+    this.centerButton = iconButton("◎", "Center selected patch", () => this.canvas.centerSelected());
+    this.centerButton.disabled = true;
+    camera.append(this.centerButton);
+    controls.append(camera);
     return controls;
   }
 
@@ -67,11 +84,13 @@ export class WorldExplorer {
     this.provider = new WfcTerrainProvider(this.seed);
     this.providerKey = key;
     this.selected = null;
+    this.canvas.fit();
     this.provider.requestGenerationAround(0, 0, this.radius);
     return this.provider;
   }
 
   private advanceOne() {
+    if (this.generating) return;
     this.generationToken += 1;
     const provider = this.ensureProvider();
     provider.requestGenerationAround(0, 0, this.radius);
@@ -80,14 +99,23 @@ export class WorldExplorer {
   }
 
   private async generateAll() {
+    if (this.generating) return;
     const token = ++this.generationToken;
     const provider = this.ensureProvider();
     provider.requestGenerationAround(0, 0, this.radius);
     let complete = false;
-    while (!complete && token === this.generationToken) {
-      complete = provider.stepGeneration(12).complete;
+    this.generating = true;
+    this.updateGenerationControls();
+    try {
+      while (!complete && token === this.generationToken) {
+        complete = provider.stepGeneration(12).complete;
+        this.refresh();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
+    } finally {
+      this.generating = false;
+      this.updateGenerationControls();
       this.refresh();
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
   }
 
@@ -96,6 +124,7 @@ export class WorldExplorer {
     this.provider = null;
     this.providerKey = "";
     this.selected = null;
+    this.canvas.fit();
     this.status.textContent = "Settings changed. Generate or advance to create a fresh deterministic world.";
     this.canvas.setSnapshot(null, null);
     this.renderDetails();
@@ -106,15 +135,18 @@ export class WorldExplorer {
     const snapshot = this.provider.captureTerrainInspectionSnapshot({ q: 0, r: 0 }, this.radius);
     if (this.selected) this.selected = snapshot.patches.find((patch) => patch.q === this.selected?.q && patch.r === this.selected.r) ?? null;
     const diagnostics = this.provider.getDiagnostics().wfc;
-    this.status.textContent = `${snapshot.patches.length} patches · ${snapshot.patches.length * 19} cells · ` +
+    const total = 1 + 3 * this.radius * (this.radius + 1);
+    const state = diagnostics.pendingGeneration ? (this.generating ? "generating" : "paused") : "complete";
+    this.status.textContent = `${snapshot.patches.length} / ${total} patches · ${snapshot.patches.length * 19} cells · ` +
       `${diagnostics.authoredPatchCount} authored · ${diagnostics.proceduralPatchCount} procedural · ` +
-      `${diagnostics.pendingGeneration ? "generation pending" : "complete"}`;
+      state;
     this.canvas.setSnapshot(snapshot, this.selected);
     this.renderDetails();
   }
 
   private selectPatch(patch: GeneratedTerrainPatchInspection) {
     this.selected = patch;
+    this.centerButton.disabled = false;
     if (this.provider) this.canvas.setSnapshot(this.provider.captureTerrainInspectionSnapshot({ q: 0, r: 0 }, this.radius), patch);
     this.renderDetails();
   }
@@ -122,6 +154,7 @@ export class WorldExplorer {
   private renderDetails() {
     clear(this.details);
     if (!this.selected) {
+      if (this.centerButton) this.centerButton.disabled = true;
       this.details.append(element("h2", undefined, "Patch inspection"), element("p", "empty-state", "Select a generated patch to inspect its exact committed interior."));
       return;
     }
@@ -131,6 +164,12 @@ export class WorldExplorer {
     catalog.disabled = this.selected.variant.provenance !== "authored";
     header.append(catalog);
     this.details.append(header, createPatchSvg(this.selected.variant, { components: true }), createPatchDetails(this.selected.variant));
+  }
+
+  private updateGenerationControls() {
+    this.advanceButton.disabled = this.generating;
+    this.generateButton.disabled = this.generating;
+    this.generateButton.textContent = this.generating ? "Generating…" : "Generate all";
   }
 
   private toggle(label: string, checked: boolean, onChange: (value: boolean) => void) {
@@ -148,5 +187,13 @@ function button(label: string, onClick: () => void) {
   const control = element("button", undefined, label);
   control.type = "button";
   control.addEventListener("click", onClick);
+  return control;
+}
+
+function iconButton(label: string, accessibleName: string, onClick: () => void) {
+  const control = button(label, onClick);
+  control.classList.add("icon-button");
+  control.setAttribute("aria-label", accessibleName);
+  control.title = accessibleName;
   return control;
 }

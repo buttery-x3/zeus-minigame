@@ -11,7 +11,7 @@ let devServer = null;
 try {
   if (!(await isReachable(url))) devServer = await startDevServer();
   await verifyWorkbench();
-  console.log("terrain workbench desktop: passed");
+  console.log("terrain workbench: all viewports passed");
 } finally {
   if (devServer) devServer.kill();
 }
@@ -19,42 +19,78 @@ try {
 async function verifyWorkbench() {
   const browser = await chromium.launch({ executablePath: browserPath, headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-    const errors = [];
-    page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-    page.on("pageerror", (error) => errors.push(error.message));
-    await page.goto(url, { waitUntil: "networkidle" });
-    await page.waitForSelector(".catalog-view");
-    if (await page.locator(".catalog-entry").count() < 40) throw new Error("catalog did not expose the complete authored definition inventory");
-
-    await page.getByLabel("Search patch catalog").fill("cliff-river");
-    if (await page.locator(".catalog-entry").count() !== 1) throw new Error("catalog search did not isolate the cliff-river transition");
-    await page.locator(".catalog-entry").click();
-    if (await page.locator(".catalog-inspector h2").textContent() !== "patch.transition.cliff-river") throw new Error("filtered transition did not open in the patch inspector");
-    if (await page.locator(".comparison-patch .patch-svg").count() !== 2) throw new Error("authored/procedural comparison did not render both realizations");
-    if (!(await page.locator(".details-stack").textContent()).includes("river-1")) throw new Error("derived river component was not displayed");
-
-    await page.getByRole("button", { name: "World Explorer" }).click();
-    await page.getByLabel("Patch radius").fill("3");
-    await page.getByLabel("Patch radius").press("Enter");
-    await page.getByRole("button", { name: "Advance one patch" }).click();
-    await page.waitForFunction(() => document.querySelector(".world-status")?.textContent?.startsWith("1 patches"));
-    await page.getByRole("button", { name: "Generate all" }).click();
-    await page.waitForFunction(() => document.querySelector(".world-status")?.textContent?.includes("complete"), null, { timeout: 30_000 });
-    const status = await page.locator(".world-status").textContent();
-    if (!status.includes("37 patches") || !status.includes("authored") || !status.includes("procedural")) throw new Error(`world explorer status was incomplete: ${status}`);
-    const canvas = page.locator("canvas.world-canvas");
-    const bounds = await canvas.boundingBox();
-    if (!bounds) throw new Error("world canvas had no rendered bounds");
-    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    await page.waitForSelector(".selected-patch-header");
-    if (await page.locator(".world-details .patch-svg").count() !== 1) throw new Error("selected committed patch did not render its exact interior");
-    await page.getByRole("button", { name: "Open in catalog" }).click();
-    if (await page.locator(".catalog-view").count() !== 1) throw new Error("generated authored patch did not link back to the catalog");
-    if (errors.length) throw new Error(`browser errors: ${errors.join(" | ")}`);
-    await page.close();
+    for (const viewport of [{ name: "desktop", width: 1280, height: 720 }, { name: "uwqhd", width: 3440, height: 1440 }]) {
+      await verifyViewport(browser, viewport);
+      console.log(`terrain workbench ${viewport.name}: passed`);
+    }
   } finally {
     await browser.close();
+  }
+}
+
+async function verifyViewport(browser, viewport) {
+  const page = await browser.newPage({ viewport });
+  const errors = [];
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.waitForSelector(".catalog-view");
+  if (await page.locator(".catalog-entry").count() < 40) throw new Error(`${viewport.name} catalog did not expose the complete inventory`);
+  const catalogIds = await page.locator(".catalog-entry strong").allTextContents();
+  if (catalogIds.some((id) => id === "patch.open.dirt" || id === "patch.open.basin")) throw new Error(`${viewport.name} catalog retained a dirt definition`);
+  await assertViewportContained(page, viewport, "catalog");
+
+  await page.getByLabel("Search patch catalog").fill("cliff-river");
+  if (await page.locator(".catalog-entry").count() !== 1) throw new Error(`${viewport.name} catalog search did not isolate cliff-river`);
+  await page.locator(".catalog-entry").click();
+  if (await page.locator(".catalog-inspector h2").textContent() !== "patch.transition.cliff-river") throw new Error(`${viewport.name} filtered transition did not open`);
+  const comparison = page.locator("details.comparison");
+  if (await comparison.getAttribute("open") !== null || await page.locator(".comparison-patch").count() !== 0) throw new Error(`${viewport.name} fallback preview was not initially collapsed`);
+  const comparisonCopy = await comparison.textContent();
+  if (!comparisonCopy.includes("Boundary-only fallback preview") || !comparisonCopy.includes("not a prediction")) throw new Error(`${viewport.name} fallback preview lacked its scope explanation`);
+  await page.locator(".comparison-toggle").click();
+  await page.waitForSelector(".comparison-patch .patch-svg");
+  if (await page.locator(".comparison-patch .patch-svg").count() !== 2) throw new Error(`${viewport.name} fallback preview did not render both interiors`);
+  if (!(await page.locator(".details-stack").textContent()).includes("river-1")) throw new Error(`${viewport.name} derived river component was not displayed`);
+
+  await page.getByRole("button", { name: "World Explorer" }).click();
+  await page.getByLabel("Patch radius").fill("3");
+  await page.getByLabel("Patch radius").press("Enter");
+  await page.getByRole("button", { name: "Advance one patch" }).click();
+  await page.waitForFunction(() => document.querySelector(".world-status")?.textContent?.startsWith("1 / 37 patches"));
+  await page.getByRole("button", { name: "Generate all" }).click();
+  await page.waitForFunction(() => document.querySelector(".world-status")?.textContent?.includes("complete"), null, { timeout: 30_000 });
+  const status = await page.locator(".world-status").textContent();
+  if (!status.includes("37 / 37 patches") || !status.includes("authored") || !status.includes("procedural")) throw new Error(`${viewport.name} world status was incomplete: ${status}`);
+  await assertViewportContained(page, viewport, "world");
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  if (await page.locator(".zoom-output").textContent() !== "125%") throw new Error(`${viewport.name} zoom-in control did not update the camera`);
+  await page.getByRole("button", { name: "Fit world" }).click();
+  if (await page.locator(".zoom-output").textContent() !== "100%") throw new Error(`${viewport.name} fit control did not reset the camera`);
+  const canvas = page.locator("canvas.world-canvas");
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error(`${viewport.name} world canvas had no rendered bounds`);
+  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.waitForSelector(".selected-patch-header");
+  if (await page.locator(".world-details .patch-svg").count() !== 1) throw new Error(`${viewport.name} selected patch did not render its interior`);
+  await page.getByRole("button", { name: "Open in catalog" }).click();
+  if (await page.locator(".catalog-view").count() !== 1) throw new Error(`${viewport.name} generated patch did not link to the catalog`);
+  if (errors.length) throw new Error(`${viewport.name} browser errors: ${errors.join(" | ")}`);
+  await page.close();
+}
+
+async function assertViewportContained(page, viewport, label) {
+  const layout = await page.evaluate(() => {
+    const canvas = document.querySelector("canvas.world-canvas");
+    const canvasBounds = canvas?.getBoundingClientRect();
+    return {
+      documentHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight,
+      canvasBottom: canvasBounds?.bottom ?? 0,
+    };
+  });
+  if (layout.documentHeight > layout.viewportHeight || layout.canvasBottom > viewport.height + 1) {
+    throw new Error(`${viewport.name} ${label} escaped the viewport: ${JSON.stringify(layout)}`);
   }
 }
 

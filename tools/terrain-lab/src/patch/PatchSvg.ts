@@ -1,14 +1,8 @@
 import { hexCellKey } from "../../../../src/world/hexCoordinates";
 import type { TerrainVariantInspection } from "../../../../src/world/TerrainInspectionSnapshot";
+import { terrainCellColor } from "../terrainColors";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const STRUCTURE_COLORS = {
-  open: "#789b68",
-  wall: "#5c6070",
-  bank: "#b9a16c",
-  lake: "#397f9e",
-  river: "#58a9ca",
-} as const;
 const COMPONENT_COLORS = ["#f7c948", "#e66f51", "#aa7ee8", "#58d6c7", "#ff8fcf", "#a8d85e"];
 
 export function createPatchSvg(inspection: TerrainVariantInspection, options: { labels?: boolean; components?: boolean } = {}) {
@@ -26,7 +20,7 @@ export function createPatchSvg(inspection: TerrainVariantInspection, options: { 
     const { x, y } = axialPoint(cell.q, cell.r, 31);
     const polygon = document.createElementNS(SVG_NS, "polygon");
     polygon.setAttribute("points", hexPoints(x, y, 29));
-    polygon.setAttribute("fill", STRUCTURE_COLORS[cell.structure]);
+    polygon.setAttribute("fill", terrainCellColor(cell.structure, cell.surface));
     polygon.setAttribute("stroke", options.components
       ? COMPONENT_COLORS[(componentByCell.get(hexCellKey(cell.q, cell.r)) ?? 0) % COMPONENT_COLORS.length]
       : "#17202a");

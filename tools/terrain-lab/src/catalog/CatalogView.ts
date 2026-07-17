@@ -20,7 +20,6 @@ export class CatalogView {
   private selectedVariant = this.entries[0].variants[0];
   private showLabels = true;
   private showComponents = true;
-  private proceduralSeed = 20260517;
 
   mount() {
     this.root.append(this.createSidebar(), this.inspector);
@@ -103,17 +102,12 @@ export class CatalogView {
     const controls = element("div", "overlay-controls");
     controls.append(this.checkbox("Cell coordinates", this.showLabels, (value) => { this.showLabels = value; this.renderInspector(); }));
     controls.append(this.checkbox("Component colors", this.showComponents, (value) => { this.showComponents = value; this.renderInspector(); }));
-    const seed = document.createElement("input");
-    seed.type = "number";
-    seed.value = String(this.proceduralSeed);
-    seed.addEventListener("change", () => { this.proceduralSeed = Number(seed.value) || 0; this.renderInspector(); });
-    controls.append(labeledControl("Procedural seed", seed));
     const inspection = inspectTerrainVariant(this.selectedVariant);
     const primary = element("div", "inspector-grid");
     const visual = element("section", "patch-stage detail-panel");
     visual.append(createPatchSvg(inspection, { labels: this.showLabels, components: this.showComponents }));
     primary.append(visual, createPatchDetails(inspection));
-    this.inspector.append(header, controls, primary, createProceduralComparison(this.selectedVariant, this.proceduralSeed));
+    this.inspector.append(header, controls, primary, createProceduralComparison(this.selectedVariant, 20260517));
   }
 
   private createOrientationSelect() {

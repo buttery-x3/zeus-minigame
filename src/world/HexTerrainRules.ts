@@ -34,7 +34,7 @@ export function createTerrainStructureCounts(): Record<TerrainStructure, number>
 export function createTerrainSurfaceCounts(): Record<TerrainSurface, number> {
   return {
     grass: 0,
-    dirt: 0,
+    meadow: 0,
     sand: 0,
     mud: 0,
     stone: 0,
@@ -80,7 +80,7 @@ export function deriveTerrainSurface(
     return "sand";
   }
   if (structure === "bank") {
-    return neighbors.includes("river") ? "mud" : neighbors.includes("lake") ? "sand" : neighbors.includes("wall") ? "stone" : "dirt";
+    return neighbors.includes("river") ? "mud" : neighbors.includes("lake") ? "sand" : neighbors.includes("wall") ? "stone" : "grass";
   }
   if (h > 0.978) {
     return "charged";
@@ -94,7 +94,7 @@ export function deriveTerrainSurface(
   if (neighbors.includes("wall")) {
     return "stone";
   }
-  return h > 0.58 ? "dirt" : "grass";
+  return "grass";
 }
 
 export function terrainBlocksMovement(structure: TerrainStructure) {

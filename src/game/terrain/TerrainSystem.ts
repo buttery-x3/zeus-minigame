@@ -250,8 +250,8 @@ export class TerrainSystem {
         return this.materials.cursed;
       case "scarred":
         return this.materials.scarred;
-      case "dirt":
-        return this.materials.dirt;
+      case "meadow":
+        return this.materials.meadow;
       case "sand":
         return this.materials.sand;
       case "mud":

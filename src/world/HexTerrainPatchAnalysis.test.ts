@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { createHexPatchCatalogEntries, createHexPatchTileCatalog } from "./HexTerrainCatalog";
 import { analyzeHexPatchVariant } from "./HexTerrainPatchAnalysis";
+import { SeedTerrainProvider } from "./SeedTerrainProvider";
 import { WfcTerrainProvider } from "./WfcTerrainProvider";
 
 describe("terrain patch inspection", () => {
@@ -12,6 +13,10 @@ describe("terrain patch inspection", () => {
     expect(entries.flatMap((entry) => entry.variants.map((variant) => variant.id))).toEqual(flat.map((variant) => variant.id));
     expect(new Set(flat.map((variant) => variant.id)).size).toBe(flat.length);
     expect(entries.every((entry) => entry.variants.length > 0)).toBe(true);
+    expect(flat.some((variant) => variant.id.startsWith("patch.open.dirt") || variant.id.startsWith("patch.open.basin"))).toBe(false);
+    expect(flat.find((variant) => variant.id === "patch.open.grass")?.selectionGroupWeight).toBe(28);
+    expect(flat.some((variant) => variant.id.startsWith("patch.open.meadow"))).toBe(true);
+    expect(flat.some((variant) => variant.id.startsWith("patch.open.clearing"))).toBe(true);
   });
 
   test("derives components, boundary ports, and mixed feature contacts from cells", () => {
@@ -50,7 +55,19 @@ describe("terrain patch inspection", () => {
     expect(first.patches).toHaveLength(19);
     expect(second.patches[0].variant.edges.ne[0]).toBe(originalKind);
     expect(second.patches.every((entry) => entry.variant.cells.length === 19)).toBe(true);
+    expect(new Set(second.patches.flatMap((entry) => entry.variant.cells.map((cell) => cell.surface)))).not.toContain("dirt");
     expect(after.generationStepCount).toBe(before.generationStepCount);
     expect(after.generatedPatchCount).toBe(before.generatedPatchCount);
+  });
+
+  test("never emits the retired dirt surface from the fallback provider", () => {
+    const provider = new SeedTerrainProvider(20260517);
+    provider.requestGenerationAround(0, 0, 4);
+    provider.stepGeneration(Number.POSITIVE_INFINITY);
+    const snapshot = provider.captureGeneratedTerrainSnapshot({ q: 0, r: 0 }, 4);
+    const surfaces = snapshot.cells.map((cell) => provider.readCommittedCell(cell.q, cell.r)?.surface);
+
+    expect(surfaces).not.toContain("dirt");
+    expect(provider.getDiagnostics().surfaceCounts).not.toHaveProperty("dirt");
   });
 });

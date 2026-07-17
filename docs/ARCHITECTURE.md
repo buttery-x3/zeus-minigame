@@ -132,7 +132,7 @@ The world no longer has a gameplay boundary. The old finite-world `WORLD_CELLS`,
 Terrain is split into structural cells and derived surfaces:
 
 - Structures: `open`, `wall`, `bank`, `lake`, `river`; `bank` is reserved for a future water-adjacency post-pass and is not emitted by patch generation.
-- Surfaces: `grass`, `dirt`, `sand`, `mud`, `stone`, `scarred`, `charged`, `cursed`.
+- Surfaces: `grass`, `meadow`, `sand`, `mud`, `stone`, `scarred`, `charged`, `cursed`.
 - Edge/socket vocabulary: `open`, `closed`, `river`, `lake`.
 
 `open` and `bank` are walkable. `wall`, `lake`, and `river` block movement. Only `wall` blocks visibility; water is a movement obstacle but not an occluder. The authored catalog includes open basins, isolated rocks, lower-frequency cliff endpoints/ridges/mirrored sways/dog-legs/tight and gentle bends/junctions/masses, bend-weighted river continuations, grouped lake coves, narrow-to-broad lake flares, mirrored shores/cores, broad river mouths, and river/lake/cliff transitions. It deliberately omits an all-open isolated lake basin. Authored river exits carry semantic input/output ports in addition to their physical sockets: cliff terminals expose one output, lake mouths consume one input, continuations carry one of each, and the rare junction is a two-input/one-output confluence. Validation requires those roles and physical terminal contact. Procedural open-core repair remains exempt because it is the grammar-closing safety fallback. Bank placement and its eventual movement-speed modifier are deferred to a post-generation terrain-decoration pass.
