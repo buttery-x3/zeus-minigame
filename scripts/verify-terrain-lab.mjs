@@ -85,6 +85,22 @@ async function verifyViewport(browser, viewport) {
   }
   if (!(await page.locator(".details-stack").textContent()).includes("river-1")) throw new Error(`${viewport.name} derived river component was not displayed`);
 
+  await page.getByRole("button", { name: "Patch Author", exact: true }).click();
+  if (await page.locator(".patch-author-canvas [data-cell]").count() !== 19) throw new Error(`${viewport.name} patch author did not render exactly 19 editable cells`);
+  await page.getByRole("button", { name: "Cliff", exact: true }).click();
+  await page.locator('.patch-author-canvas [data-cell="0,0"]').click();
+  if (!(await page.locator('.patch-author-canvas [data-cell="0,0"]').getAttribute("aria-label")).includes("wall")) throw new Error(`${viewport.name} patch brush did not paint the selected cell`);
+  await page.getByRole("button", { name: "Open meadow", exact: true }).click();
+  await page.getByRole("button", { name: "Bucket G", exact: true }).click();
+  await page.locator('.patch-author-canvas [data-cell="-2,0"]').click();
+  if (!(await page.locator('.patch-author-canvas [data-cell="-2,0"]').getAttribute("aria-label")).includes("meadow")) throw new Error(`${viewport.name} patch bucket did not fill the contiguous open region`);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  if (!(await page.locator('.patch-author-canvas [data-cell="-2,0"]').getAttribute("aria-label")).includes("grass")) throw new Error(`${viewport.name} patch author undo did not restore the previous paint`);
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  if (await page.getByLabel("Saved patch drafts").locator("option").count() < 2) throw new Error(`${viewport.name} patch draft was not persisted`);
+  await assertViewportContained(page, viewport, "patch author");
+
   await page.getByRole("button", { name: "Connection Lab" }).click();
   for (const direction of ["NE", "E", "SE", "SW", "W", "NW"]) {
     await page.getByLabel(`${direction} neighbor`, { exact: true }).selectOption("patch.open.grass");
@@ -107,6 +123,14 @@ async function verifyViewport(browser, viewport) {
   await page.getByRole("button", { name: "Save draft" }).click();
   await page.getByRole("button", { name: "Save decision" }).click();
   await assertViewportContained(page, viewport, "connection");
+  await page.getByRole("button", { name: "Author resolution", exact: true }).click();
+  if (await page.locator(".patch-author-cell.locked").count() === 0) throw new Error(`${viewport.name} authored scenario did not lock its required boundary cells`);
+  await page.getByRole("button", { name: "Connection Lab", exact: true }).click();
+  const promoteButtons = page.getByRole("button", { name: "Promote to draft", exact: true });
+  if (await promoteButtons.count() === 0) throw new Error(`${viewport.name} connection candidates could not be promoted to drafts`);
+  await promoteButtons.first().click();
+  if (await page.locator(".patch-author-view").count() !== 1) throw new Error(`${viewport.name} candidate promotion did not open Patch Author`);
+  await page.getByRole("button", { name: "Connection Lab", exact: true }).click();
 
   await page.getByRole("button", { name: "Decisions & Coverage" }).click();
   await page.getByRole("button", { name: "Generate coverage" }).click();

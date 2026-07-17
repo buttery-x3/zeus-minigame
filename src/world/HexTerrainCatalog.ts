@@ -4,6 +4,8 @@ import { HYDROLOGY_AUTHORED_PATCHES } from "./HexTerrainHydrologyPatches";
 import { patchCell as c } from "./HexTerrainLinearShapes";
 import { assertValidHexPatchVariant } from "./HexTerrainPatchValidation";
 import { RIVER_AUTHORED_PATCHES } from "./HexTerrainRiverPatches";
+import customPatchPack from "./authored-patches/custom-patches.json";
+import { compileTerrainPatchPack } from "./TerrainPatchPack";
 
 export * from "./HexTerrainPatch";
 
@@ -38,6 +40,7 @@ const AUTHORED_PATCHES = [
   ...HYDROLOGY_AUTHORED_PATCHES,
   ...CLIFF_AUTHORED_PATCHES,
   ...RIVER_AUTHORED_PATCHES,
+  ...compileTerrainPatchPack(customPatchPack),
 ] as const;
 
 export type HexPatchCatalogEntry = {

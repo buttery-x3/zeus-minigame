@@ -4,6 +4,7 @@ import {
 } from "../../../../src/world/HexTerrainCatalog";
 import { inspectTerrainVariant } from "../../../../src/world/TerrainInspectionSnapshot";
 import type { HexPatchTileVariant } from "../../../../src/world/HexTerrainPatch";
+import { createBlankTerrainPatchDocument, terrainPatchDocumentFromDefinition, type TerrainPatchDocument } from "../../../../src/world/TerrainPatchDocument";
 import { createProceduralComparison } from "../comparison/ProceduralComparison";
 import { clear, element, labeledControl } from "../dom";
 import { createPatchDetails } from "../patch/PatchDetails";
@@ -20,6 +21,8 @@ export class CatalogView {
   private selectedVariant = this.entries[0].variants[0];
   private showLabels = true;
   private showComponents = true;
+
+  constructor(private readonly openAuthor: (document: TerrainPatchDocument) => void = () => undefined) {}
 
   mount() {
     this.root.append(this.createSidebar(), this.inspector);
@@ -47,14 +50,14 @@ export class CatalogView {
     search.setAttribute("aria-label", "Search patch catalog");
     search.addEventListener("input", () => { this.query = search.value.toLowerCase(); this.renderList(); });
     const family = document.createElement("select");
-    for (const value of ["all", "open", "cliff", "river", "lake", "transition"]) {
+    for (const value of ["all", "open", "cliff", "rock", "river", "lake", "transition"]) {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = value === "all" ? "All families" : value;
+      option.textContent = value === "all" ? "All categories" : value;
       family.append(option);
     }
     family.addEventListener("change", () => { this.family = family.value; this.renderList(); });
-    sidebar.append(element("h2", undefined, "Patch Catalog"), labeledControl("Search", search), labeledControl("Family", family), this.list);
+    sidebar.append(element("h2", undefined, "Patch Catalog"), labeledControl("Search", search), labeledControl("Category", family), this.list);
     return sidebar;
   }
 
@@ -67,7 +70,7 @@ export class CatalogView {
       button.type = "button";
       button.append(
         element("strong", undefined, entry.definition.id),
-        element("span", undefined, `${entry.definition.family} · ${entry.definition.topology ?? "mixed"}`),
+        element("span", undefined, `${entry.definition.displayName ? `${entry.definition.displayName} · ` : ""}${entryCategory(entry)} · ${entry.definition.topology ?? "mixed"}`),
         element("span", "variant-count", `${entry.variants.length} orientation${entry.variants.length === 1 ? "" : "s"}`),
       );
       button.addEventListener("click", () => {
@@ -82,10 +85,12 @@ export class CatalogView {
   }
 
   private entryMatches(entry: HexPatchCatalogEntry) {
-    if (this.family !== "all" && entry.definition.family !== this.family) return false;
+    if (this.family !== "all" && entryCategory(entry) !== this.family) return false;
     if (!this.query) return true;
     return [
       entry.definition.id,
+      entry.definition.displayName ?? "",
+      entryCategory(entry),
       entry.definition.family,
       entry.definition.topology ?? "mixed",
       entry.definition.selectionGroup ?? "",
@@ -97,8 +102,14 @@ export class CatalogView {
     clear(this.inspector);
     const header = element("div", "inspector-header");
     const title = element("div");
-    title.append(element("p", "eyebrow", "Read-only authored definition"), element("h2", undefined, this.selectedEntry.definition.id));
-    header.append(title, this.createOrientationSelect());
+    title.append(element("p", "eyebrow", "Authored definition"), element("h2", undefined, this.selectedEntry.definition.displayName ?? this.selectedEntry.definition.id));
+    const actions = element("div", "catalog-author-actions");
+    actions.append(
+      button("New patch", () => this.openAuthor(createBlankTerrainPatchDocument()), "primary"),
+      button("Clone in Patch Author", () => this.openAuthor(terrainPatchDocumentFromDefinition(this.selectedEntry.definition))),
+      this.createOrientationSelect(),
+    );
+    header.append(title, actions);
     const controls = element("div", "overlay-controls");
     controls.append(this.checkbox("Cell coordinates", this.showLabels, (value) => { this.showLabels = value; this.renderInspector(); }));
     controls.append(this.checkbox("Component colors", this.showComponents, (value) => { this.showComponents = value; this.renderInspector(); }));
@@ -136,4 +147,15 @@ export class CatalogView {
     wrapper.append(input, document.createTextNode(label));
     return wrapper;
   }
+}
+
+function entryCategory(entry: HexPatchCatalogEntry) {
+  return entry.definition.category ?? (entry.definition.id.startsWith("patch.rock.") ? "rock" : entry.definition.family);
+}
+
+function button(label: string, onClick: () => void, className?: string) {
+  const control = element("button", className, label);
+  control.type = "button";
+  control.addEventListener("click", onClick);
+  return control;
 }

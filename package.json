@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "terrain:lab": "vite --config vite.terrain-lab.config.ts --host 127.0.0.1",
     "terrain:lab:build": "vite build --config vite.terrain-lab.config.ts",
+    "terrain:patches:install": "tsx scripts/install-terrain-patches.ts",
     "test:terrain": "vitest run src/world --exclude **/*.soak.test.ts",
     "test:terrain:soak": "vitest run src/world/TerrainComposition.soak.test.ts",
     "test:game": "vitest run src/game/collision src/game/enemies src/game/navigation src/game/perf",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@types/three": "^0.184.1",
     "playwright-core": "^1.60.0",
+    "tsx": "^4.23.1",
     "typescript": "^5.9.3",
     "vite": "^7.2.4",
     "vitest": "^4.1.10"

@@ -1,6 +1,6 @@
 # Terrain Workbench
 
-The Terrain Workbench is a local development application for inspecting and classifying the exact terrain grammar used by the game. It is not part of the production build, a level editor, or a source-file authoring tool. Drafts and decisions are browser-local until deliberately exported; the app never writes terrain source files.
+The Terrain Workbench is a local development application for inspecting, classifying, and authoring the exact terrain grammar used by the game. It is not part of the production build or a world/map editor. Drafts and decisions are browser-local until deliberately exported; the app never writes terrain source files directly.
 
 ## Run
 
@@ -26,6 +26,22 @@ Selecting an orientation shows its exact 19 cells, ordered six-edge sockets, riv
 Open cells are colored by their actual surface. The green `meadow` and `clearing` definitions preserve the former open-vocabulary weights and rotations without retaining the retired dirt surface or `patch.open.dirt` ID.
 
 The collapsed **Compare procedural fallback for these edges** section sends the authored orientation's complete six-edge boundary through the real procedural solver. It is a boundary-only comparison: neighboring patches, rolling-world topology, hydrology acceptance, and normal candidate selection are deliberately not simulated. It is useful for comparing interiors, not predicting World Explorer output.
+
+## Patch Author
+
+Patch Author edits one complete radius-two, 19-cell authored definition. Brush painting supports click-and-drag, while Bucket fills a contiguous matching region, Eyedropper selects an existing cell's paint, and Reset returns cells to open grass. The paint palette distinguishes open grass, open meadow, cliff, rock, river, and lake. Cliff and rock are separate authoring categories but both compile to blocking wall cells using the current runtime terrain vocabulary.
+
+Undo and redo retain the latest 100 document states. Rotate and Mirror transform the cells, locked boundary, and river-flow metadata together. Boundary locking protects the outer socket cells supplied by a Connection Lab scenario, while **Unlock boundary** deliberately makes them editable. Cell coordinates, zoom, generated rotations, live structural validation, river-flow roles, WFC selection weights, topology metadata, and exact installed-shape duplicate warnings are visible in the workspace.
+
+Drafts autosave in browser storage and can be named, cloned, deleted, imported, and exported. **New patch** in the catalog starts empty, **Clone in Patch Author** promotes an existing authored definition, **Author resolution** starts from a Connection Lab boundary, and **Promote to draft** starts from any candidate realization. These paths all create the same versioned editable document; none silently changes the game catalog.
+
+To install reviewed exported definitions into the game, run:
+
+```bash
+npm run terrain:patches:install -- path/to/exported-patches.json
+```
+
+The installer validates every document, compiles it to the existing authored definition format, refuses duplicate built-in or custom IDs by default, and writes the dedicated `src/world/authored-patches/custom-patches.json` pack. Use `--replace` only when intentionally replacing an existing custom definition. The custom pack is imported by the normal catalog, so installed patches receive the same generated rotations, validation, weighting, and WFC selection path as hand-written definitions.
 
 ## Connection Lab
 

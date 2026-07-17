@@ -47,6 +47,10 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/world/HexTerrainRiverPorts.ts`: rotatable authored input/output metadata and reversible continuation-port expansion.
 - `src/world/HexTerrainLinearShapes.ts`: shared radius-2 linear feature cell paths used by cliff and river authored patches.
 - `src/world/HexTerrainPatchValidation.ts`: authored and procedural patch structural validation.
+- `src/world/TerrainPatchDocument.ts`: versioned, explicit 19-cell authoring document plus conversion to/from runtime authored definitions and variants.
+- `src/world/TerrainPatchEditing.ts`: framework-neutral brush/fill mutations, transforms, boundary locks, and bounded undo/redo history.
+- `src/world/TerrainPatchPack.ts`: versioned authoring-pack parsing, duplicate detection, and compilation into runtime authored definitions.
+- `src/world/authored-patches/custom-patches.json`: deliberately installed authored definitions loaded by the normal catalog and WFC path.
 - `src/world/HexTerrainPatchAnalysis.ts`: read-only cell-derived components, boundary ports, feature contacts, and clear metadata contradictions for terrain tooling.
 - `src/world/TerrainInspectionSnapshot.ts`: detached serializable views of authored and dynamically generated procedural patch interiors.
 - `src/world/TerrainTopologyRecipe.ts`: rotation/mirror-canonical internal-topology contracts and read-only experiments over exhaustive Connection Lab procedural candidates.
@@ -84,13 +88,14 @@ The prototype is intentionally small, but the code is split by responsibility so
 - `src/lib/math.ts`: numeric helpers.
 - `src/lib/dom.ts`: DOM query helper.
 - `scripts/verify-render.mjs`: headless browser smoke test for rendering, HUD, and core interactions.
-- `tools/terrain-lab`: separate local plain-TypeScript terrain catalog, Connection Lab with topology recipe experiments, decision/coverage matrix, bounded world explorer, and feature-network analysis workspace, importing the real `src/world` engine without entering the production build.
+- `tools/terrain-lab`: separate local plain-TypeScript terrain catalog, visual 19-cell Patch Author, Connection Lab with topology recipe experiments, decision/coverage matrix, bounded world explorer, and feature-network analysis workspace, importing the real `src/world` engine without entering the production build.
+- `scripts/install-terrain-patches.ts`: explicit validated bridge from exported Patch Author documents into the dedicated custom authored-patch pack.
 - `scripts/verify-terrain-lab.mjs`: headless browser smoke test for the local terrain workbench.
 
 ## Boundaries
 
 - `GridWorld` should not know about meshes, HUD, enemies, or spells.
-- Terrain inspection must remain read-only and derive from the same catalog variants, procedural solver, and committed provider state as the game. Tool UI code must not recreate generation rules.
+- Terrain inspection and authoring validation must derive from the same catalog variants, procedural solver, and committed provider state as the game. Tool UI code must not recreate generation rules. Browser tools may persist drafts and export files, but installing source definitions remains an explicit CLI action.
 - `Hud` should not mutate gameplay state; it only renders state passed into `update`.
 - UI windows should consume their own pointer events so game movement clicks do not leak through, except locked transparent HUD panels while Unlock UI is off; those are intentionally click-through.
 - Rendering helpers should create reusable `THREE.Object3D` instances and avoid owning gameplay state.

@@ -12,6 +12,8 @@ import {
 import { inspectTerrainVariant } from "../../../../src/world/TerrainInspectionSnapshot";
 import { createTerrainTopologySignature } from "../../../../src/world/TerrainTopologySignature";
 import type { TerrainRecipeExperiment } from "../../../../src/world/TerrainTopologyRecipe";
+import { createBlankTerrainPatchDocument, terrainPatchDocumentFromVariant, type TerrainPatchDocument } from "../../../../src/world/TerrainPatchDocument";
+import { applyTerrainPatchBoundary } from "../../../../src/world/TerrainPatchEditing";
 import { clear, element, labeledControl } from "../dom";
 import { createPatchSvg } from "../patch/PatchSvg";
 import type { ScenarioStore } from "../scenarios/ScenarioStore";
@@ -29,7 +31,7 @@ export class ConnectionLab {
   private resolution: TerrainConnectionResolution | null = null;
   private recipeExperiment: TerrainRecipeExperiment | null = null;
 
-  constructor(private readonly store: ScenarioStore) {
+  constructor(private readonly store: ScenarioStore, private readonly openAuthor: (document: TerrainPatchDocument) => void = () => undefined) {
     this.recipePanel = new RecipeExperimentPanel(store);
   }
 
@@ -200,6 +202,7 @@ export class ConnectionLab {
       this.allVariants(),
       (experiment) => { this.recipeExperiment = experiment; this.renderResults(); },
     ));
+    this.results.append(this.createAuthorResolutionPanel(resolution));
     if (this.recipeExperiment) this.results.append(this.createRecipeResults(this.recipeExperiment));
     if (resolution.generatorFallback) {
       this.results.append(this.createCandidateSection("Current procedural fallback", [{
@@ -248,6 +251,26 @@ export class ConnectionLab {
     return panel;
   }
 
+  private createAuthorResolutionPanel(resolution: TerrainConnectionResolution) {
+    const panel = element("section", "author-resolution-panel detail-panel");
+    const copy = element("div");
+    copy.append(element("h3", undefined, "Author a resolution"), element("p", undefined, "Open this exact boundary in the 19-cell Patch Author. Required edge cells will be pre-painted and locked."));
+    panel.append(copy, button("Author resolution", () => {
+      const category = categoryForConstraints(resolution.constraints);
+      let draft = createBlankTerrainPatchDocument(category);
+      const slug = (this.scenario.name || "connection-resolution").toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replaceAll(/^-|-$/g, "") || "connection-resolution";
+      draft.id = `patch.${category}.${slug}`;
+      draft.displayName = `${this.scenario.name || "Connection"} resolution`;
+      draft.selectionGroup = draft.id;
+      draft.topology = category === "open" ? "open" : "mixed";
+      draft.source = { kind: "scenario", reference: this.scenario.id };
+      draft.notes = `Authored from Connection Lab scenario ${this.scenario.name || this.scenario.id}.`;
+      draft = applyTerrainPatchBoundary(draft, resolution.constraints, true);
+      this.openAuthor(draft);
+    }, "primary"));
+    return panel;
+  }
+
   private createRecipeResults(experiment: TerrainRecipeExperiment) {
     const section = element("section", "recipe-results candidate-section");
     section.append(element("h3", undefined, "Experimental recipe result"));
@@ -286,6 +309,7 @@ export class ConnectionLab {
       element("span", "candidate-status", candidate.policySafe ? "Policy safe" : `Rejected: ${candidate.rejectionReasons.join(", ")}`),
       preview,
       element("code", "topology-key", candidate.topology.key),
+      button("Promote to draft", () => this.openAuthor(terrainPatchDocumentFromVariant(candidate.variant))),
     );
     return card;
   }
@@ -305,6 +329,15 @@ export class ConnectionLab {
     this.dynamicVariants.forEach((variant, id) => byId.set(id, variant));
     return [...byId.values()];
   }
+}
+
+function categoryForConstraints(constraints: TerrainConnectionResolution["constraints"]): TerrainPatchDocument["category"] {
+  const kinds = new Set(Object.values(constraints).flat().filter((kind) => kind !== "open"));
+  if (kinds.size > 1) return "transition";
+  if (kinds.has("river")) return "river";
+  if (kinds.has("lake")) return "lake";
+  if (kinds.has("closed")) return "cliff";
+  return "open";
 }
 
 function button(label: string, onClick: () => void, className?: string) {
