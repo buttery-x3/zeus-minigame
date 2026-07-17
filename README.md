@@ -11,13 +11,21 @@ npm run dev
 
 Open the local Vite URL, usually `http://127.0.0.1:5173/`.
 
+The separate read-only terrain development workbench runs with:
+
+```bash
+npm run terrain:lab
+```
+
+See [docs/TERRAIN_LAB.md](docs/TERRAIN_LAB.md) for its catalog, procedural comparison, and bounded world-inspection workflow.
+
 ## Verify
 
 ```bash
 npm run verify
 ```
 
-This runs the production build and a headless browser smoke test for rendering, HUD, movement, and the `Q`/`W` spell flow.
+This runs the production build, terrain and game tests, the game render checks, and the separate terrain-workbench smoke test.
 
 ## Prototype Controls
 

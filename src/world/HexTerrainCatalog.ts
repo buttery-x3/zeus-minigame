@@ -40,10 +40,20 @@ const AUTHORED_PATCHES = [
   ...RIVER_AUTHORED_PATCHES,
 ] as const;
 
+export type HexPatchCatalogEntry = {
+  definition: AuthoredPatchDefinition;
+  variants: readonly HexPatchTileVariant[];
+};
+
+export function createHexPatchCatalogEntries(): readonly HexPatchCatalogEntry[] {
+  return AUTHORED_PATCHES.map((definition) => ({
+    definition,
+    variants: createAuthoredPatchVariants(definition).map(assertValidHexPatchVariant),
+  }));
+}
+
 export function createHexPatchTileCatalog(): readonly HexPatchTileVariant[] {
-  return AUTHORED_PATCHES
-    .flatMap((definition) => createAuthoredPatchVariants(definition))
-    .map(assertValidHexPatchVariant);
+  return createHexPatchCatalogEntries().flatMap((entry) => entry.variants);
 }
 
 export function summarizeAuthoredPatchFamilies(variants: readonly HexPatchTileVariant[]) {

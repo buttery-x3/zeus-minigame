@@ -9,6 +9,12 @@ npm run test:game
 npm run verify:render
 ```
 
+The local terrain workbench has an additional isolated build and browser check:
+
+```bash
+npm run verify:terrain-lab
+```
+
 An extensive terrain-only characterization run is available separately through `npm run test:terrain:soak`.
 
 Use the combined command when you want the normal full check:
@@ -16,6 +22,14 @@ Use the combined command when you want the normal full check:
 ```bash
 npm run verify
 ```
+
+The combined command includes the terrain-workbench check after the production game checks.
+
+## Terrain Workbench Verification
+
+`npm run verify:terrain-lab` builds the separate `tools/terrain-lab` Vite entry and opens it at a desktop viewport. It verifies the complete authored-definition inventory, exact cliff-river filtering, derived component display, authored/procedural comparison, one-patch and complete bounded generation, Canvas patch selection, and the generated-patch link back to its authored catalog orientation. Browser console and page errors fail the check.
+
+The production build does not include the workbench. The workbench smoke test uses port `5176`, separate from the normal game and game-verification ports.
 
 ## Build Check
 
