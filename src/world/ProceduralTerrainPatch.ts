@@ -41,7 +41,7 @@ export function synthesizeProceduralPatch(
   seed: number,
   options: ProceduralPatchOptions = {},
 ): ProceduralPatchResult {
-  const resolution = resolveBoundaryEdges(constraints);
+  const resolution = resolveProceduralBoundaryEdges(constraints);
   if (!resolution.ok) {
     return { ok: false, boundaryKey: resolution.boundaryKey, reason: resolution.reason, attemptedAssignments: 0 };
   }
@@ -194,14 +194,14 @@ function createFastTerminationCells(
 }
 
 export function serializeBoundaryConstraints(constraints: HexPatchBoundaryConstraints) {
-  return resolveBoundaryEdges(constraints).boundaryKey;
+  return resolveProceduralBoundaryEdges(constraints).boundaryKey;
 }
 
 export function proceduralBoundaryConstraintsAreConsistent(constraints: HexPatchBoundaryConstraints) {
-  return resolveBoundaryEdges(constraints).ok;
+  return resolveProceduralBoundaryEdges(constraints).ok;
 }
 
-function resolveBoundaryEdges(constraints: HexPatchBoundaryConstraints):
+export function resolveProceduralBoundaryEdges(constraints: HexPatchBoundaryConstraints):
   | { ok: true; edges: Record<HexDirection, HexPatchEdgeSignature>; boundaryKey: string }
   | { ok: false; boundaryKey: string; reason: string } {
   const edges = {} as Record<HexDirection, HexPatchEdgeSignature>;
